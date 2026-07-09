@@ -1,0 +1,316 @@
+// Golden tests for the Rule → Fox FormulaSpec compiler.
+//
+// Each case pins the EXACT compiled spec — expression string and bindings —
+// so any change to the encoding (ladder shape, literal rendering, token
+// naming, macro resolution) shows up as a diff here, reviewed on purpose.
+
+import { describe, expect, it } from 'vitest';
+import type { FormulaDeclaration, Rule } from '@slaclab/canopy-screen-ir';
+import {
+  compileFormulaSpec,
+  compileRule,
+  RuleCompileError,
+  toWireExpression,
+} from './compileRule.js';
+
+const MACROS = { P: 'DEV:1', PREFIX: 'DEMO:VAC1' } as const;
+
+const FORMULAS: readonly FormulaDeclaration[] = [
+  {
+    name: 'sum',
+    kind: 'scalar',
+    expression: 'A+B',
+    bindings: { A: '${P}:VAL', B: '${P}:OFFSET' },
+  },
+  {
+    name: 'f-001',
+    expression: 'A + B',
+    bindings: { A: '${P}:V1', B: '${P}:V2' },
+  },
+];
+
+function conditional(partial: Partial<Rule> & Pick<Rule, 'targetProperty' | 'default'>): Rule {
+  return {
+    id: 'r-test',
+    name: 'test rule',
+    pvs: [],
+    conditions: [],
+    ...partial,
+  } as Rule;
+}
+
+describe('compileRule — conditional arm goldens', () => {
+  it('compiles a single-condition boolean rule with macro-resolved pv names', () => {
+    // vacuum-system.screen.json r-001.
+    const rule = conditional({
+      targetProperty: 'alarmBorder',
+      pvs: [{ name: '${PREFIX}:STATUS:SEV', trigger: true }],
+      conditions: [{ expression: '{0} > 1', value: true }],
+      default: false,
+    });
+
+    expect(compileRule(rule, [], MACROS)).toEqual({
+      kind: 'formula',
+      targetProperty: 'alarmBorder',
+      spec: {
+        kind: 'scalar',
+        expression: 'True if ({0} > 1) else (False)',
+        bindings: { '0': 'DEMO:VAC1:STATUS:SEV' },
+      },
+    });
+  });
+
+  it('compiles a multi-condition ladder, first truthy wins, string values', () => {
+    // simple.screen.json r-001 (color-by-alarm) with its fox://sum inlined.
+    const rule = conditional({
+      targetProperty: 'foregroundColor',
+      default: '#ffffff',
+      pvs: [
+        { name: '${P}:SEVR', trigger: true },
+        { name: 'fox://sum', trigger: true },
+      ],
+      conditions: [
+        { expression: '{0} > 1', value: '#ff0000' },
+        { expression: '{1} > 100', value: '#ffff00' },
+      ],
+    });
+
+    expect(compileRule(rule, FORMULAS, MACROS)).toEqual({
+      kind: 'formula',
+      targetProperty: 'foregroundColor',
+      spec: {
+        kind: 'scalar',
+        expression:
+          '"#ff0000" if ({0} > 1) else ("#ffff00" if (({sum.A}+{sum.B}) > 100) else ("#ffffff"))',
+        bindings: {
+          '0': 'DEV:1:SEVR',
+          'sum.A': 'DEV:1:VAL',
+          'sum.B': 'DEV:1:OFFSET',
+        },
+      },
+    });
+  });
+
+  it('inlines a fox:// binding used against a plain pv (formula-driven r-002)', () => {
+    const rule = conditional({
+      targetProperty: 'visible',
+      default: true,
+      pvs: [
+        { name: 'fox://f-001', trigger: true },
+        { name: '${P}:THRESHOLD', trigger: true },
+      ],
+      conditions: [{ expression: '{0} > {1}', value: false }],
+    });
+
+    expect(compileRule(rule, FORMULAS, MACROS)).toEqual({
+      kind: 'formula',
+      targetProperty: 'visible',
+      spec: {
+        kind: 'scalar',
+        expression: 'False if (({f-001.A} + {f-001.B}) > {1}) else (True)',
+        bindings: {
+          '1': 'DEV:1:THRESHOLD',
+          'f-001.A': 'DEV:1:V1',
+          'f-001.B': 'DEV:1:V2',
+        },
+      },
+    });
+  });
+
+  it('resolves legacy $(NAME) macros and numeric/null literals', () => {
+    const rule = conditional({
+      targetProperty: 'precision',
+      default: null,
+      pvs: [{ name: '$(P):RES', trigger: true }],
+      conditions: [{ expression: '{0} >= 0 && {0} < 10', value: 3 }],
+    });
+
+    expect(compileRule(rule, [], MACROS)).toEqual({
+      kind: 'formula',
+      targetProperty: 'precision',
+      spec: {
+        kind: 'scalar',
+        // Fox itself normalizes && to `and` (parser _BOOL_REPLACEMENTS);
+        // conditions pass through verbatim.
+        expression: '3 if ({0} >= 0 && {0} < 10) else (None)',
+        bindings: { '0': 'DEV:1:RES' },
+      },
+    });
+  });
+
+  it('drops trigger-only bindings never referenced by a condition (Fox rejects unused bindings)', () => {
+    const rule = conditional({
+      targetProperty: 'text',
+      default: 'idle',
+      pvs: [
+        { name: 'DEV:STATE', trigger: true },
+        { name: 'DEV:HEARTBEAT', trigger: true }, // never referenced
+      ],
+      conditions: [{ expression: '{0} == 1', value: 'running' }],
+    });
+
+    expect(compileRule(rule, [], {})).toEqual({
+      kind: 'formula',
+      targetProperty: 'text',
+      spec: {
+        kind: 'scalar',
+        expression: '"running" if ({0} == 1) else ("idle")',
+        bindings: { '0': 'DEV:STATE' },
+      },
+    });
+  });
+
+  it('compiles a default-only rule (no conditions) to a static value', () => {
+    const rule = conditional({
+      targetProperty: 'fontSize',
+      default: 14,
+      pvs: [{ name: 'DEV:UNUSED', trigger: true }],
+      conditions: [],
+    });
+
+    expect(compileRule(rule, [], {})).toEqual({
+      kind: 'static',
+      targetProperty: 'fontSize',
+      value: 14,
+    });
+  });
+
+  it('degenerates to static default when no condition references a live input', () => {
+    const rule = conditional({
+      targetProperty: 'label',
+      default: 'n/a',
+      pvs: [],
+      conditions: [{ expression: '1 > 0', value: 'constant' }],
+    });
+
+    expect(compileRule(rule, [], {})).toEqual({
+      kind: 'static',
+      targetProperty: 'label',
+      value: 'n/a',
+    });
+  });
+
+  it('rejects a condition referencing a pv index that is not bound', () => {
+    const rule = conditional({
+      targetProperty: 'visible',
+      default: true,
+      pvs: [{ name: 'DEV:A', trigger: true }],
+      conditions: [{ expression: '{1} > 0', value: false }],
+    });
+    expect(() => compileRule(rule, [], {})).toThrow(RuleCompileError);
+  });
+
+  it('rejects a non-{N} condition token', () => {
+    const rule = conditional({
+      targetProperty: 'visible',
+      default: true,
+      pvs: [{ name: 'DEV:A', trigger: true }],
+      conditions: [{ expression: '{A} > 0', value: false }],
+    });
+    expect(() => compileRule(rule, [], {})).toThrow(RuleCompileError);
+  });
+
+  it('rejects a dangling fox:// pv binding', () => {
+    const rule = conditional({
+      targetProperty: 'visible',
+      default: true,
+      pvs: [{ name: 'fox://nope', trigger: true }],
+      conditions: [{ expression: '{0} > 0', value: false }],
+    });
+    expect(() => compileRule(rule, [], {})).toThrow(
+      /no formulas\[\] entry declares 'fox:\/\/nope'/
+    );
+  });
+});
+
+describe('compileRule — formula arm goldens', () => {
+  it('compiles to the named formula spec directly (tokenized, macro-resolved)', () => {
+    const rule: Rule = {
+      id: 'r-002',
+      name: 'visible-when',
+      targetProperty: 'visible',
+      default: true,
+      formula: 'sum',
+    };
+
+    expect(compileRule(rule, FORMULAS, MACROS)).toEqual({
+      kind: 'formula',
+      targetProperty: 'visible',
+      spec: {
+        kind: 'scalar',
+        expression: '{A}+{B}',
+        bindings: { A: 'DEV:1:VAL', B: 'DEV:1:OFFSET' },
+      },
+    });
+  });
+
+  it('honors a non-scalar formula kind and tolerates the fox:// prefix', () => {
+    const formulas: FormulaDeclaration[] = [
+      { name: 'wave', kind: 'waveform', expression: 'W * 2', bindings: { W: 'DEV:WAVE' } },
+    ];
+    const rule: Rule = {
+      id: 'r-w',
+      name: 'waveform rule',
+      targetProperty: 'points',
+      default: null,
+      formula: 'fox://wave',
+    };
+
+    expect(compileRule(rule, formulas, {})).toEqual({
+      kind: 'formula',
+      targetProperty: 'points',
+      spec: { kind: 'waveform', expression: '{W} * 2', bindings: { W: 'DEV:WAVE' } },
+    });
+  });
+
+  it('rejects a formula name with no declaration', () => {
+    const rule: Rule = {
+      id: 'r-x',
+      name: 'dangling',
+      targetProperty: 'visible',
+      default: true,
+      formula: 'missing',
+    };
+    expect(() => compileRule(rule, FORMULAS, {})).toThrow(RuleCompileError);
+  });
+});
+
+describe('compileFormulaSpec', () => {
+  it('drops declared-but-unused bindings (Fox rejects extras)', () => {
+    const spec = compileFormulaSpec(
+      { name: 'f', expression: 'A * 2', bindings: { A: 'DEV:A', B: 'DEV:B' } },
+      {}
+    );
+    expect(spec).toEqual({ kind: 'scalar', expression: '{A} * 2', bindings: { A: 'DEV:A' } });
+  });
+
+  it('rejects a formula with no tokens at all', () => {
+    expect(() => compileFormulaSpec({ name: 'f', expression: '1 + 2' }, {})).toThrow(
+      RuleCompileError
+    );
+  });
+
+  it('rejects a wire-form expression with unbound tokens', () => {
+    expect(() =>
+      compileFormulaSpec({ name: 'f', expression: '{A} + {C}', bindings: { A: 'DEV:A' } }, {})
+    ).toThrow(/unbound token/);
+  });
+});
+
+describe('toWireExpression', () => {
+  it('wraps standalone binding names in braces', () => {
+    expect(toWireExpression('A + B * 2', ['A', 'B'])).toBe('{A} + {B} * 2');
+  });
+
+  it('does not split longer identifiers or function names', () => {
+    expect(toWireExpression('AB + A + sqrt(A)', ['A', 'AB'])).toBe('{AB} + {A} + sqrt({A})');
+  });
+
+  it('passes an already-tokenized expression through untouched', () => {
+    expect(toWireExpression('{A} + {B}', ['A', 'B'])).toBe('{A} + {B}');
+  });
+
+  it('handles multi-character keys longest-first', () => {
+    expect(toWireExpression('mean(VAL, VAL2)', ['VAL', 'VAL2'])).toBe('mean({VAL}, {VAL2})');
+  });
+});
