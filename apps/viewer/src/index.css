@@ -1,0 +1,122 @@
+/* Canopy Screens viewer chrome. Widget styles come from
+   @slaclab/canopy-screen-widgets/styles.css; Carbon from @carbon/styles. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.viewer-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--cds-background, #161616);
+  color: var(--cds-text-primary, #f4f4f4);
+}
+
+.viewer-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.viewer-content--screen {
+  padding: 0;
+}
+
+.viewer-loading {
+  color: var(--cds-text-secondary, #8d8d8d);
+}
+
+.viewer-back {
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  color: var(--cds-link-inverse, #78a9ff);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.viewer-back:hover {
+  text-decoration: underline;
+}
+
+/* The screen canvas renders at its authored pixel size on a dark backdrop. */
+.viewer-canvas {
+  min-height: 100%;
+  padding: 1rem;
+  background: #161616;
+}
+
+.viewer-canvas > [data-testid='screen-root'] {
+  background: #262626;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Browse cards */
+.screen-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.screen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  background: var(--cds-layer-01, #262626);
+  border: 1px solid var(--cds-border-subtle, #393939);
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.screen-card:hover {
+  border-color: var(--cds-border-interactive, #4589ff);
+}
+
+.screen-card--disabled {
+  opacity: 0.6;
+}
+
+.screen-card__title {
+  font-weight: 600;
+}
+
+.screen-card__meta {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #8d8d8d);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.screen-card__note {
+  font-size: 0.75rem;
+  color: var(--cds-support-warning, #f1c21b);
+}
+
+/* Error panel */
+.viewer-error {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--cds-support-error, #da1e28);
+  border-left-width: 4px;
+  background: var(--cds-layer-01, #262626);
+}
+
+.viewer-error h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.viewer-error pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8125rem;
+  color: var(--cds-text-secondary, #c6c6c6);
+}
