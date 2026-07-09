@@ -2,6 +2,17 @@ packages:
   - packages/*
   - apps/*
 
+# TEMPORARY overrides: the @slaclab SDK packages (canopy-client/react/shell)
+# are not published to any registry yet, so local installs link them from a
+# sibling canopy-sdk-js checkout. Remove before merge once the SDK publishes
+# to GitHub Packages (package manifests already declare the real ^0.1.0
+# ranges). pnpm 11 reads settings from this file — the same block is mirrored
+# in the root package.json "pnpm" key only as documentation for older tooling.
+overrides:
+  '@slaclab/canopy-client': link:../canopy-sdk-js/packages/client
+  '@slaclab/canopy-react': link:../canopy-sdk-js/packages/react
+  '@slaclab/canopy-shell': link:../canopy-sdk-js/packages/shell
+
 # Dependency postinstall scripts we deliberately do not run: the Carbon and
 # IBM Plex packages' scripts are ibmtelemetry hooks, and @parcel/watcher's
 # native build is unused by our tsc-only builds. esbuild's postinstall only
