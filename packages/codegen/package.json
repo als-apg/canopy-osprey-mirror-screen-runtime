@@ -1,0 +1,43 @@
+{
+  "name": "@slaclab/canopy-screen-codegen",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Generates ejectable React TSX from Canopy screen models (generation direction only; parsing lives in the builder)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slaclab/canopy-screen-runtime.git",
+    "directory": "packages/codegen"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@slaclab/canopy-screen-ir": "workspace:^",
+    "@slaclab/canopy-screen-widgets": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.6"
+  }
+}
