@@ -1,5 +1,10 @@
 name: Lint & Format
 
+# NOTE: `pnpm install` in CI cannot succeed until the @slaclab SDK packages
+# (canopy-client/react/shell) are published to GitHub Packages — the root
+# package.json carries a TEMPORARY link: override to a sibling checkout for
+# local development. Expected red until the SDK's first publish.
+
 on:
   push:
     branches: [main]
@@ -37,4 +42,4 @@ jobs:
         run: pnpm run format:check
 
       - name: TypeScript type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm run typecheck
