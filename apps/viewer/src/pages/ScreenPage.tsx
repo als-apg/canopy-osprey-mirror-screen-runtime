@@ -8,7 +8,7 @@ import type { ScreenJSON } from '@slaclab/canopy-screen-ir';
 import { FormulaSubscriberContext, ScreenRenderer } from '@slaclab/canopy-screen-runtime';
 import { AppHeader } from '@slaclab/canopy-shell';
 import type { ManifestScreen } from '../api.js';
-import { fetchManifest, fetchScreenDocument, makeResolveScreen } from '../api.js';
+import { fetchManifest, fetchScreenDocument, makeResolveAsset, makeResolveScreen } from '../api.js';
 import { ErrorPanel, ScreenErrorBoundary } from '../ErrorPanel.js';
 import { useServices } from '../services.js';
 
@@ -101,6 +101,11 @@ export function ScreenPage({ screensBaseUrl }: { screensBaseUrl: string }) {
       state.status === 'ready' ? makeResolveScreen(screensBaseUrl, state.entry.path) : undefined,
     [screensBaseUrl, state]
   );
+  const resolveAsset = useMemo(
+    () =>
+      state.status === 'ready' ? makeResolveAsset(screensBaseUrl, state.entry.path) : undefined,
+    [screensBaseUrl, state]
+  );
 
   const title = state.status === 'ready' ? state.screen.metadata.title : 'Canopy Screens';
 
@@ -123,6 +128,7 @@ export function ScreenPage({ screensBaseUrl }: { screensBaseUrl: string }) {
                     screen={state.screen}
                     macros={macros}
                     resolveScreen={resolveScreen}
+                    resolveAsset={resolveAsset}
                   />
                 </div>
               </FormulaSubscriberContext.Provider>

@@ -3,6 +3,7 @@
 
 export { ScreenRenderer } from './render/ScreenRenderer.js';
 export type { ScreenRendererProps, ResolveScreen } from './render/ScreenRenderer.js';
+export type { ResolveAsset } from '@slaclab/canopy-screen-widgets';
 export { mapIRWidget } from './render/irMap.js';
 export type { MappedWidget } from './render/irMap.js';
 

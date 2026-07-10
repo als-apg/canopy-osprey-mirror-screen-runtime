@@ -124,6 +124,28 @@ describe('per-widget-type rendering', () => {
     expect(screen.getByTestId('widget-placeholder').textContent).toContain('martian-widget');
   });
 
+  it('resolves image-view src through resolveAsset', () => {
+    const { container } = render(
+      wrap(
+        <ScreenRenderer
+          screen={screenWith({ type: 'image-view', props: { src: 'images/beamline.png' } })}
+          resolveAsset={(ref) => `https://assets.example/screens/${ref}`}
+        />
+      )
+    );
+    const img = container.querySelector('img');
+    expect(img?.getAttribute('src')).toBe('https://assets.example/screens/images/beamline.png');
+    // alt keeps the original filename, not the resolved URL.
+    expect(img?.getAttribute('alt')).toBe('images/beamline.png');
+  });
+
+  it('uses the image-view src verbatim without resolveAsset', () => {
+    const { container } = render(
+      wrap(<ScreenRenderer screen={screenWith({ type: 'image-view', props: { src: 'x.png' } })} />)
+    );
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('x.png');
+  });
+
   it('contains a crashing widget component to its own error box', () => {
     // pv-tank identity-maps to the catalog type PVTank, unregistered by the
     // builtins — register a bomb for it, scoped to this test's registry use.

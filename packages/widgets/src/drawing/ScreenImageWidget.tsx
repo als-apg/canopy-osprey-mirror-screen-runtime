@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useResolveAsset } from '../assets.js';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
 
 // Map the IR `stretchMode` to a CSS object-fit value.
@@ -13,24 +14,26 @@ const OBJECT_FIT: Record<string, CSSProperties['objectFit']> = {
 /**
  * ScreenImage — renders an image from `props.filename`.
  *
- * Imported `.ui` screens reference image *filenames* whose bytes the builder
- * doesn't have, so a missing/broken src falls back to a labeled placeholder box
- * (filename + a note) rather than a bare broken-image glyph. Wire real asset
- * resolution in later; until then the placeholder makes the intent visible.
+ * Imported screens reference image *filenames*, not URLs; the filename is
+ * mapped to a fetchable URL by the host's AssetResolverContext (identity by
+ * default). A missing/broken src falls back to a labeled placeholder box
+ * (filename + a note) rather than a bare broken-image glyph.
  */
 export function ScreenImageWidget({ layout, props, isSelected }: WidgetRendererProps) {
   const filename = props.filename as string | undefined;
   const stretchMode = (props.stretchMode as string) ?? 'fit';
+  const resolveAsset = useResolveAsset();
+  const src = filename ? resolveAsset(filename) : undefined;
 
   // Track which src failed to load so a new src retries. Adjusting state during
   // render (the React-recommended pattern) avoids an effect that would trip
   // react-hooks/set-state-in-effect.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const failed = failedSrc === filename;
+  const failed = src !== undefined && failedSrc === src;
 
   const outline = isSelected ? '2px solid #0f62fe' : 'none';
 
-  if (!filename || failed) {
+  if (!src || failed) {
     return (
       <div
         style={{
@@ -61,9 +64,9 @@ export function ScreenImageWidget({ layout, props, isSelected }: WidgetRendererP
 
   return (
     <img
-      src={filename}
+      src={src}
       alt={filename}
-      onError={() => setFailedSrc(filename)}
+      onError={() => setFailedSrc(src)}
       style={{
         width: layout.width,
         height: layout.height,

@@ -21,6 +21,9 @@ export type {
 
 export { alarmColor, alarmBorderColor, alarmBorderStyle } from './alarm.js';
 
+export { AssetResolverContext, useResolveAsset } from './assets.js';
+export type { ResolveAsset } from './assets.js';
+
 export { widgetRegistry } from './registry/WidgetRegistry.js';
 export type {
   WidgetDefinition,

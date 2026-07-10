@@ -21,7 +21,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import { SCHEMA_VERSION } from '@slaclab/canopy-screen-ir';
 import type { Geometry, MacroValues, ScreenJSON, WidgetNode } from '@slaclab/canopy-screen-ir';
 import type { FormulaDeclaration } from '@slaclab/canopy-screen-ir';
-import { widgetRegistry } from '@slaclab/canopy-screen-widgets';
+import { AssetResolverContext, widgetRegistry } from '@slaclab/canopy-screen-widgets';
+import type { ResolveAsset } from '@slaclab/canopy-screen-widgets';
 import { childMacros, resolveScreenMacros, substituteMacros, substituteProps } from '../macros.js';
 import { applyRuleOutputs } from '../rules/applyRules.js';
 import { useWidgetRules } from '../rules/useWidgetRules.js';
@@ -36,6 +37,11 @@ export interface ScreenRendererProps {
   macros?: Record<string, string>;
   /** Required for `embedded-display` nodes; without it they show an error box. */
   resolveScreen?: ResolveScreen;
+  /**
+   * Maps asset references (image filenames) to fetchable URLs. Without it
+   * filenames are used as-is, so only already-URL references render.
+   */
+  resolveAsset?: ResolveAsset;
   /** Embedding depth cap (default 8). */
   maxDepth?: number;
 }
@@ -393,6 +399,7 @@ export function ScreenRenderer({
   screen,
   macros,
   resolveScreen,
+  resolveAsset,
   maxDepth = 8,
 }: ScreenRendererProps) {
   const effectiveMacros = useMemo(() => resolveScreenMacros(screen, macros), [screen, macros]);
@@ -401,7 +408,7 @@ export function ScreenRenderer({
     [resolveScreen, maxDepth]
   );
 
-  return (
+  const tree = (
     <EmbedContext.Provider value={embed}>
       <div
         data-testid="screen-root"
@@ -422,4 +429,8 @@ export function ScreenRenderer({
       </div>
     </EmbedContext.Provider>
   );
+
+  // Without a resolver the context's identity default applies.
+  if (!resolveAsset) return tree;
+  return <AssetResolverContext.Provider value={resolveAsset}>{tree}</AssetResolverContext.Provider>;
 }

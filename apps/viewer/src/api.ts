@@ -1,7 +1,7 @@
 // canopy-screens content access: manifest + screen documents.
 
 import type { ScreenJSON } from '@slaclab/canopy-screen-ir';
-import type { ResolveScreen } from '@slaclab/canopy-screen-runtime';
+import type { ResolveAsset, ResolveScreen } from '@slaclab/canopy-screen-runtime';
 
 /** One entry of the content repo's generated manifest.json. */
 export interface ManifestScreen {
@@ -47,13 +47,30 @@ export async function fetchScreenDocument(baseUrl: string, path: string): Promis
  * resolve against the same base — a documented v0.1 simplification).
  */
 export function makeResolveScreen(baseUrl: string, screenPath: string): ResolveScreen {
-  const directory = screenPath.includes('/')
-    ? screenPath.slice(0, screenPath.lastIndexOf('/') + 1)
-    : '';
+  const directory = directoryOf(screenPath);
   return async (ref: string) => {
     const target = new URL(`${directory}${ref}`, `${resolveDocumentOrigin(baseUrl)}/`).toString();
     return (await fetchJson(target)) as ScreenJSON;
   };
+}
+
+/**
+ * Build the runtime's resolveAsset for a screen document: relative image
+ * filenames resolve relative to the TOP screen document's directory (the same
+ * v0.1 simplification as makeResolveScreen), so an image committed next to
+ * the .screen.json just works. Absolute URLs (http:, https:, data:, blob:)
+ * and root-relative paths pass through untouched.
+ */
+export function makeResolveAsset(baseUrl: string, screenPath: string): ResolveAsset {
+  const directory = directoryOf(screenPath);
+  return (ref: string) => {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(ref) || ref.startsWith('/')) return ref;
+    return new URL(`${directory}${ref}`, `${resolveDocumentOrigin(baseUrl)}/`).toString();
+  };
+}
+
+function directoryOf(screenPath: string): string {
+  return screenPath.includes('/') ? screenPath.slice(0, screenPath.lastIndexOf('/') + 1) : '';
 }
 
 // new URL() needs an absolute base; same-origin '' resolves against the page.
