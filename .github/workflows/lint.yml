@@ -1,9 +1,8 @@
 name: Lint & Format
 
-# NOTE: `pnpm install` in CI cannot succeed until the @slaclab SDK packages
-# (canopy-client/react/shell) are published to GitHub Packages — the root
-# package.json carries a TEMPORARY link: override to a sibling checkout for
-# local development. Expected red until the SDK's first publish.
+# `pnpm install` pulls the @slaclab SDK packages (canopy-client/react/shell)
+# from GitHub Packages; the install step authenticates with GITHUB_TOKEN via
+# NODE_AUTH_TOKEN (see .npmrc), and the job is granted packages: read.
 
 on:
   push:
@@ -15,6 +14,10 @@ jobs:
   lint:
     name: ESLint & Prettier
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout code
@@ -34,6 +37,8 @@ jobs:
           node-version: 23.11.0
           cache: pnpm
       - run: pnpm install
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run ESLint
         run: pnpm run lint

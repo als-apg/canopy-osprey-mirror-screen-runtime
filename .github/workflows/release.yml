@@ -6,10 +6,6 @@ name: Release
 # FIRST publish, grant each consumer repo read access on every package
 # (package page → Package settings → Manage Actions access), or their CI
 # cannot install these packages.
-#
-# NOTE: like the CI workflows, this cannot succeed until the @slaclab SDK
-# packages are published and the TEMPORARY link: overrides are removed from
-# the root package.json.
 
 on:
   push:
@@ -39,6 +35,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: pnpm build

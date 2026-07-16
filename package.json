@@ -17,14 +17,6 @@
     "format:check": "prettier --check \"packages/*/src/**/*.{ts,tsx,css}\" \"packages/*/test/**/*.{ts,tsx}\" \"packages/*/*.{md,css}\" \"apps/*/src/**/*.{ts,tsx,css}\" \"apps/*/*.md\"",
     "prepare": "husky"
   },
-  "//": "TEMPORARY pnpm.overrides below: the @slaclab SDK packages (canopy-client/react/shell) are not published to any registry yet, so local installs link them from a sibling canopy-sdk-js checkout. The orchestrator removes this block before merge; package manifests declare the real ^0.1.0 ranges.",
-  "pnpm": {
-    "overrides": {
-      "@slaclab/canopy-client": "link:../canopy-sdk-js/packages/client",
-      "@slaclab/canopy-react": "link:../canopy-sdk-js/packages/react",
-      "@slaclab/canopy-shell": "link:../canopy-sdk-js/packages/shell"
-    }
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.3.0",
