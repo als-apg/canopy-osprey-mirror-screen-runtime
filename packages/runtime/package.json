@@ -1,0 +1,56 @@
+{
+  "name": "@slaclab/canopy-screen-runtime",
+  "version": "0.1.0",
+  "private": false,
+  "description": "React runtime for Canopy screens — ScreenRenderer over the Screen IR with macro resolution, embedded screens, and Fox-compiled widget rules",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slaclab/canopy-screen-runtime.git",
+    "directory": "packages/runtime"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@slaclab/canopy-screen-ir": "workspace:^",
+    "@slaclab/canopy-screen-widgets": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@carbon/react": "^1.108.0",
+    "@slaclab/canopy-client": "^0.1.0",
+    "@slaclab/canopy-react": "^0.1.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^26.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.6"
+  }
+}

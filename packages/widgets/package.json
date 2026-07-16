@@ -1,0 +1,59 @@
+{
+  "name": "@slaclab/canopy-screen-widgets",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Canopy screen widget set — Carbon PV widgets, drawing primitives, and the widget registry",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slaclab/canopy-screen-runtime.git",
+    "directory": "packages/widgets"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "files": [
+    "dist",
+    "styles.css"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@slaclab/canopy-client": "^0.1.0",
+    "@slaclab/canopy-react": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@carbon/react": "^1.90.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@carbon/react": "^1.108.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^26.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.6"
+  }
+}
