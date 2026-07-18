@@ -5,12 +5,8 @@ import react from '@vitejs/plugin-react';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // The @slaclab SDK packages are TEMPORARILY link:ed from a sibling checkout
-  // (see pnpm-workspace.yaml). Two consequences until the SDK publishes:
-  //  - dedupe pins every react/react-dom import to this repo's single copy;
-  //  - @slaclab/canopy-shell would otherwise resolve @carbon/react from the
-  //    SDK checkout's node_modules (bundling a second Carbon wired to a
-  //    second React), so it is aliased to this app's copy.
+  // Force react and @carbon/react to this app's single copy; the @slaclab SDK
+  // packages otherwise pull their own, bundling a second React/Carbon.
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
