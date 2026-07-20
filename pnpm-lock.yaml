@@ -51,8 +51,8 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@slaclab/canopy-screen-ir':
-        specifier: workspace:^
-        version: link:../../packages/screen-ir
+        specifier: ^0.1.0
+        version: 0.1.0
       '@slaclab/canopy-screen-runtime':
         specifier: workspace:^
         version: link:../../packages/runtime
@@ -106,8 +106,8 @@ importers:
   packages/codegen:
     dependencies:
       '@slaclab/canopy-screen-ir':
-        specifier: workspace:^
-        version: link:../screen-ir
+        specifier: ^0.1.0
+        version: 0.1.0
       '@slaclab/canopy-screen-widgets':
         specifier: workspace:^
         version: link:../widgets
@@ -125,8 +125,8 @@ importers:
   packages/runtime:
     dependencies:
       '@slaclab/canopy-screen-ir':
-        specifier: workspace:^
-        version: link:../screen-ir
+        specifier: ^0.1.0
+        version: 0.1.0
       '@slaclab/canopy-screen-widgets':
         specifier: workspace:^
         version: link:../widgets
@@ -161,19 +161,6 @@ importers:
       react-dom:
         specifier: ^19.2.6
         version: 19.2.7(react@19.2.7)
-      typescript:
-        specifier: ~6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.6
-        version: 4.1.6(@types/node@24.13.3)(jsdom@26.1.0)(vite@8.0.12(@types/node@24.13.3)(sass@1.101.0)(yaml@2.9.0))
-
-  packages/screen-ir:
-    dependencies:
-      ajv:
-        specifier: ^8.17.1
-        version: 8.20.0
-    devDependencies:
       typescript:
         specifier: ~6.0.2
         version: 6.0.3
@@ -725,6 +712,9 @@ packages:
       react: ^19.0.0
       react-dom: ^19.0.0
 
+  '@slaclab/canopy-screen-ir@0.1.0':
+    resolution: {integrity: sha512-SIAwQgx1xv/jjCculjQVl37jt3gmbkuXFlYK/4WzG7mPwFCW4iehox8vIJ2SBmogiUQlTTKVzm5ZLVIj0iNTnw==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-screen-ir/0.1.0/7297fdd752140a1f5f0b8af162eea033b74f8a15}
+
   '@slaclab/canopy-shell@0.1.0':
     resolution: {integrity: sha512-5ozRmPFlZKAs81AQtbjZrNhzTgrVUIx2aPzTf0uJHRNNBMb4lBSX0mJ9R9H5hGeLAgwXQwkMYcOTS7PEvyjLAQ==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-shell/0.1.0/cc74b16c54307d1de49bbc6e711629f1afef6ccc}
     peerDependencies:
@@ -1155,8 +1145,8 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
-  fast-uri@3.1.3:
-    resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
+  fast-uri@3.1.4:
+    resolution: {integrity: sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -2421,6 +2411,10 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
+  '@slaclab/canopy-screen-ir@0.1.0':
+    dependencies:
+      ajv: 8.20.0
+
   '@slaclab/canopy-shell@0.1.0(@carbon/icons-react@11.83.0(react@19.2.7))(@carbon/react@1.111.1(react-dom@19.2.7(react@19.2.7))(react-is@18.2.0)(react@19.2.7)(sass@1.101.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@carbon/icons-react': 11.83.0(react@19.2.7)
@@ -2642,7 +2636,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.3
+      fast-uri: 3.1.4
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -2883,7 +2877,7 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
-  fast-uri@3.1.3: {}
+  fast-uri@3.1.4: {}
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
