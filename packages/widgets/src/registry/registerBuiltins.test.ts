@@ -8,6 +8,7 @@ import {
   CarbonPVSlider,
   CarbonPVToggle,
   CarbonPVDropdown,
+  CarbonPVRadioGroup,
   CarbonPVCheckbox,
   CarbonPVLed,
   CarbonPVProgressBar,
@@ -21,9 +22,11 @@ describe('registerBuiltinWidgets', () => {
   // type would render as nothing on the canvas. Guard against that regressing.
   it.each([
     'PVDropdown',
+    'PVRadioGroup',
     'PVCheckbox',
     'PVByteIndicator',
     'ScreenImage',
+    'Polygon',
     // Plus the long-standing set, as a sanity check.
     'PVTextDisplay',
     'PVButton',
@@ -50,6 +53,7 @@ describe('live-component unification', () => {
     ['PVSlider', CarbonPVSlider],
     ['PVToggle', CarbonPVToggle],
     ['PVDropdown', CarbonPVDropdown],
+    ['PVRadioGroup', CarbonPVRadioGroup],
     ['PVCheckbox', CarbonPVCheckbox],
     ['PVLed', CarbonPVLed],
     ['PVProgressBar', CarbonPVProgressBar],

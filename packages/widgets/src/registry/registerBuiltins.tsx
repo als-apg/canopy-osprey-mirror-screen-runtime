@@ -9,11 +9,14 @@ import {
   CarbonPVProgressBar,
   CarbonPVLed,
   CarbonPVDropdown,
+  CarbonPVRadioGroup,
   CarbonPVCheckbox,
   CarbonPVByteIndicator,
 } from '../pv-wrappers/CarbonWidgets.js';
 import { LineWidget } from '../drawing/LineWidget.js';
+import { PolygonWidget } from '../drawing/PolygonWidget.js';
 import { ScreenImageWidget } from '../drawing/ScreenImageWidget.js';
+import { WaveformPlot } from '../charts/WaveformPlot.js';
 import { useFitText } from '../shared/useFitText.js';
 import { ArcWidget } from '../drawing/ArcWidget.js';
 
@@ -316,6 +319,17 @@ export function registerBuiltinWidgets() {
   });
 
   widgetRegistry.register({
+    type: 'PVRadioGroup',
+    label: 'Radio Group',
+    category: 'input',
+    icon: 'RadioButtonChecked',
+    defaultLayout: { x: 0, y: 0, width: 160, height: 40 },
+    defaultProps: {},
+    component: CarbonPVRadioGroup,
+    propsSchema: [pvSchema, ...alarmSchemas],
+  });
+
+  widgetRegistry.register({
     type: 'PVCheckbox',
     label: 'Checkbox',
     category: 'input',
@@ -547,6 +561,47 @@ export function registerBuiltinWidgets() {
   });
 
   widgetRegistry.register({
+    type: 'Polygon',
+    label: 'Polygon',
+    category: 'drawing',
+    icon: 'Triangle',
+    defaultLayout: { x: 0, y: 0, width: 100, height: 100 },
+    defaultProps: {
+      lineColor: '#6f6f6f',
+      lineWidth: 2,
+      lineStyle: 'solid',
+      closed: true,
+      fill: false,
+    },
+    component: PolygonWidget,
+    propsSchema: [
+      { key: 'lineColor', label: 'Line Color', type: 'color', section: 'appearance' },
+      {
+        key: 'lineWidth',
+        label: 'Line Width',
+        type: 'number',
+        section: 'appearance',
+        min: 0,
+        max: 20,
+      },
+      {
+        key: 'lineStyle',
+        label: 'Line Style',
+        type: 'select',
+        section: 'appearance',
+        options: [
+          { label: 'Solid', value: 'solid' },
+          { label: 'Dashed', value: 'dashed' },
+          { label: 'Dotted', value: 'dotted' },
+        ],
+      },
+      { key: 'closed', label: 'Closed', type: 'boolean', section: 'appearance' },
+      { key: 'fill', label: 'Fill', type: 'boolean', section: 'appearance' },
+      { key: 'fillColor', label: 'Fill Color', type: 'color', section: 'appearance' },
+    ],
+  });
+
+  widgetRegistry.register({
     type: 'StaticLabel',
     label: 'Label',
     category: 'drawing',
@@ -607,5 +662,16 @@ export function registerBuiltinWidgets() {
         ],
       },
     ],
+  });
+
+  widgetRegistry.register({
+    type: 'WaveformPlot',
+    label: 'Waveform Plot',
+    category: 'chart',
+    icon: 'ChartLine',
+    defaultLayout: { x: 0, y: 0, width: 400, height: 300 },
+    defaultProps: { title: '' },
+    component: WaveformPlot,
+    propsSchema: [{ key: 'title', label: 'Title', type: 'string', section: 'display' }],
   });
 }

@@ -1,4 +1,5 @@
-// /s/:category/:id — render one IR screen with ?MACRO=value query macros.
+// /s/:category/* — render one IR screen with ?MACRO=value query macros. The
+// screen id is the splat, so nested ids ("CBXFEL/Landing") match.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -84,7 +85,9 @@ function useScreenDocument(
 }
 
 export function ScreenPage({ screensBaseUrl }: { screensBaseUrl: string }) {
-  const { category, id } = useParams<{ category: string; id: string }>();
+  const params = useParams();
+  const category = params.category;
+  const id = params['*']; // splat holds the (possibly slashed) screen id
   const [searchParams] = useSearchParams();
   const services = useServices();
   const state = useScreenDocument(screensBaseUrl, category, id);

@@ -10,7 +10,8 @@ export function App({ screensBaseUrl }: { screensBaseUrl: string }) {
   return (
     <Routes>
       <Route path="/" element={<BrowsePage screensBaseUrl={screensBaseUrl} />} />
-      <Route path="/s/:category/:id" element={<ScreenPage screensBaseUrl={screensBaseUrl} />} />
+      {/* splat, not :id, so slashed ids like "CBXFEL/Landing" match */}
+      <Route path="/s/:category/*" element={<ScreenPage screensBaseUrl={screensBaseUrl} />} />
       <Route path="*" element={<ErrorPanel title="Page not found" />} />
     </Routes>
   );

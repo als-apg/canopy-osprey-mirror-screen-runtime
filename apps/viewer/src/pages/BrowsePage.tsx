@@ -37,7 +37,11 @@ function ScreenCard({ entry }: { entry: ManifestScreen }) {
   return (
     <Link
       className="screen-card"
-      to={`/s/${encodeURIComponent(entry.category)}/${encodeURIComponent(entry.id)}`}
+      // Encode each segment but keep slashes as separators so the splat route matches.
+      to={`/s/${encodeURIComponent(entry.category)}/${entry.id
+        .split('/')
+        .map(encodeURIComponent)
+        .join('/')}`}
     >
       {body}
     </Link>

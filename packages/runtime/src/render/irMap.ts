@@ -97,13 +97,15 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
     type: 'PVTextDisplay',
     map: (ir, p) => {
       put(p, 'pvName', str(ir.pv));
+      // Fallback shown by a static (channel-less) PyDMLabel with no PV bound.
+      put(p, 'text', str(ir.text));
       put(p, 'format', ir.format);
       put(p, 'precision', num(ir.precision));
       put(p, 'showUnits', bool(ir.showUnits));
       put(p, 'precisionFromPV', bool(ir.precisionFromPV));
       copyAppearance(ir, p);
     },
-    consumes: ['pv', 'format', 'precision', 'showUnits', 'precisionFromPV', ...FOREGROUND],
+    consumes: ['pv', 'text', 'format', 'precision', 'showUnits', 'precisionFromPV', ...FOREGROUND],
   },
   'pv-text-input': {
     type: 'PVTextInput',
@@ -153,6 +155,19 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
       }
     },
     consumes: ['label', 'file', 'macros'],
+  },
+  // No browser analog for spawning a process; degrade to a labeled (inert)
+  // button so the button and its label survive rather than becoming Unknown.
+  'shell-command-button': {
+    type: 'PVButton',
+    map: (ir, p) => {
+      put(p, 'label', str(ir.label));
+      if (ir.label !== undefined) {
+        put(p, 'onLabel', str(ir.label));
+        put(p, 'offLabel', str(ir.label));
+      }
+    },
+    consumes: ['label', 'command', 'showIcon'],
   },
   'pv-checkbox': {
     type: 'PVCheckbox',
@@ -238,6 +253,15 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
     },
     consumes: [],
   },
+  // The .ui converter's top-level QWidget wrapper (e.g. `centralwidget`);
+  // without this entry its whole subtree becomes an Unknown placeholder.
+  'qwidget-container': {
+    type: 'Group',
+    map: (_ir, p) => {
+      p.layoutMode = 'absolute';
+    },
+    consumes: [],
+  },
   'group-box': {
     type: 'Group',
     map: (ir, p) => {
@@ -265,6 +289,7 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
   ellipse: { type: 'Ellipse', map: copyVerbatim, consumes: [] },
   arc: { type: 'Arc', map: copyVerbatim, consumes: [] },
   line: { type: 'Line', map: copyVerbatim, consumes: [] },
+  polygon: { type: 'Polygon', map: copyVerbatim, consumes: [] },
   group: { type: 'Group', map: copyVerbatim, consumes: [] },
   'pv-toggle': { type: 'PVToggle', map: copyPvFlavoredVerbatim, consumes: [] },
   'pv-radio-group': { type: 'PVRadioGroup', map: copyPvFlavoredVerbatim, consumes: [] },
@@ -274,6 +299,17 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
   'pv-gauge': { type: 'PVGauge', map: copyPvFlavoredVerbatim, consumes: [] },
   'pv-tank': { type: 'PVTank', map: copyPvFlavoredVerbatim, consumes: [] },
   'pv-thermometer': { type: 'PVThermometer', map: copyPvFlavoredVerbatim, consumes: [] },
+  // Curve/axis config passes through; WaveformPlot subscribes to each curve's channels.
+  'waveform-plot': {
+    type: 'WaveformPlot',
+    map: (ir, p) => {
+      put(p, 'title', str(ir.title));
+      put(p, 'curves', ir.curves);
+      put(p, 'yAxes', ir.yAxes);
+      put(p, 'xLabels', ir.xLabels);
+    },
+    consumes: ['title', 'curves', 'yAxes', 'xLabels'],
+  },
 };
 
 /**

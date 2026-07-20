@@ -58,6 +58,10 @@ const RENDERABLE: [string, Record<string, PropertyValue>][] = [
   ['pv-button', { pv: 'DEV:CMD', label: 'Fire', pressValue: 1 }],
   ['regular-button', { label: 'Plain' }],
   ['related-display-button', { file: 'other.screen.json', label: 'Open it' }],
+  ['shell-command-button', { command: 'ls', label: 'Run it' }],
+  ['qwidget-container', {}],
+  ['pv-radio-group', { pv: 'DEV:MODE' }],
+  ['waveform-plot', { title: 'Trace', curves: [{ y_channel: 'DEV:WF', color: '#f00' }] }],
   ['pv-checkbox', { pv: 'DEV:ENABLE', label: 'Enable' }],
   ['pv-enum-combobox', { pv: 'DEV:MODE' }],
   ['pv-slider', { pv: 'DEV:SP', min: 0, max: 10 }],
@@ -81,13 +85,7 @@ const RENDERABLE: [string, Record<string, PropertyValue>][] = [
 // component on this branch — they must degrade to labeled placeholders.
 // (pv-tank is exercised separately below with a deliberately crashing
 // component registered for it.)
-const PLACEHOLDER_TYPES = [
-  'pv-radio-group',
-  'pv-spinbox',
-  'pv-meter',
-  'pv-gauge',
-  'pv-thermometer',
-];
+const PLACEHOLDER_TYPES = ['pv-spinbox', 'pv-meter', 'pv-gauge', 'pv-thermometer'];
 
 describe('per-widget-type rendering', () => {
   it.each(RENDERABLE)('renders %s without error box', (type, props) => {
@@ -104,6 +102,14 @@ describe('per-widget-type rendering', () => {
       expect(box.textContent).toContain(type);
     }
   );
+
+  it('renders a channel-less pv-label using its static text', () => {
+    // `text` set, no `pv` → show the text, not `---`.
+    render(
+      wrap(<ScreenRenderer screen={screenWith({ type: 'pv-label', props: { text: 'Hello' } })} />)
+    );
+    expect(screen.getByText('Hello')).toBeTruthy();
+  });
 
   it('renders unknown-widget as a placeholder labeled with the original class', () => {
     render(

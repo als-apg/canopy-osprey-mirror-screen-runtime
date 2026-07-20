@@ -35,6 +35,17 @@ const MANIFEST = {
       category: 'cryo',
       path: 'screens/cryo/pump-panel',
     },
+    {
+      // A nested id (slash) — must be reachable under the /s/:category/* splat.
+      id: 'CBXFEL/Landing',
+      kind: 'ir',
+      title: 'CBXFEL Landing',
+      category: 'examples',
+      path: 'screens/examples/CBXFEL/Landing.screen.json',
+      macros: [],
+      tags: [],
+      schemaVersion: '1.0',
+    },
   ],
 };
 
@@ -185,6 +196,23 @@ describe('screen page (deep link)', () => {
     stubFetch({ '/manifest.json': MANIFEST });
     renderAt('/s/examples/nope');
     expect(await screen.findByText("No screen 'examples/nope' in the manifest")).toBeTruthy();
+  });
+
+  it('opens a nested screen id (slash) via the splat route', async () => {
+    const NESTED = {
+      ...MOTOR_SCREEN,
+      kind: 'screen',
+      id: 'CBXFEL/Landing',
+      metadata: { ...MOTOR_SCREEN.metadata, title: 'CBXFEL Landing' },
+    };
+    stubFetch({
+      '/manifest.json': MANIFEST,
+      '/screens/examples/CBXFEL/Landing.screen.json': NESTED,
+    });
+    renderAt('/s/examples/CBXFEL/Landing');
+    // Resolves (not the "Page not found" splat-miss) — header shows the title.
+    expect(await screen.findByText('CBXFEL Landing')).toBeTruthy();
+    expect(screen.queryByText('Page not found')).toBeNull();
   });
 
   it('explains code screens instead of rendering blank', async () => {
