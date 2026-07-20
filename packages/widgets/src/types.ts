@@ -84,8 +84,9 @@ export const WIDGET_CATALOG = {
     'PVTabs',
   ],
   indicators: ['PVLed', 'PVByteIndicator', 'PVMeter', 'PVGauge', 'PVTank', 'PVThermometer'],
-  drawings: ['Rectangle', 'Ellipse', 'Line', 'Arc', 'StaticLabel', 'ScreenImage'],
+  drawings: ['Rectangle', 'Ellipse', 'Line', 'Arc', 'Polygon', 'StaticLabel', 'ScreenImage'],
   containers: ['Group', 'EmbeddedScreen'],
+  charts: ['WaveformPlot'],
 } as const;
 
 export type WidgetType = (typeof WIDGET_CATALOG)[keyof typeof WIDGET_CATALOG][number];
@@ -95,6 +96,7 @@ export const ALL_WIDGET_TYPES: readonly WidgetType[] = [
   ...WIDGET_CATALOG.indicators,
   ...WIDGET_CATALOG.drawings,
   ...WIDGET_CATALOG.containers,
+  ...WIDGET_CATALOG.charts,
 ];
 
 // ── Widget Model ────────────────────────────────���────────────────────────────

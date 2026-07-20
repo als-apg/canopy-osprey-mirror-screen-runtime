@@ -1,5 +1,15 @@
 import { useState, useCallback } from 'react';
-import { TextInput, Slider, Toggle, ProgressBar, Tag, Dropdown, Checkbox } from '@carbon/react';
+import {
+  TextInput,
+  Slider,
+  Toggle,
+  ProgressBar,
+  Tag,
+  Dropdown,
+  Checkbox,
+  RadioButtonGroup,
+  RadioButton,
+} from '@carbon/react';
 import { usePV } from '@slaclab/canopy-react';
 import { alarmBorderStyle } from '../alarm.js';
 import { AlarmSeverity, AlarmSeverityName } from '@slaclab/canopy-client';
@@ -8,14 +18,24 @@ import { useFitText } from '../shared/useFitText.js';
 
 /** PVTextDisplay — Carbon Tag/Text showing live PV value */
 export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendererProps) {
-  const pv = usePV(props.pvName as string | undefined);
-  const alarmBorder = alarmBorderStyle(
-    pv.severity,
-    (props.alarmSensitiveBorder as boolean) ?? true
-  );
+  const pvName = props.pvName as string | undefined;
+  const pv = usePV(pvName);
 
   const label = props.label as string | undefined;
-  const value = pv.connected ? pv.displayValue : '---';
+  const align = (props.align as 'left' | 'center' | 'right' | undefined) ?? 'left';
+  const staticText = props.text as string | undefined;
+  const hasPv = pvName !== undefined && pvName !== '';
+  // A channel-less PyDMLabel is a static caption: show `text`, and skip the
+  // alarm border (no PV, no alarm state) so it isn't drawn as a bordered field.
+  const isStatic = !hasPv && staticText !== undefined;
+  const alarmBorder = isStatic
+    ? {}
+    : alarmBorderStyle(pv.severity, (props.alarmSensitiveBorder as boolean) ?? true);
+  const value = pv.connected
+    ? pv.displayValue
+    : !hasPv && staticText !== undefined
+      ? staticText
+      : '---';
   // Default ~13px matches the .carbon-pv-display__value rule (0.8125rem).
   const maxFontSize = (props.fontSize as number) ?? 13;
   const { ref, fontSize } = useFitText<HTMLDivElement>(maxFontSize, [
@@ -51,7 +71,16 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
     >
       <div ref={ref} className="carbon-pv-display__content" style={{ fontSize }}>
         {label && <span className="carbon-pv-display__label">{label}</span>}
-        <span className="carbon-pv-display__value">{value}</span>
+        <span
+          className={
+            isStatic
+              ? 'carbon-pv-display__value carbon-pv-display__value--static'
+              : 'carbon-pv-display__value'
+          }
+          style={align !== 'left' ? { textAlign: align } : undefined}
+        >
+          {value}
+        </span>
       </div>
       {pv.connected && pv.severity !== AlarmSeverity.NO_ALARM && (
         <Tag size="sm" type={severityTag} className="carbon-pv-display__alarm-tag">
@@ -114,6 +143,16 @@ export function CarbonPVTextInput({
   );
 }
 
+// Carbon "Launch" glyph, inlined to avoid an @carbon/icons-react dependency.
+function LaunchGlyph({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+      <path d="M26 28H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10v2H6v20h20V16h2v10a2 2 0 0 1-2 2Z" />
+      <path d="M20 2v2h6.586L18 12.586 19.414 14 28 5.414V12h2V2H20Z" />
+    </svg>
+  );
+}
+
 /** PVButton — push or toggle button writing to a Control PV */
 export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps) {
   const controlPV = usePV(props.controlPV as string | undefined);
@@ -123,8 +162,15 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
 
   const buttonType = (props.buttonType as 'push' | 'toggle') ?? 'push';
   const labelType = (props.labelType as 'literal' | 'pvState') ?? 'literal';
-  const onLabel = (props.onLabel as string) ?? 'On';
-  const offLabel = (props.offLabel as string) ?? 'Off';
+  // undefined (not "On"/"Off") when unauthored, so a text-less button doesn't
+  // fabricate captions the source screen never had.
+  const onLabel = props.onLabel as string | undefined;
+  const offLabel = props.offLabel as string | undefined;
+  const authoredLabel = props.label as string | undefined;
+  const hasAuthoredLabel =
+    (authoredLabel !== undefined && authoredLabel !== '') ||
+    (onLabel !== undefined && onLabel !== '') ||
+    (offLabel !== undefined && offLabel !== '');
   const invisible = props.invisible === true;
   const fontFamily = (props.fontFamily as string) || 'IBM Plex Sans, sans-serif';
   const fontSize = (props.fontSize as number) ?? 13;
@@ -160,11 +206,20 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
       ? colorPV.value
       : baseBg;
 
-  let label: string;
+  let label: React.ReactNode;
   if (labelType === 'pvState') {
     label = readbackPV.connected ? String(readbackPV.value ?? '') : '';
+  } else if (hasAuthoredLabel) {
+    label = isOn ? (onLabel ?? authoredLabel ?? '') : (offLabel ?? authoredLabel ?? '');
   } else {
-    label = isOn ? onLabel : offLabel;
+    // Unlabeled: a small or showIcon button is a launcher/glyph → draw an icon;
+    // anything else stays a blank press target rather than a fabricated caption.
+    const isIconButton = props.showIcon === true || (layout.width <= 24 && layout.height <= 24);
+    label = isIconButton ? (
+      <LaunchGlyph size={Math.max(12, Math.min(layout.width, layout.height) - 6)} />
+    ) : (
+      ''
+    );
   }
 
   return (
@@ -182,6 +237,9 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
         cursor: isEditing ? 'default' : 'pointer',
         opacity: invisible ? 0.35 : 1,
         padding: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
       {label}
@@ -267,6 +325,40 @@ export function CarbonPVProgressBar({ layout, props, isSelected }: WidgetRendere
     return 'active' as const;
   })();
 
+  // Carbon's ProgressBar is horizontal-only; draw a custom bottom-up fill for vertical.
+  const orientation = (props.orientation as 'horizontal' | 'vertical' | undefined) ?? 'horizontal';
+  if (orientation === 'vertical') {
+    const fillColor =
+      status === 'error'
+        ? 'var(--cds-support-error, #da1e28)'
+        : 'var(--cds-support-success, #0f62fe)';
+    return (
+      <div
+        className={`carbon-pv-progress carbon-pv-progress--vertical ${isSelected ? 'carbon-pv-progress--selected' : ''}`}
+        style={{
+          width: layout.width,
+          height: layout.height,
+          display: 'flex',
+          alignItems: 'flex-end',
+          backgroundColor: 'var(--cds-layer-accent, #393939)',
+          border: '1px solid var(--cds-border-subtle, #393939)',
+          borderRadius: 2,
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            height: `${percent}%`,
+            backgroundColor: fillColor,
+            transition: 'height 0.15s',
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`carbon-pv-progress ${isSelected ? 'carbon-pv-progress--selected' : ''}`}
@@ -342,6 +434,55 @@ export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendere
           if (!isEditing && selectedItem) pv.put(selectedItem);
         }}
       />
+    </div>
+  );
+}
+
+/** PVRadioGroup — Carbon RadioButtonGroup bound to a PV, writing the selected ordinal (PyDMEnumButton) */
+export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRendererProps) {
+  const pv = usePV(props.pvName as string | undefined);
+  const items = (props.customItems as string[] | undefined) ??
+    (props.items as string[] | undefined) ?? ['Option 1', 'Option 2'];
+
+  const orientation = (props.orientation as 'horizontal' | 'vertical' | undefined) ?? 'vertical';
+
+  // The live value may be the enum ordinal (number) or label (string); -1 = none.
+  let selectedIndex = -1;
+  if (pv.connected) {
+    if (typeof pv.value === 'number') {
+      selectedIndex = pv.value;
+    } else if (typeof pv.value === 'string') {
+      selectedIndex = items.indexOf(pv.value);
+    }
+  }
+
+  const handleChange = useCallback(
+    (selection: string | number | undefined) => {
+      if (isEditing || typeof selection !== 'number') return;
+      pv.put(selection);
+    },
+    [isEditing, pv]
+  );
+
+  return (
+    <div style={{ width: layout.width, height: layout.height }}>
+      <RadioButtonGroup
+        name={`pv-radio-${id}`}
+        orientation={orientation}
+        valueSelected={selectedIndex >= 0 ? selectedIndex : undefined}
+        onChange={handleChange}
+        disabled={!pv.connected && !!props.pvName}
+        readOnly={isEditing}
+      >
+        {items.map((item, index) => (
+          <RadioButton
+            key={`${id}-${index}`}
+            id={`pv-radio-${id}-${index}`}
+            labelText={item}
+            value={index}
+          />
+        ))}
+      </RadioButtonGroup>
     </div>
   );
 }

@@ -37,7 +37,9 @@
   },
   "dependencies": {
     "@slaclab/canopy-client": "^0.1.0",
-    "@slaclab/canopy-react": "^0.1.0"
+    "@slaclab/canopy-react": "^0.1.0",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6"
   },
   "peerDependencies": {
     "@carbon/react": "^1.90.0",

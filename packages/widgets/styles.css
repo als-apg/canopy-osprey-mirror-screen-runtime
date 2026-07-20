@@ -63,6 +63,20 @@
   text-align: right;
 }
 
+/* Static caption (channel-less PyDMLabel): prose, no ellipsis — useFitText shrinks to fit. */
+.carbon-pv-display__value--static {
+  font-family: 'IBM Plex Sans', sans-serif;
+  text-align: left;
+  text-overflow: clip;
+}
+
+/* Captions are transparent overlays, not fields: drop the readout padding/border. */
+.carbon-pv-display:has(.carbon-pv-display__value--static) {
+  padding: 0 2px;
+  background-color: transparent;
+  border-color: transparent;
+}
+
 .carbon-pv-display__alarm-tag {
   flex-shrink: 0;
   margin: 0 !important;
