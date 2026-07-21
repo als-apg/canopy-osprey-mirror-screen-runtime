@@ -186,9 +186,12 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   const foregroundColor = (props.foregroundColor as string) ?? '#ffffff';
   const baseBg = (props.backgroundColor as string) ?? '#0f62fe';
 
+  // EDM/PyDM treat the state value as an INTEGER: 0.5 is OFF (trunc -> 0).
   const isOn =
     readbackPV.connected &&
-    (typeof readbackPV.value === 'number' ? readbackPV.value !== 0 : Boolean(readbackPV.value));
+    (typeof readbackPV.value === 'number'
+      ? Math.trunc(readbackPV.value) !== 0
+      : Boolean(readbackPV.value));
 
   // EDM message buttons write authored press/release values ("1", "RESET",
   // enum names) — numeric strings become numbers, anything else writes as-is.
@@ -229,10 +232,17 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   // Invisible toggle: hide at runtime, dim in editor
   if (!isEditing && invisible) return null;
 
+  // Background precedence: a live color PV wins; then EDM state colors
+  // (onColor/offColor track the readback, the EDM toggle look); then the
+  // authored static background.
+  const stateBg =
+    props.onColor || props.offColor
+      ? ((isOn ? props.onColor : props.offColor) as string | undefined)
+      : undefined;
   const backgroundColor =
     props.colorPV && colorPV.connected && typeof colorPV.value === 'string'
       ? colorPV.value
-      : baseBg;
+      : (stateBg ?? baseBg);
 
   let label: React.ReactNode;
   if (labelType === 'pvState') {

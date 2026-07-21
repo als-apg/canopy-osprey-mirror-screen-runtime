@@ -130,14 +130,18 @@ function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
   );
 }
 
-function GroupWidget({ layout, isSelected, children }: WidgetRendererProps) {
+function GroupWidget({ layout, isSelected, isEditing, children }: WidgetRendererProps) {
+  // The dashed outline is an EDITOR affordance. At runtime groups are
+  // invisible containers (EDM semantics) — converted screens are full of
+  // them, and the outlines read as authored dashed rectangles.
+  const border = isEditing ? `1px dashed ${isSelected ? '#0f62fe' : '#525252'}` : 'none';
   return (
     <div
       style={{
         width: layout.width,
         height: layout.height,
-        border: `1px dashed ${isSelected ? '#0f62fe' : '#525252'}`,
-        borderRadius: 2,
+        border,
+        borderRadius: isEditing ? 2 : 0,
         backgroundColor: 'transparent',
       }}
     >

@@ -70,6 +70,41 @@ describe('CarbonPVButton write values', () => {
   });
 });
 
+describe('CarbonPVButton EDM state semantics', () => {
+  it('treats fractional readbacks as OFF (EDM integer truncation)', () => {
+    pvState['SIM:STATE'] = { connected: true, value: 0.5 };
+    const btn = renderButton({
+      controlPV: 'SIM:CTRL',
+      readbackPV: 'SIM:STATE',
+      onLabel: 'Enabled',
+      offLabel: 'Disabled',
+    });
+    expect(btn.textContent).toBe('Disabled');
+  });
+
+  it('colors the face by state when onColor/offColor are authored', () => {
+    pvState['SIM:STATE'] = { connected: true, value: 1 };
+    const btn = renderButton({
+      controlPV: 'SIM:CTRL',
+      readbackPV: 'SIM:STATE',
+      onColor: '#00ff00',
+      offColor: '#ffff00',
+      label: 'SW',
+    });
+    expect(btn.style.backgroundColor).toBe('rgb(0, 255, 0)');
+    cleanup();
+    pvState['SIM:STATE'] = { connected: true, value: 0 };
+    const off = renderButton({
+      controlPV: 'SIM:CTRL',
+      readbackPV: 'SIM:STATE',
+      onColor: '#00ff00',
+      offColor: '#ffff00',
+      label: 'SW',
+    });
+    expect(off.style.backgroundColor).toBe('rgb(255, 255, 0)');
+  });
+});
+
 describe('CarbonPVButton toggle + readback', () => {
   it('shows onLabel and writes 0 when the readback reads nonzero', () => {
     pvState['SIM:STATE'] = { connected: true, value: 1 };
