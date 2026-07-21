@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   TextInput,
   Slider,
@@ -190,14 +190,33 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
     readbackPV.connected &&
     (typeof readbackPV.value === 'number' ? readbackPV.value !== 0 : Boolean(readbackPV.value));
 
-  const handleClick = useCallback(() => {
+  // EDM message buttons write authored press/release values ("1", "RESET",
+  // enum names) — numeric strings become numbers, anything else writes as-is.
+  const writeValue = (v: unknown): number | string | undefined => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v !== '') {
+      return Number.isFinite(Number(v)) ? Number(v) : v;
+    }
+    return undefined;
+  };
+  const pressValue = writeValue(props.pressValue);
+  const releaseValue = writeValue(props.releaseValue);
+
+  const handlePress = useCallback(() => {
     if (isEditing || !controlPV.address) return;
     if (buttonType === 'toggle') {
       controlPV.put(isOn ? 0 : 1);
     } else {
-      controlPV.put(1);
+      controlPV.put(pressValue ?? 1);
     }
-  }, [isEditing, controlPV, buttonType, isOn]);
+  }, [isEditing, controlPV, buttonType, isOn, pressValue]);
+
+  const handleRelease = useCallback(() => {
+    if (isEditing || !controlPV.address) return;
+    if (buttonType !== 'toggle' && releaseValue !== undefined) {
+      controlPV.put(releaseValue);
+    }
+  }, [isEditing, controlPV, buttonType, releaseValue]);
 
   // Visibility PV: hide at runtime when its value is falsy
   if (!isEditing && props.visibilityPV && visibilityPV.connected) {
@@ -232,9 +251,17 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
     );
   }
 
+  // With a release value the press/release pair must straddle the hold
+  // (EDM message-button semantics), so the writes ride mousedown/mouseup;
+  // otherwise a plain click writes the press value.
+  const pressHandlers =
+    releaseValue !== undefined && buttonType !== 'toggle'
+      ? { onMouseDown: handlePress, onMouseUp: handleRelease }
+      : { onClick: handlePress };
+
   return (
     <button
-      onClick={handleClick}
+      {...pressHandlers}
       style={{
         width: layout.width,
         height: layout.height,
@@ -457,6 +484,22 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
 
   const orientation = (props.orientation as 'horizontal' | 'vertical' | undefined) ?? 'vertical';
 
+  // Fit-to-geometry: EDM radio boxes are far smaller than Carbon's native
+  // control sizing, so measure the rendered group and scale it down into the
+  // authored rect rather than clipping options away (losing options is
+  // missing-info; small-but-complete matches the EDM look).
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const naturalWidth = el.scrollWidth;
+    const naturalHeight = el.scrollHeight;
+    if (!naturalWidth || !naturalHeight) return; // jsdom / not laid out yet
+    const fit = Math.min(1, layout.width / naturalWidth, layout.height / naturalHeight);
+    setScale(fit < 0.999 ? fit : 1);
+  }, [layout.width, layout.height, orientation, items.join('|')]);
+
   // The live value may be the enum ordinal (number) or label (string); -1 = none.
   let selectedIndex = -1;
   if (pv.connected) {
@@ -476,24 +519,33 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
   );
 
   return (
-    <div style={{ width: layout.width, height: layout.height }}>
-      <RadioButtonGroup
-        name={`pv-radio-${id}`}
-        orientation={orientation}
-        valueSelected={selectedIndex >= 0 ? selectedIndex : undefined}
-        onChange={handleChange}
-        disabled={!pv.connected && !!props.pvName}
-        readOnly={isEditing}
+    <div style={{ width: layout.width, height: layout.height, overflow: 'hidden' }}>
+      <div
+        ref={innerRef}
+        style={{
+          display: 'inline-block',
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
       >
-        {items.map((item, index) => (
-          <RadioButton
-            key={`${id}-${index}`}
-            id={`pv-radio-${id}-${index}`}
-            labelText={item}
-            value={index}
-          />
-        ))}
-      </RadioButtonGroup>
+        <RadioButtonGroup
+          name={`pv-radio-${id}`}
+          orientation={orientation}
+          valueSelected={selectedIndex >= 0 ? selectedIndex : undefined}
+          onChange={handleChange}
+          disabled={!pv.connected && !!props.pvName}
+          readOnly={isEditing}
+        >
+          {items.map((item, index) => (
+            <RadioButton
+              key={`${id}-${index}`}
+              id={`pv-radio-${id}-${index}`}
+              labelText={item}
+              value={index}
+            />
+          ))}
+        </RadioButtonGroup>
+      </div>
     </div>
   );
 }

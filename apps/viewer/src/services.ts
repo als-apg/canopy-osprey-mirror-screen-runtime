@@ -3,35 +3,56 @@
 
 import { createContext, useContext } from 'react';
 import type { PVService } from '@slaclab/canopy-client';
-import { FoxFormulaService, HarePVService, MockPVService } from '@slaclab/canopy-client';
+import {
+  FoxFormulaService,
+  HarePVService,
+  LocalPVService,
+  MockPVService,
+  RoutedPVService,
+} from '@slaclab/canopy-client';
 import type { FormulaSubscriber } from '@slaclab/canopy-screen-runtime';
-import { createFoxFormulaSubscriber } from '@slaclab/canopy-screen-runtime';
+import {
+  createFoxFormulaSubscriber,
+  createLocalAwareFormulaSubscriber,
+} from '@slaclab/canopy-screen-runtime';
 import type { ViewerConfig } from './config.js';
 
 export interface ViewerServices {
   pv: PVService;
   /** null in mock mode: rules stay inert (base props render unchanged). */
   formulas: FormulaSubscriber | null;
+  /** loc:// locals (EDM LOC parity); ScreenPage clears it per screen. */
+  locals: LocalPVService;
 }
 
 export function createServices(config: ViewerConfig): ViewerServices {
+  // loc:// locals are page-side state (EDM LOC semantics): widgets write and
+  // rules read them without a gateway, in every pv mode.
+  const locals = new LocalPVService();
+  locals.connect();
+
   if (config.pvMode === 'hare') {
-    const pv = new HarePVService({
+    const hare = new HarePVService({
       url: `${config.canopyBaseUrl.replace(/^http/i, 'ws')}/hare/v1/ws/pvs`,
       apiKey: config.canopyApiKey,
     });
+    const pv = new RoutedPVService({ 'loc://': locals }, hare);
     pv.connect();
     const fox = new FoxFormulaService({
       baseUrl: config.canopyBaseUrl,
       apiKey: config.canopyApiKey,
     });
     fox.connect();
-    return { pv, formulas: createFoxFormulaSubscriber(fox) };
+    return {
+      pv,
+      formulas: createLocalAwareFormulaSubscriber(locals, createFoxFormulaSubscriber(fox)),
+      locals,
+    };
   }
 
-  const pv = new MockPVService();
+  const pv = new RoutedPVService({ 'loc://': locals }, new MockPVService());
   pv.connect();
-  return { pv, formulas: null };
+  return { pv, formulas: createLocalAwareFormulaSubscriber(locals, null), locals };
 }
 
 export const ServicesContext = createContext<ViewerServices | null>(null);

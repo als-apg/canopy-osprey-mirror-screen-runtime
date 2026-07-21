@@ -69,8 +69,20 @@ const RENDERABLE: [string, Record<string, PropertyValue>][] = [
   ['pv-byte-led', { pv: 'DEV:BITS', numBits: 8 }],
   ['pv-led', { pv: 'DEV:STATE' }],
   ['pv-toggle', { pv: 'DEV:ON' }],
+  ['pv-meter', { pv: 'DEV:PRESSURE' }],
   ['image-view', { src: 'nonexistent.png' }],
   ['rectangle', { fill: true, fillColor: '#123123' }],
+  [
+    'polygon',
+    {
+      points: [
+        { x: 0, y: 10 },
+        { x: 5, y: 0 },
+        { x: 10, y: 10 },
+      ],
+      fill: true,
+    },
+  ],
   ['ellipse', { lineColor: '#aaaaaa' }],
   ['arc', { startAngle: 0, spanAngle: 180 }],
   ['line', { arrowEnd: true }],
@@ -84,8 +96,9 @@ const RENDERABLE: [string, Record<string, PropertyValue>][] = [
 // Identity-mapped IR types whose catalog widgets have no registered
 // component on this branch — they must degrade to labeled placeholders.
 // (pv-tank is exercised separately below with a deliberately crashing
-// component registered for it.)
-const PLACEHOLDER_TYPES = ['pv-spinbox', 'pv-meter', 'pv-gauge', 'pv-thermometer'];
+// component registered for it; pv-meter graduated to CarbonPVMeter and
+// renders for real now.)
+const PLACEHOLDER_TYPES = ['pv-spinbox', 'pv-gauge', 'pv-thermometer'];
 
 describe('per-widget-type rendering', () => {
   it.each(RENDERABLE)('renders %s without error box', (type, props) => {

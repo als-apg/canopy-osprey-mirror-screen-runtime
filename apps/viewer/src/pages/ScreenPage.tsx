@@ -92,6 +92,13 @@ export function ScreenPage({ screensBaseUrl }: { screensBaseUrl: string }) {
   const services = useServices();
   const state = useScreenDocument(screensBaseUrl, category, id);
 
+  // loc:// locals are screen-scoped (EDM window-local lifetime): reset when
+  // the rendered screen changes so one screen's tab state can't leak into
+  // the next.
+  useEffect(() => {
+    return () => services.locals.clear();
+  }, [services, category, id]);
+
   // Every ?NAME=value query parameter is a macro value.
   const macros = useMemo(() => {
     const out: Record<string, string> = {};
