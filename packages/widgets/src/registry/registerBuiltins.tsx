@@ -12,6 +12,7 @@ import {
   CarbonPVRadioGroup,
   CarbonPVCheckbox,
   CarbonPVByteIndicator,
+  CarbonPVMeter,
 } from '../pv-wrappers/CarbonWidgets.js';
 import { LineWidget } from '../drawing/LineWidget.js';
 import { PolygonWidget } from '../drawing/PolygonWidget.js';
@@ -673,5 +674,38 @@ export function registerBuiltinWidgets() {
     defaultProps: { title: '' },
     component: WaveformPlot,
     propsSchema: [{ key: 'title', label: 'Title', type: 'string', section: 'display' }],
+  });
+
+  widgetRegistry.register({
+    type: 'PVMeter',
+    label: 'Meter',
+    category: 'indicator',
+    icon: 'Meter',
+    defaultLayout: { x: 0, y: 0, width: 120, height: 90 },
+    defaultProps: { showValue: true },
+    component: CarbonPVMeter,
+    propsSchema: [
+      pvSchema,
+      { key: 'min', label: 'Min', type: 'number', section: 'behavior' },
+      { key: 'max', label: 'Max', type: 'number', section: 'behavior' },
+      { key: 'label', label: 'Label', type: 'string', section: 'display' },
+      { key: 'showValue', label: 'Show Value', type: 'boolean', section: 'display' },
+      ...alarmSchemas,
+    ],
+  });
+
+  widgetRegistry.register({
+    type: 'PVRadioGroup',
+    label: 'Radio Group',
+    category: 'input',
+    icon: 'RadioButton',
+    defaultLayout: { x: 0, y: 0, width: 160, height: 80 },
+    defaultProps: {},
+    component: CarbonPVRadioGroup,
+    propsSchema: [
+      pvSchema,
+      { key: 'orientation', label: 'Orientation', type: 'string', section: 'appearance' },
+      ...alarmSchemas,
+    ],
   });
 }

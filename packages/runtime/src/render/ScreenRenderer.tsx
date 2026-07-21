@@ -196,7 +196,12 @@ function WidgetNodeView({ node, macros, formulas, parentOrigin, idChain }: NodeV
   style.opacity = 1 - transparency / 100;
 
   // The IR root container: a chrome-less positioned box; children only.
+  // The converter carries the EDM screen background on the canvas so the page
+  // matches the legacy display's field color instead of the app theme.
   if (node.type === 'absolute-canvas') {
+    if (typeof effective.props.backgroundColor === 'string') {
+      style.backgroundColor = effective.props.backgroundColor;
+    }
     return <div style={style}>{renderChildren(node, macros, formulas, chain)}</div>;
   }
 
