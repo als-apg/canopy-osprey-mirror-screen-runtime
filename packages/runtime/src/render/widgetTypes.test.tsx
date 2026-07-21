@@ -116,6 +116,26 @@ describe('per-widget-type rendering', () => {
     }
   );
 
+  it('drawings and containers are pointer-transparent; controls stay interactive', () => {
+    // EDM graphics never intercept clicks: converted screens draw frame/underline
+    // lines OVER buttons (document order = z-order), so drawing wrappers must be
+    // hit-transparent or the topmost line swallows every tab-button click.
+    const wrapperOf = (type: string, props: Record<string, PropertyValue>) => {
+      const { container } = render(wrap(<ScreenRenderer screen={screenWith({ type, props })} />));
+      const wrapper = [...container.querySelectorAll('div')].find(
+        (d) => d.style.left === '10px' && d.style.top === '10px'
+      ) as HTMLElement;
+      cleanup();
+      return wrapper;
+    };
+    expect(wrapperOf('line', { arrowEnd: false }).style.pointerEvents).toBe('none');
+    expect(wrapperOf('rectangle', {}).style.pointerEvents).toBe('none');
+    expect(wrapperOf('text-label', { text: 'x' }).style.pointerEvents).toBe('none');
+    expect(wrapperOf('group', {}).style.pointerEvents).toBe('none');
+    expect(wrapperOf('pv-button', { pv: 'DEV:CMD', label: 'Go' }).style.pointerEvents).toBe('auto');
+    expect(wrapperOf('pv-text-input', { pv: 'DEV:SP' }).style.pointerEvents).toBe('auto');
+  });
+
   it('renders a channel-less pv-label using its static text', () => {
     // `text` set, no `pv` → show the text, not `---`.
     render(
