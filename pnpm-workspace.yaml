@@ -2,15 +2,6 @@ packages:
   - packages/*
   - apps/*
 
-# fidelity/edm-batch branch only: consume the SDK packages from the sibling
-# checkout so loop fixes propagate live instead of freezing at the published
-# 0.1.0 tarballs (which also require NODE_AUTH_TOKEN for npm.pkg.github.com).
-overrides:
-  '@slaclab/canopy-client': link:../canopy-sdk-js/packages/client
-  '@slaclab/canopy-react': link:../canopy-sdk-js/packages/react
-  '@slaclab/canopy-shell': link:../canopy-sdk-js/packages/shell
-  '@slaclab/canopy-screen-ir': link:../canopy-sdk-js/packages/screen-ir
-
 # Dependency postinstall scripts we deliberately do not run: the Carbon and
 # IBM Plex packages' scripts are ibmtelemetry hooks, and @parcel/watcher's
 # native build is unused by our tsc-only builds. esbuild's postinstall only

@@ -47,17 +47,28 @@ the `@slaclab` scope there. There are two supported ways to install:
   `read:packages` before `pnpm install`. The token line in `.npmrc` must be
   active for this mode; note pnpm fails config expansion when the variable is
   referenced but unset — that's the symptom of a missing token.
-- **Linked mode** (SDK co-development, the fidelity loop): keep the
-  `overrides` block in `pnpm-workspace.yaml` pointing `link:` at a sibling
+- **Linked mode** (SDK co-development, the fidelity loop): add an
+  `overrides` block to `pnpm-workspace.yaml` pointing `link:` at a sibling
   `../canopy-sdk-js` checkout (build it first: `pnpm install && pnpm build`
-  there). Widget/runtime changes propagate live instead of freezing at the
+  there), and comment out the `.npmrc` token line so an unset
+  `NODE_AUTH_TOKEN` cannot break config expansion:
+
+  ```yaml
+  overrides:
+    '@slaclab/canopy-client': link:../canopy-sdk-js/packages/client
+    '@slaclab/canopy-react': link:../canopy-sdk-js/packages/react
+    '@slaclab/canopy-shell': link:../canopy-sdk-js/packages/shell
+    '@slaclab/canopy-screen-ir': link:../canopy-sdk-js/packages/screen-ir
+  ```
+
+  Widget/runtime changes then propagate live instead of freezing at the
   published tarballs. The viewer's vite config pins react/carbon
   deduplication for the linked copies.
 
-The overrides block ships on development branches where SDK and runtime
-change together; drop it (and re-activate the `.npmrc` token line) when a
-branch pins published versions instead. `canopy-screens` uses the same
-pattern for `@slaclab/canopy-screen-ir` (as a direct `link:` dependency).
+The overrides block is a local working-copy setting: do not commit it (CI
+has no sibling checkout and must install published versions), and revert
+both files before pushing. `canopy-screens` uses the same pattern for
+`@slaclab/canopy-screen-ir` (as a direct `link:` dependency).
 
 ## Documentation
 

@@ -4,12 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@slaclab/canopy-client': link:../canopy-sdk-js/packages/client
-  '@slaclab/canopy-react': link:../canopy-sdk-js/packages/react
-  '@slaclab/canopy-shell': link:../canopy-sdk-js/packages/shell
-  '@slaclab/canopy-screen-ir': link:../canopy-sdk-js/packages/screen-ir
-
 importers:
 
   .:
@@ -51,14 +45,14 @@ importers:
         specifier: ^1.100.0
         version: 1.110.1(sass@1.101.0)
       '@slaclab/canopy-client':
-        specifier: link:../../../canopy-sdk-js/packages/client
-        version: link:../../../canopy-sdk-js/packages/client
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-react':
-        specifier: link:../../../canopy-sdk-js/packages/react
-        version: link:../../../canopy-sdk-js/packages/react
+        specifier: ^0.1.2
+        version: 0.1.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@slaclab/canopy-screen-ir':
-        specifier: link:../../../canopy-sdk-js/packages/screen-ir
-        version: link:../../../canopy-sdk-js/packages/screen-ir
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-screen-runtime':
         specifier: workspace:^
         version: link:../../packages/runtime
@@ -66,8 +60,8 @@ importers:
         specifier: workspace:^
         version: link:../../packages/widgets
       '@slaclab/canopy-shell':
-        specifier: link:../../../canopy-sdk-js/packages/shell
-        version: link:../../../canopy-sdk-js/packages/shell
+        specifier: ^0.1.2
+        version: 0.1.2(@carbon/icons-react@11.83.0(react@19.2.7))(@carbon/react@1.111.1(react-dom@19.2.7(react@19.2.7))(react-is@18.2.0)(react@19.2.7)(sass@1.101.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react:
         specifier: ^19.2.6
         version: 19.2.7
@@ -112,8 +106,8 @@ importers:
   packages/codegen:
     dependencies:
       '@slaclab/canopy-screen-ir':
-        specifier: link:../../../canopy-sdk-js/packages/screen-ir
-        version: link:../../../canopy-sdk-js/packages/screen-ir
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-screen-widgets':
         specifier: workspace:^
         version: link:../widgets
@@ -131,8 +125,8 @@ importers:
   packages/runtime:
     dependencies:
       '@slaclab/canopy-screen-ir':
-        specifier: link:../../../canopy-sdk-js/packages/screen-ir
-        version: link:../../../canopy-sdk-js/packages/screen-ir
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-screen-widgets':
         specifier: workspace:^
         version: link:../widgets
@@ -141,11 +135,11 @@ importers:
         specifier: ^1.108.0
         version: 1.111.1(react-dom@19.2.7(react@19.2.7))(react-is@18.2.0)(react@19.2.7)(sass@1.101.0)
       '@slaclab/canopy-client':
-        specifier: link:../../../canopy-sdk-js/packages/client
-        version: link:../../../canopy-sdk-js/packages/client
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-react':
-        specifier: link:../../../canopy-sdk-js/packages/react
-        version: link:../../../canopy-sdk-js/packages/react
+        specifier: ^0.1.2
+        version: 0.1.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1
@@ -177,11 +171,11 @@ importers:
   packages/widgets:
     dependencies:
       '@slaclab/canopy-client':
-        specifier: link:../../../canopy-sdk-js/packages/client
-        version: link:../../../canopy-sdk-js/packages/client
+        specifier: ^0.1.2
+        version: 0.1.2
       '@slaclab/canopy-react':
-        specifier: link:../../../canopy-sdk-js/packages/react
-        version: link:../../../canopy-sdk-js/packages/react
+        specifier: ^0.1.2
+        version: 0.1.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       echarts:
         specifier: ^6.1.0
         version: 6.1.0
@@ -709,6 +703,26 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
+  '@slaclab/canopy-client@0.1.2':
+    resolution: {integrity: sha512-4h8cGRBrnaY4H2s16+kSsa7V064L7aVEOB6wZTOptqFAzlNSCezHnzDzme3xgq2HKHduN0eSEpwrG+dIU68V2Q==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-client/0.1.2/768c0a523d6817542eda66553500a648735e1066}
+
+  '@slaclab/canopy-react@0.1.2':
+    resolution: {integrity: sha512-F3KiioUhKgt57B+ULvBooIwTyBRqaLDmV5xtc+M7hpQ8ylyRWjr9bFP1E4de05j5ymJ247hPJ0ILvCrVEY+tlg==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-react/0.1.2/9d74e881f60927c3345ba5790622e0061b05b609}
+    peerDependencies:
+      react: ^19.0.0
+      react-dom: ^19.0.0
+
+  '@slaclab/canopy-screen-ir@0.1.2':
+    resolution: {integrity: sha512-WCgRtW18xPdwSNQgKgz/1msSJJz/brPjj4LNmgVl8xaWuKtqOI2kXVG+Wn2/HUP9Aec2W8FTbMGnJ8WuCiWzKA==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-screen-ir/0.1.2/47d2aded7cb7e3e78d6e6496dcdb2362f8211148}
+
+  '@slaclab/canopy-shell@0.1.2':
+    resolution: {integrity: sha512-eLG6JwTySIGpA/3NAKdjUIAOWyFeyi6T0TwqYRMV61KjX7TrJthlqaIkK1RtBl0awAWdx8QcJhiEgCB+QrglRw==, tarball: https://npm.pkg.github.com/download/@slaclab/canopy-shell/0.1.2/793051d97cf779fcec715df3227a76afea8a94b3}
+    peerDependencies:
+      '@carbon/icons-react': ^11.50.0
+      '@carbon/react': ^1.90.0
+      react: ^19.0.0
+      react-dom: ^19.0.0
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -883,6 +897,9 @@ packages:
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
+
+  ajv@8.20.0:
+    resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
   ansi-escapes@7.3.0:
     resolution: {integrity: sha512-BvU8nYgGQBxcmMuEeUEmNTvrMVjJNSH7RgW24vXexN4Ven6qCvy4TntnvlnwnMLTVlcRQQdbRY8NKnaIoeWDNg==}
@@ -1128,6 +1145,9 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
+  fast-uri@3.1.4:
+    resolution: {integrity: sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==}
+
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -1264,6 +1284,9 @@ packages:
 
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
+
+  json-schema-traverse@1.0.0:
+    resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
   json-stable-stringify-without-jsonify@1.0.1:
     resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}
@@ -1525,6 +1548,10 @@ packages:
   readdirp@5.0.0:
     resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
     engines: {node: '>= 20.19.0'}
+
+  require-from-string@2.0.2:
+    resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
+    engines: {node: '>=0.10.0'}
 
   restore-cursor@5.1.0:
     resolution: {integrity: sha512-oMA2dcrw6u0YfxJQXm342bFKX/E4sG9rbTzO9ptUcR/e8A33cHuvStiYOwH7fszkZlZ1z/ta9AAoPk2F4qIOHA==}
@@ -2376,6 +2403,25 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
+  '@slaclab/canopy-client@0.1.2': {}
+
+  '@slaclab/canopy-react@0.1.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@slaclab/canopy-client': 0.1.2
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+
+  '@slaclab/canopy-screen-ir@0.1.2':
+    dependencies:
+      ajv: 8.20.0
+
+  '@slaclab/canopy-shell@0.1.2(@carbon/icons-react@11.83.0(react@19.2.7))(@carbon/react@1.111.1(react-dom@19.2.7(react@19.2.7))(react-is@18.2.0)(react@19.2.7)(sass@1.101.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@carbon/icons-react': 11.83.0(react@19.2.7)
+      '@carbon/react': 1.111.1(react-dom@19.2.7(react@19.2.7))(react-is@18.2.0)(react@19.2.7)(sass@1.101.0)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
+
   '@standard-schema/spec@1.1.0': {}
 
   '@swc/helpers@0.5.23':
@@ -2586,6 +2632,13 @@ snapshots:
       fast-json-stable-stringify: 2.1.0
       json-schema-traverse: 0.4.1
       uri-js: 4.4.1
+
+  ajv@8.20.0:
+    dependencies:
+      fast-deep-equal: 3.1.3
+      fast-uri: 3.1.4
+      json-schema-traverse: 1.0.0
+      require-from-string: 2.0.2
 
   ansi-escapes@7.3.0:
     dependencies:
@@ -2824,6 +2877,8 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
+  fast-uri@3.1.4: {}
+
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
       picomatch: 4.0.4
@@ -2951,6 +3006,8 @@ snapshots:
   json-buffer@3.0.1: {}
 
   json-schema-traverse@0.4.1: {}
+
+  json-schema-traverse@1.0.0: {}
 
   json-stable-stringify-without-jsonify@1.0.1: {}
 
@@ -3171,6 +3228,8 @@ snapshots:
   react@19.2.7: {}
 
   readdirp@5.0.0: {}
+
+  require-from-string@2.0.2: {}
 
   restore-cursor@5.1.0:
     dependencies:

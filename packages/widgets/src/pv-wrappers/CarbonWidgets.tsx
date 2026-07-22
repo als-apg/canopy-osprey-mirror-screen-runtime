@@ -500,6 +500,7 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
   // missing-info; small-but-complete matches the EDM look).
   const innerRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
+  const itemsKey = items.join('|');
   useLayoutEffect(() => {
     const el = innerRef.current;
     if (!el) return;
@@ -508,7 +509,7 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
     if (!naturalWidth || !naturalHeight) return; // jsdom / not laid out yet
     const fit = Math.min(1, layout.width / naturalWidth, layout.height / naturalHeight);
     setScale(fit < 0.999 ? fit : 1);
-  }, [layout.width, layout.height, orientation, items.join('|')]);
+  }, [layout.width, layout.height, orientation, itemsKey]);
 
   // The live value may be the enum ordinal (number) or label (string); -1 = none.
   let selectedIndex = -1;
