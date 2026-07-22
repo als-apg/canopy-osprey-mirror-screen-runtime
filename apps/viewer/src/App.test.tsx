@@ -5,7 +5,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { MockPVService } from '@slaclab/canopy-client';
+import { LocalPVService, MockPVService } from '@slaclab/canopy-client';
 import { registerBuiltinWidgets } from '@slaclab/canopy-screen-widgets';
 import { App } from './App.js';
 import { ServicesContext } from './services.js';
@@ -96,7 +96,9 @@ beforeAll(() => {
 beforeEach(() => {
   const pv = new MockPVService();
   pv.connect();
-  services = { pv, formulas: null };
+  const locals = new LocalPVService();
+  locals.connect();
+  services = { pv, formulas: null, locals };
 });
 
 afterEach(() => {

@@ -37,24 +37,38 @@ The viewer's [README](apps/viewer/README.md) documents pointing
 `VITE_SCREENS_BASE_URL` at a locally served canopy-screens checkout for the
 end-to-end smoke test.
 
-## TEMPORARY: linked SDK packages
+## SDK dependencies: published vs linked (local dev)
 
-The `@slaclab/canopy-client` / `canopy-react` / `canopy-shell` dependencies
-are declared with their real `^0.1.0` ranges, but those packages are **not
-published yet**. Until they are, `pnpm-workspace.yaml` carries a
-clearly-marked TEMPORARY `overrides` block linking them from a sibling
-`../canopy-sdk-js` checkout (build it first: `pnpm install && pnpm build`
-there), and the viewer's vite config pins react/carbon deduplication for the
-linked copies. Consequences:
+The `@slaclab/canopy-client` / `canopy-react` / `canopy-shell` /
+`canopy-screen-ir` packages publish to GitHub Packages, and `.npmrc` routes
+the `@slaclab` scope there. There are two supported ways to install:
 
-- local install/build/test work against the sibling checkout;
-- **CI cannot pass `pnpm install` until the SDK publishes to GitHub
-  Packages** — the workflows note this and are expected red until then;
-- the overrides block (and the mirror note in the root package.json) is
-  removed before merge once the SDK is published.
+- **Published mode** (CI, consumers): export a `NODE_AUTH_TOKEN` with
+  `read:packages` before `pnpm install`. The token line in `.npmrc` must be
+  active for this mode; note pnpm fails config expansion when the variable is
+  referenced but unset — that's the symptom of a missing token.
+- **Linked mode** (SDK co-development, the fidelity loop): add an
+  `overrides` block to `pnpm-workspace.yaml` pointing `link:` at a sibling
+  `../canopy-sdk-js` checkout (build it first: `pnpm install && pnpm build`
+  there), and comment out the `.npmrc` token line so an unset
+  `NODE_AUTH_TOKEN` cannot break config expansion:
 
-`.npmrc` already routes the `@slaclab` scope to
-`https://npm.pkg.github.com` for the day that happens.
+  ```yaml
+  overrides:
+    '@slaclab/canopy-client': link:../canopy-sdk-js/packages/client
+    '@slaclab/canopy-react': link:../canopy-sdk-js/packages/react
+    '@slaclab/canopy-shell': link:../canopy-sdk-js/packages/shell
+    '@slaclab/canopy-screen-ir': link:../canopy-sdk-js/packages/screen-ir
+  ```
+
+  Widget/runtime changes then propagate live instead of freezing at the
+  published tarballs. The viewer's vite config pins react/carbon
+  deduplication for the linked copies.
+
+The overrides block is a local working-copy setting: do not commit it (CI
+has no sibling checkout and must install published versions), and revert
+both files before pushing. `canopy-screens` uses the same pattern for
+`@slaclab/canopy-screen-ir` (as a direct `link:` dependency).
 
 ## Documentation
 

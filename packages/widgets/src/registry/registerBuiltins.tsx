@@ -12,6 +12,7 @@ import {
   CarbonPVRadioGroup,
   CarbonPVCheckbox,
   CarbonPVByteIndicator,
+  CarbonPVMeter,
 } from '../pv-wrappers/CarbonWidgets.js';
 import { LineWidget } from '../drawing/LineWidget.js';
 import { PolygonWidget } from '../drawing/PolygonWidget.js';
@@ -129,14 +130,18 @@ function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
   );
 }
 
-function GroupWidget({ layout, isSelected, children }: WidgetRendererProps) {
+function GroupWidget({ layout, isSelected, isEditing, children }: WidgetRendererProps) {
+  // The dashed outline is an EDITOR affordance. At runtime groups are
+  // invisible containers (EDM semantics) — converted screens are full of
+  // them, and the outlines read as authored dashed rectangles.
+  const border = isEditing ? `1px dashed ${isSelected ? '#0f62fe' : '#525252'}` : 'none';
   return (
     <div
       style={{
         width: layout.width,
         height: layout.height,
-        border: `1px dashed ${isSelected ? '#0f62fe' : '#525252'}`,
-        borderRadius: 2,
+        border,
+        borderRadius: isEditing ? 2 : 0,
         backgroundColor: 'transparent',
       }}
     >
@@ -673,5 +678,38 @@ export function registerBuiltinWidgets() {
     defaultProps: { title: '' },
     component: WaveformPlot,
     propsSchema: [{ key: 'title', label: 'Title', type: 'string', section: 'display' }],
+  });
+
+  widgetRegistry.register({
+    type: 'PVMeter',
+    label: 'Meter',
+    category: 'indicator',
+    icon: 'Meter',
+    defaultLayout: { x: 0, y: 0, width: 120, height: 90 },
+    defaultProps: { showValue: true },
+    component: CarbonPVMeter,
+    propsSchema: [
+      pvSchema,
+      { key: 'min', label: 'Min', type: 'number', section: 'behavior' },
+      { key: 'max', label: 'Max', type: 'number', section: 'behavior' },
+      { key: 'label', label: 'Label', type: 'string', section: 'display' },
+      { key: 'showValue', label: 'Show Value', type: 'boolean', section: 'display' },
+      ...alarmSchemas,
+    ],
+  });
+
+  widgetRegistry.register({
+    type: 'PVRadioGroup',
+    label: 'Radio Group',
+    category: 'input',
+    icon: 'RadioButton',
+    defaultLayout: { x: 0, y: 0, width: 160, height: 80 },
+    defaultProps: {},
+    component: CarbonPVRadioGroup,
+    propsSchema: [
+      pvSchema,
+      { key: 'orientation', label: 'Orientation', type: 'string', section: 'appearance' },
+      ...alarmSchemas,
+    ],
   });
 }

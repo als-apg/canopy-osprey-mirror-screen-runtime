@@ -141,13 +141,43 @@ interface NodeViewProps {
   idChain: readonly string[];
 }
 
-function positionStyle(geometry: Geometry, parentOrigin?: { x: number; y: number }): CSSProperties {
+// EDM/PyDM mouse semantics: graphics and static text NEVER intercept clicks,
+// and container rectangles are hit-transparent outside their children —
+// converted screens routinely draw frame/underline graphics OVER buttons
+// (document order = z-order), and without this the topmost drawing swallows
+// every real click (e.g. tab-selector rows under their decorative underline).
+// Interactive wrappers set pointerEvents 'auto' explicitly so they stay
+// clickable inside a pointer-transparent container.
+const POINTER_TRANSPARENT_TYPES = new Set([
+  // drawings + static content (no children, never interactive)
+  'rectangle',
+  'ellipse',
+  'arc',
+  'line',
+  'polygon',
+  'text-label',
+  'image-view',
+  // containers: the wrapper is transparent, the children re-enable themselves
+  'group',
+  'frame',
+  'group-box',
+  'qwidget-container',
+  'scroll-area',
+  'tabs',
+]);
+
+function positionStyle(
+  geometry: Geometry,
+  parentOrigin: { x: number; y: number } | undefined,
+  nodeType: string
+): CSSProperties {
   return {
     position: 'absolute',
     left: geometry.x - (parentOrigin?.x ?? 0),
     top: geometry.y - (parentOrigin?.y ?? 0),
     width: geometry.width,
     height: geometry.height,
+    pointerEvents: POINTER_TRANSPARENT_TYPES.has(nodeType) ? 'none' : 'auto',
   };
 }
 
@@ -187,7 +217,7 @@ function WidgetNodeView({ node, macros, formulas, parentOrigin, idChain }: NodeV
   const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
   if (!effective.visible) return null;
 
-  const style = positionStyle(effective.geometry, parentOrigin);
+  const style = positionStyle(effective.geometry, parentOrigin, node.type);
 
   // Carrier props the wrapper applies (parity with the builder's preview).
   const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
@@ -196,7 +226,12 @@ function WidgetNodeView({ node, macros, formulas, parentOrigin, idChain }: NodeV
   style.opacity = 1 - transparency / 100;
 
   // The IR root container: a chrome-less positioned box; children only.
+  // The converter carries the EDM screen background on the canvas so the page
+  // matches the legacy display's field color instead of the app theme.
   if (node.type === 'absolute-canvas') {
+    if (typeof effective.props.backgroundColor === 'string') {
+      style.backgroundColor = effective.props.backgroundColor;
+    }
     return <div style={style}>{renderChildren(node, macros, formulas, chain)}</div>;
   }
 

@@ -120,17 +120,28 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
     type: 'PVButton',
     map: (ir, p) => {
       // The runtime PVButton reads controlPV (multi-PV button); the IR's
-      // single `pv` is its control channel.
+      // `pv` is its control channel and `readbackPV` its state source.
       put(p, 'controlPV', str(ir.pv));
+      put(p, 'readbackPV', str(ir.readbackPV));
+      put(p, 'buttonType', str(ir.buttonType));
       put(p, 'label', str(ir.label));
-      if (ir.label !== undefined) {
-        put(p, 'onLabel', str(ir.label));
-        put(p, 'offLabel', str(ir.label));
-      }
+      // Authored state labels win; a plain label populates both so the
+      // authored text is what the button shows in either state.
+      put(p, 'onLabel', str(ir.onLabel) ?? str(ir.label));
+      put(p, 'offLabel', str(ir.offLabel) ?? str(ir.label));
       put(p, 'pressValue', ir.pressValue);
       put(p, 'releaseValue', ir.releaseValue);
     },
-    consumes: ['pv', 'label', 'pressValue', 'releaseValue'],
+    consumes: [
+      'pv',
+      'readbackPV',
+      'buttonType',
+      'label',
+      'onLabel',
+      'offLabel',
+      'pressValue',
+      'releaseValue',
+    ],
   },
   'regular-button': {
     type: 'PVButton',

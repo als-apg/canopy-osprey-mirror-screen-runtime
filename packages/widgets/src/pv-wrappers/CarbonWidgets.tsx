@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   TextInput,
   Slider,
@@ -132,7 +132,16 @@ export function CarbonPVTextInput({
         labelText={(props.label as string) ?? ''}
         hideLabel={!props.label}
         size="sm"
-        value={draft ?? (pv.connected ? String(pv.value) : '---')}
+        value={
+          draft ??
+          (pv.connected
+            ? typeof pv.value === 'number' && pv.enumChoices?.[pv.value] !== undefined
+              ? pv.enumChoices[pv.value]
+              : typeof pv.value === 'number' && pv.precision > 0
+                ? pv.value.toFixed(pv.precision)
+                : String(pv.value)
+            : '---')
+        }
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
@@ -177,18 +186,40 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   const foregroundColor = (props.foregroundColor as string) ?? '#ffffff';
   const baseBg = (props.backgroundColor as string) ?? '#0f62fe';
 
+  // EDM/PyDM treat the state value as an INTEGER: 0.5 is OFF (trunc -> 0).
   const isOn =
     readbackPV.connected &&
-    (typeof readbackPV.value === 'number' ? readbackPV.value !== 0 : Boolean(readbackPV.value));
+    (typeof readbackPV.value === 'number'
+      ? Math.trunc(readbackPV.value) !== 0
+      : Boolean(readbackPV.value));
 
-  const handleClick = useCallback(() => {
+  // EDM message buttons write authored press/release values ("1", "RESET",
+  // enum names) — numeric strings become numbers, anything else writes as-is.
+  const writeValue = (v: unknown): number | string | undefined => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v !== '') {
+      return Number.isFinite(Number(v)) ? Number(v) : v;
+    }
+    return undefined;
+  };
+  const pressValue = writeValue(props.pressValue);
+  const releaseValue = writeValue(props.releaseValue);
+
+  const handlePress = useCallback(() => {
     if (isEditing || !controlPV.address) return;
     if (buttonType === 'toggle') {
       controlPV.put(isOn ? 0 : 1);
     } else {
-      controlPV.put(1);
+      controlPV.put(pressValue ?? 1);
     }
-  }, [isEditing, controlPV, buttonType, isOn]);
+  }, [isEditing, controlPV, buttonType, isOn, pressValue]);
+
+  const handleRelease = useCallback(() => {
+    if (isEditing || !controlPV.address) return;
+    if (buttonType !== 'toggle' && releaseValue !== undefined) {
+      controlPV.put(releaseValue);
+    }
+  }, [isEditing, controlPV, buttonType, releaseValue]);
 
   // Visibility PV: hide at runtime when its value is falsy
   if (!isEditing && props.visibilityPV && visibilityPV.connected) {
@@ -201,14 +232,22 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   // Invisible toggle: hide at runtime, dim in editor
   if (!isEditing && invisible) return null;
 
+  // Background precedence: a live color PV wins; then EDM state colors
+  // (onColor/offColor track the readback, the EDM toggle look); then the
+  // authored static background.
+  const stateBg =
+    props.onColor || props.offColor
+      ? ((isOn ? props.onColor : props.offColor) as string | undefined)
+      : undefined;
   const backgroundColor =
     props.colorPV && colorPV.connected && typeof colorPV.value === 'string'
       ? colorPV.value
-      : baseBg;
+      : (stateBg ?? baseBg);
 
   let label: React.ReactNode;
   if (labelType === 'pvState') {
-    label = readbackPV.connected ? String(readbackPV.value ?? '') : '';
+    // displayValue maps enum ordinals to their state strings (EDM parity).
+    label = readbackPV.connected ? readbackPV.displayValue : '';
   } else if (hasAuthoredLabel) {
     label = isOn ? (onLabel ?? authoredLabel ?? '') : (offLabel ?? authoredLabel ?? '');
   } else {
@@ -222,9 +261,17 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
     );
   }
 
+  // With a release value the press/release pair must straddle the hold
+  // (EDM message-button semantics), so the writes ride mousedown/mouseup;
+  // otherwise a plain click writes the press value.
+  const pressHandlers =
+    releaseValue !== undefined && buttonType !== 'toggle'
+      ? { onMouseDown: handlePress, onMouseUp: handleRelease }
+      : { onClick: handlePress };
+
   return (
     <button
-      onClick={handleClick}
+      {...pressHandlers}
       style={{
         width: layout.width,
         height: layout.height,
@@ -442,9 +489,27 @@ export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendere
 export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const items = (props.customItems as string[] | undefined) ??
-    (props.items as string[] | undefined) ?? ['Option 1', 'Option 2'];
+    (props.items as string[] | undefined) ??
+    pv.enumChoices ?? ['Option 1', 'Option 2'];
 
   const orientation = (props.orientation as 'horizontal' | 'vertical' | undefined) ?? 'vertical';
+
+  // Fit-to-geometry: EDM radio boxes are far smaller than Carbon's native
+  // control sizing, so measure the rendered group and scale it down into the
+  // authored rect rather than clipping options away (losing options is
+  // missing-info; small-but-complete matches the EDM look).
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const itemsKey = items.join('|');
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const naturalWidth = el.scrollWidth;
+    const naturalHeight = el.scrollHeight;
+    if (!naturalWidth || !naturalHeight) return; // jsdom / not laid out yet
+    const fit = Math.min(1, layout.width / naturalWidth, layout.height / naturalHeight);
+    setScale(fit < 0.999 ? fit : 1);
+  }, [layout.width, layout.height, orientation, itemsKey]);
 
   // The live value may be the enum ordinal (number) or label (string); -1 = none.
   let selectedIndex = -1;
@@ -465,24 +530,33 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
   );
 
   return (
-    <div style={{ width: layout.width, height: layout.height }}>
-      <RadioButtonGroup
-        name={`pv-radio-${id}`}
-        orientation={orientation}
-        valueSelected={selectedIndex >= 0 ? selectedIndex : undefined}
-        onChange={handleChange}
-        disabled={!pv.connected && !!props.pvName}
-        readOnly={isEditing}
+    <div style={{ width: layout.width, height: layout.height, overflow: 'hidden' }}>
+      <div
+        ref={innerRef}
+        style={{
+          display: 'inline-block',
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
       >
-        {items.map((item, index) => (
-          <RadioButton
-            key={`${id}-${index}`}
-            id={`pv-radio-${id}-${index}`}
-            labelText={item}
-            value={index}
-          />
-        ))}
-      </RadioButtonGroup>
+        <RadioButtonGroup
+          name={`pv-radio-${id}`}
+          orientation={orientation}
+          valueSelected={selectedIndex >= 0 ? selectedIndex : undefined}
+          onChange={handleChange}
+          disabled={!pv.connected && !!props.pvName}
+          readOnly={isEditing}
+        >
+          {items.map((item, index) => (
+            <RadioButton
+              key={`${id}-${index}`}
+              id={`pv-radio-${id}-${index}`}
+              labelText={item}
+              value={index}
+            />
+          ))}
+        </RadioButtonGroup>
+      </div>
     </div>
   );
 }
@@ -565,6 +639,79 @@ export function CarbonPVByteIndicator({ layout, props }: WidgetRendererProps) {
           />
         );
       })}
+    </div>
+  );
+}
+
+/** PVMeter — semicircular needle gauge (EDM activeMeterClass parity). */
+export function CarbonPVMeter({ layout, props }: WidgetRendererProps) {
+  const pv = usePV(props.pvName as string | undefined);
+  const min = typeof props.min === 'number' ? props.min : pv.lowerLimit || 0;
+  const max = typeof props.max === 'number' ? props.max : pv.upperLimit || 1;
+  const span = max - min || 1;
+  const raw = typeof pv.value === 'number' ? pv.value : min;
+  const frac = Math.min(1, Math.max(0, (raw - min) / span));
+  // Needle sweeps 180deg across the top half: fraction 0 -> left, 1 -> right.
+  const angle = Math.PI * (1 - frac);
+  const w = layout.width;
+  const h = layout.height;
+  const cx = w / 2;
+  const cy = h * 0.72;
+  const r = Math.min(w / 2, cy) - 6;
+  const nx = cx + r * 0.9 * Math.cos(angle);
+  const ny = cy - r * 0.9 * Math.sin(angle);
+  const showValue = (props.showValue as boolean) ?? true;
+  const label = props.label as string | undefined;
+  const alarmBorder = alarmBorderStyle(
+    pv.severity,
+    (props.alarmSensitiveBorder as boolean) ?? true
+  );
+  return (
+    <div style={{ width: w, height: h, position: 'relative', ...alarmBorder }}>
+      <svg width={w} height={h} aria-label={label ?? 'meter'}>
+        <path
+          d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+          fill="none"
+          stroke="var(--cds-border-subtle, #8d8d8d)"
+          strokeWidth={2}
+        />
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const a = Math.PI * (1 - t);
+          return (
+            <line
+              key={t}
+              x1={cx + (r - 5) * Math.cos(a)}
+              y1={cy - (r - 5) * Math.sin(a)}
+              x2={cx + r * Math.cos(a)}
+              y2={cy - r * Math.sin(a)}
+              stroke="var(--cds-border-subtle, #8d8d8d)"
+              strokeWidth={1}
+            />
+          );
+        })}
+        <line
+          x1={cx}
+          y1={cy}
+          x2={nx}
+          y2={ny}
+          stroke={pv.connected ? 'var(--cds-support-success, #24a148)' : '#8d8d8d'}
+          strokeWidth={2}
+        />
+        <circle cx={cx} cy={cy} r={3} fill="var(--cds-text-primary, #161616)" />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          width: '100%',
+          textAlign: 'center',
+          fontSize: Math.max(9, Math.min(12, h * 0.14)),
+          lineHeight: 1.1,
+        }}
+      >
+        {showValue && <span>{pv.connected ? pv.displayValue : '---'}</span>}
+        {label && <div>{label}</div>}
+      </div>
     </div>
   );
 }

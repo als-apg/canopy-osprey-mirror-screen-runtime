@@ -29,6 +29,9 @@ export { FormulaSubscriberContext, useFormulaSubscriber } from './formula.js';
 
 export { createFoxFormulaSubscriber } from './rules/foxAdapter.js';
 export type { FoxServiceLike } from './rules/foxAdapter.js';
+export { createLocalAwareFormulaSubscriber } from './rules/localFormula.js';
+export type { LocalPVLike } from './rules/localFormula.js';
+export { evaluatePyExpr, PyExprError } from './rules/pyExpr.js';
 
 export {
   compileRule,
