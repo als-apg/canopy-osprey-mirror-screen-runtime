@@ -14,7 +14,10 @@
 //
 // The renderer is service-agnostic: widgets consume live PVs through
 // @slaclab/canopy-react context, rules consume Fox through the
-// FormulaSubscriberContext — the composition root provides both.
+// FormulaSubscriberContext — the composition root provides both. Each
+// rendered screen (root and every embedded screen) wraps the PV context in a
+// ScreenPVScope so `fox://<name>` widget channels evaluate that screen's own
+// formulas with its own macros.
 
 import { Component, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
@@ -27,6 +30,7 @@ import { childMacros, resolveScreenMacros, substituteMacros, substituteProps } f
 import { applyRuleOutputs } from '../rules/applyRules.js';
 import { useWidgetRules } from '../rules/useWidgetRules.js';
 import { mapIRWidget } from './irMap.js';
+import { ScreenPVScope } from './ScreenPVScope.js';
 
 /** Resolves an embedded screen reference (the node's `file` prop). */
 export type ResolveScreen = (ref: string) => Promise<ScreenJSON>;
@@ -409,12 +413,14 @@ function EmbeddedScreenView({
         data-screen-id={screen.id}
         style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       >
-        <WidgetNodeView
-          node={screen.root}
-          macros={macros}
-          formulas={screen.formulas}
-          idChain={[]}
-        />
+        <ScreenPVScope formulas={screen.formulas} macros={macros}>
+          <WidgetNodeView
+            node={screen.root}
+            macros={macros}
+            formulas={screen.formulas}
+            idChain={[]}
+          />
+        </ScreenPVScope>
       </div>
     </EmbedContext.Provider>
   );
@@ -455,12 +461,14 @@ export function ScreenRenderer({
           overflow: 'hidden',
         }}
       >
-        <WidgetNodeView
-          node={screen.root}
-          macros={effectiveMacros}
-          formulas={screen.formulas}
-          idChain={[]}
-        />
+        <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
+          <WidgetNodeView
+            node={screen.root}
+            macros={effectiveMacros}
+            formulas={screen.formulas}
+            idChain={[]}
+          />
+        </ScreenPVScope>
       </div>
     </EmbedContext.Provider>
   );
