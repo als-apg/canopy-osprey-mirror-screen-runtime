@@ -89,8 +89,15 @@ function EllipseWidget({ layout, props, isSelected, children }: WidgetRendererPr
   );
 }
 
+const FLEX_ALIGN = { left: 'flex-start', center: 'center', right: 'flex-end' } as const;
+
 function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
   const text = (props.text as string) ?? 'Label';
+  // IR `align` (EDM/Qt label alignment; absent = left) positions the text
+  // block and aligns its lines; `fontFamily` when the IR carries one.
+  const align = props.align === 'center' || props.align === 'right' ? props.align : 'left';
+  const fontFamily =
+    typeof props.fontFamily === 'string' && props.fontFamily !== '' ? props.fontFamily : undefined;
   const maxFontSize = (props.fontSize as number) ?? 14;
   const { ref, fontSize } = useFitText<HTMLSpanElement>(maxFontSize, [
     text,
@@ -107,6 +114,7 @@ function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
         backgroundColor: (props.backgroundColor as string) ?? 'transparent',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: FLEX_ALIGN[align],
         padding: '0 4px',
         outline: isSelected ? '1px solid #0f62fe' : 'none',
         userSelect: 'none',
@@ -118,7 +126,11 @@ function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
         ref={ref}
         style={{
           fontSize,
-          whiteSpace: 'nowrap',
+          fontFamily,
+          textAlign: align,
+          // Authored line breaks are content (EDM draws one line per '\n',
+          // the block vertically centred); lines themselves never wrap.
+          whiteSpace: 'pre',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           maxWidth: '100%',

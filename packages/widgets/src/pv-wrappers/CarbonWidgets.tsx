@@ -1,4 +1,5 @@
 import { useState, useCallback, useLayoutEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import {
   TextInput,
   Slider,
@@ -39,6 +40,27 @@ function liveDisplayText(
   return pv.units ? `${fixed} ${pv.units}` : fixed;
 }
 
+/** An authored colour/font prop (a non-empty string), else undefined. */
+function styleProp(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? v : undefined;
+}
+
+/**
+ * Field paint for a text readout from its IR colours. An authored background
+ * is the field, edge to edge. A readout carrying only a foreground draws on
+ * the display background — the converter omits backgroundColor exactly when
+ * EDM uses the display background — so no Carbon field is invented under text
+ * coloured for the legacy canvas (dark text would vanish on it). Neither
+ * colour → {} (the stylesheet's Carbon field, unchanged).
+ */
+function authoredFieldStyle(
+  foreground: string | undefined,
+  background: string | undefined
+): CSSProperties {
+  if (foreground === undefined && background === undefined) return {};
+  return { backgroundColor: background ?? 'transparent', borderColor: 'transparent' };
+}
+
 /** PVTextDisplay — Carbon Tag/Text showing live PV value */
 export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendererProps) {
   const pvName = props.pvName as string | undefined;
@@ -47,6 +69,9 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
   const label = props.label as string | undefined;
   const align = (props.align as 'left' | 'center' | 'right' | undefined) ?? 'left';
   const staticText = props.text as string | undefined;
+  const foregroundColor = styleProp(props.foregroundColor);
+  const backgroundColor = styleProp(props.backgroundColor);
+  const fontFamily = styleProp(props.fontFamily);
   const hasPv = pvName !== undefined && pvName !== '';
   // A channel-less PyDMLabel is a static caption: show `text`, and skip the
   // alarm border (no PV, no alarm state) so it isn't drawn as a bordered field.
@@ -89,6 +114,7 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
       style={{
         width: layout.width,
         height: layout.height,
+        ...authoredFieldStyle(foregroundColor, backgroundColor),
         ...alarmBorder,
       }}
     >
@@ -100,7 +126,11 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
               ? 'carbon-pv-display__value carbon-pv-display__value--static'
               : 'carbon-pv-display__value'
           }
-          style={align !== 'left' ? { textAlign: align } : undefined}
+          style={{
+            textAlign: align !== 'left' ? align : undefined,
+            color: foregroundColor,
+            fontFamily,
+          }}
         >
           {value}
         </span>
@@ -124,6 +154,15 @@ export function CarbonPVTextInput({
 }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const [draft, setDraft] = useState<string | null>(null);
+  // IR text/field colours and font on the Carbon input itself (inline beats
+  // the .cds--text-input rules); absent props keep Carbon's field.
+  const fontSize = typeof props.fontSize === 'number' ? props.fontSize : undefined;
+  const inputStyle: CSSProperties = {
+    color: styleProp(props.foregroundColor),
+    backgroundColor: styleProp(props.backgroundColor),
+    fontFamily: styleProp(props.fontFamily),
+    fontSize,
+  };
   const alarmBorder = alarmBorderStyle(
     pv.severity,
     (props.alarmSensitiveBorder as boolean) ?? true
@@ -170,6 +209,7 @@ export function CarbonPVTextInput({
         onKeyDown={handleKeyDown}
         disabled={!pv.connected && !!props.pvName}
         readOnly={isEditing}
+        style={inputStyle}
       />
     </div>
   );
