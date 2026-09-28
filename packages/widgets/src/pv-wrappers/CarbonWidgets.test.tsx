@@ -21,8 +21,13 @@ vi.mock('@slaclab/canopy-react', () => ({
   }),
 }));
 
-const { CarbonPVProgressBar, CarbonPVButton, CarbonPVTextDisplay } =
-  await import('./CarbonWidgets.js');
+const {
+  CarbonPVProgressBar,
+  CarbonPVButton,
+  CarbonPVTextDisplay,
+  CarbonPVTextInput,
+  CarbonPVByteIndicator,
+} = await import('./CarbonWidgets.js');
 
 afterEach(() => {
   cleanup();
@@ -150,5 +155,94 @@ describe('CarbonPVTextDisplay precision', () => {
     expect(
       shown({ precision: 3, precisionFromPV: false }, { value: 'ON', displayValue: 'ON' })
     ).toBe('ON');
+  });
+});
+
+describe('IR colours on text readouts', () => {
+  const field = (c: HTMLElement) => c.querySelector('.carbon-pv-display') as HTMLElement;
+  const valueEl = (c: HTMLElement) => c.querySelector('.carbon-pv-display__value') as HTMLElement;
+
+  it('paints an authored background and foreground (EDM textupdate fgColor/bgColor)', () => {
+    livePV.current = { connected: true, value: 1, displayValue: '1.00' };
+    const { container } = renderWith(CarbonPVTextDisplay, {
+      pvName: 'X',
+      foregroundColor: '#2d2d2d',
+      backgroundColor: '#dadada',
+    });
+    expect(field(container).style.backgroundColor).toBe('rgb(218, 218, 218)');
+    // The authored field is edge to edge: no Carbon frame around it.
+    expect(field(container).style.borderColor).toBe('transparent');
+    expect(valueEl(container).style.color).toBe('rgb(45, 45, 45)');
+  });
+
+  it('draws a foreground-only readout on the display background (no Carbon field)', () => {
+    const { container } = renderWith(CarbonPVTextDisplay, {
+      pvName: 'X',
+      foregroundColor: '#000000',
+    });
+    expect(field(container).style.backgroundColor).toBe('transparent');
+    expect(valueEl(container).style.color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('keeps the Carbon field and text colour when the IR carries no colours', () => {
+    const { container } = renderWith(CarbonPVTextDisplay, { pvName: 'X' });
+    expect(field(container).style.backgroundColor).toBe('');
+    expect(field(container).style.borderColor).toBe('');
+    expect(valueEl(container).style.color).toBe('');
+  });
+
+  it('honours an authored font family on the value', () => {
+    const { container } = renderWith(CarbonPVTextDisplay, {
+      text: 'caption',
+      fontFamily: 'Helvetica',
+    });
+    expect(valueEl(container).style.fontFamily).toBe('Helvetica');
+  });
+
+  it('paints text-input colours and font on the Carbon input itself', () => {
+    const { container } = renderWith(CarbonPVTextInput, {
+      pvName: 'X',
+      foregroundColor: '#000000',
+      backgroundColor: '#ffffff',
+      fontSize: 10,
+      fontFamily: 'Helvetica',
+    });
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.style.color).toBe('rgb(0, 0, 0)');
+    expect(input.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(input.style.fontSize).toBe('10px');
+    expect(input.style.fontFamily).toBe('Helvetica');
+  });
+
+  it('leaves the Carbon input untouched without IR colours', () => {
+    const { container } = renderWith(CarbonPVTextInput, { pvName: 'X' });
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.style.color).toBe('');
+    expect(input.style.backgroundColor).toBe('');
+  });
+});
+
+describe('IR colours on buttons and bit indicators', () => {
+  it('paints an authored button face and caption (related-display / shell / message)', () => {
+    const { container } = renderWith(CarbonPVButton, {
+      label: 'Convert...',
+      foregroundColor: '#000000',
+      backgroundColor: '#c8c8c8',
+    });
+    const btn = container.querySelector('button') as HTMLButtonElement;
+    expect(btn.style.backgroundColor).toBe('rgb(200, 200, 200)');
+    expect(btn.style.color).toBe('rgb(0, 0, 0)');
+  });
+
+  it('paints byte cells with the authored on/off colours', () => {
+    livePV.current = { connected: true, value: 0b01, displayValue: '1' };
+    const { container } = renderWith(
+      CarbonPVByteIndicator,
+      { pvName: 'X', numBits: 2, onColor: '#00ff00', offColor: '#003000' },
+      { width: 40, height: 20 }
+    );
+    const cells = container.querySelectorAll<HTMLElement>('.carbon-pv-byte > div');
+    expect(cells[0].style.backgroundColor).toBe('rgb(0, 255, 0)');
+    expect(cells[1].style.backgroundColor).toBe('rgb(0, 48, 0)');
   });
 });

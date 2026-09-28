@@ -23,3 +23,32 @@ describe('pv-label precision source', () => {
     ).toBe(true);
   });
 });
+
+describe('IR appearance props reach the widgets', () => {
+  const appearance = {
+    foregroundColor: '#2d2d2d',
+    backgroundColor: '#dadada',
+    fontSize: 12,
+    fontFamily: 'Helvetica',
+  };
+
+  it.each(['pv-label', 'text-label', 'pv-text-input'])('%s carries its colours and font', (t) => {
+    expect(mapIRWidget(t, { pv: 'DEV:X', text: 'x', ...appearance })?.props).toMatchObject(
+      appearance
+    );
+  });
+
+  it.each(['related-display-button', 'regular-button', 'shell-command-button', 'pv-button'])(
+    '%s carries its face and caption colours',
+    (t) => {
+      expect(
+        mapIRWidget(t, { label: 'Go', foregroundColor: '#000000', backgroundColor: '#c8c8c8' })
+          ?.props
+      ).toMatchObject({ foregroundColor: '#000000', backgroundColor: '#c8c8c8' });
+    }
+  );
+
+  it('keeps text-label alignment for StaticLabel', () => {
+    expect(mapIRWidget('text-label', { text: 'x', align: 'right' })?.props.align).toBe('right');
+  });
+});
