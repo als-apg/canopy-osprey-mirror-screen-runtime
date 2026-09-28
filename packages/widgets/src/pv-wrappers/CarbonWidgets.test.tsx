@@ -4,8 +4,10 @@ import { cleanup, render } from '@testing-library/react';
 import { AlarmSeverity } from '@slaclab/canopy-client';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
 
-// A disconnected stub PV: components fall back to their static/default render,
-// which is all these rendering-fidelity tests exercise.
+// A disconnected stub PV by default: components fall back to their
+// static/default render, which is what most rendering-fidelity tests
+// exercise. `livePV.current` overrides fields for tests that need live data.
+const livePV = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 vi.mock('@slaclab/canopy-react', () => ({
   usePV: () => ({
     address: '',
@@ -13,14 +15,19 @@ vi.mock('@slaclab/canopy-react', () => ({
     value: undefined,
     displayValue: '',
     severity: AlarmSeverity.NO_ALARM,
+    units: '',
     put: vi.fn(),
+    ...livePV.current,
   }),
 }));
 
 const { CarbonPVProgressBar, CarbonPVButton, CarbonPVTextDisplay } =
   await import('./CarbonWidgets.js');
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  livePV.current = null;
+});
 
 const base: WidgetRendererProps = {
   id: 'w-1',
@@ -105,5 +112,43 @@ describe('CarbonPVTextDisplay align', () => {
     const { container } = renderWith(CarbonPVTextDisplay, { text: 'Left caption' });
     const value = container.querySelector('.carbon-pv-display__value') as HTMLElement;
     expect(value.style.textAlign).toBe('');
+  });
+});
+
+describe('CarbonPVTextDisplay precision', () => {
+  function shown(props: Record<string, unknown>, pv: Record<string, unknown>): string {
+    livePV.current = { connected: true, ...pv };
+    const { container } = renderWith(CarbonPVTextDisplay, { pvName: 'X', ...props });
+    return (container.querySelector('.carbon-pv-display__value') as HTMLElement).textContent ?? '';
+  }
+
+  it("shows the service's displayValue by default (precision from the PV)", () => {
+    expect(shown({ precision: 3 }, { value: 1.731, displayValue: '1.73 u', units: 'u' })).toBe(
+      '1.73 u'
+    );
+  });
+
+  it('applies the authored precision when precisionFromPV is false', () => {
+    expect(
+      shown({ precision: 3, precisionFromPV: false }, { value: -1.6175621, displayValue: 'x' })
+    ).toBe('-1.618');
+    expect(
+      shown(
+        { precision: 3, precisionFromPV: false },
+        { value: 1.731, displayValue: '1.73 u', units: 'u' }
+      )
+    ).toBe('1.731 u');
+  });
+
+  it('keeps enum labels and non-numeric values as the service formats them', () => {
+    expect(
+      shown(
+        { precision: 3, precisionFromPV: false },
+        { value: 2, displayValue: 'State 3', enumChoices: ['State 1', 'State 2', 'State 3'] }
+      )
+    ).toBe('State 3');
+    expect(
+      shown({ precision: 3, precisionFromPV: false }, { value: 'ON', displayValue: 'ON' })
+    ).toBe('ON');
   });
 });

@@ -22,6 +22,7 @@
 //    text is what CarbonPVButton actually shows.
 
 import type { WidgetProps, WidgetType } from '@slaclab/canopy-screen-widgets';
+import { isFoxRef } from '../foxRef.js';
 
 type IRProps = Record<string, unknown>;
 type PropMapper = (ir: IRProps, props: WidgetProps) => void;
@@ -102,7 +103,10 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
       put(p, 'format', ir.format);
       put(p, 'precision', num(ir.precision));
       put(p, 'showUnits', bool(ir.showUnits));
-      put(p, 'precisionFromPV', bool(ir.precisionFromPV));
+      // A fox:// formula channel carries no PV precision, so the authored
+      // precision is the only source (EDM without limitsFromDb; PyDM's
+      // precision-property fallback) unless the IR says otherwise.
+      put(p, 'precisionFromPV', bool(ir.precisionFromPV) ?? (isFoxRef(ir.pv) ? false : undefined));
       copyAppearance(ir, p);
     },
     consumes: ['pv', 'text', 'format', 'precision', 'showUnits', 'precisionFromPV', ...FOREGROUND],

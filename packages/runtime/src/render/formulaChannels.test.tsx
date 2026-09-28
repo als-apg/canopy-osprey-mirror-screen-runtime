@@ -132,6 +132,25 @@ describe('fox:// widget channels', () => {
     expect(screen.queryByText('---')).toBeNull();
   });
 
+  it("formats with the label's authored precision (formula channels carry none)", () => {
+    const doc = screenDoc(
+      'pct',
+      [PCT],
+      [
+        {
+          id: 'w-040',
+          type: 'pv-label',
+          props: { pv: 'fox://f-001', precision: 3, showUnits: true },
+          geometry: { x: 192, y: 172, width: 88, height: 28 },
+        },
+      ],
+      { DEV: 'DEMO:VAC:GAUGE1' }
+    );
+    render(withServices(<ScreenRenderer screen={doc} />));
+    stub.push('GetActualValueRaw', (100 * (1.731 - 1.759)) / 1.731);
+    expect(screen.getByText('-1.618')).toBeTruthy();
+  });
+
   it('shares one subscription between widgets reading the same formula', () => {
     const doc = screenDoc(
       'pct',

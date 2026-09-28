@@ -16,6 +16,29 @@ import { AlarmSeverity, AlarmSeverityName } from '@slaclab/canopy-client';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
 import { useFitText } from '../shared/useFitText.js';
 
+/**
+ * Text for a connected PV. The service's `displayValue` (formatted with the
+ * PV's own precision/units) unless the widget opts out of PV precision
+ * (`precisionFromPV: false`, PyDM semantics) and authors a `precision`:
+ * then numeric, non-enum values are fixed to that precision.
+ */
+function liveDisplayText(
+  pv: { value: unknown; displayValue: string; units: string; enumChoices?: string[] },
+  props: Record<string, unknown>
+): string {
+  const precision = props.precision;
+  if (
+    props.precisionFromPV !== false ||
+    typeof precision !== 'number' ||
+    typeof pv.value !== 'number' ||
+    pv.enumChoices?.[pv.value] !== undefined
+  ) {
+    return pv.displayValue;
+  }
+  const fixed = pv.value.toFixed(Math.min(20, Math.max(0, Math.trunc(precision))));
+  return pv.units ? `${fixed} ${pv.units}` : fixed;
+}
+
 /** PVTextDisplay — Carbon Tag/Text showing live PV value */
 export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendererProps) {
   const pvName = props.pvName as string | undefined;
@@ -32,7 +55,7 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
     ? {}
     : alarmBorderStyle(pv.severity, (props.alarmSensitiveBorder as boolean) ?? true);
   const value = pv.connected
-    ? pv.displayValue
+    ? liveDisplayText(pv, props)
     : !hasPv && staticText !== undefined
       ? staticText
       : '---';
