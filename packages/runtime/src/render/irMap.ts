@@ -328,6 +328,15 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
   },
 };
 
+// IR alarm flags → the widget set's names. The IR (widget registry qtPropMap)
+// calls PyDM's alarmSensitiveContent `alarmSensitive` (EDM fgAlarm) and
+// alarmSensitiveBorder `alarmBorder`. Translated only when present — the
+// render mode owns the defaults — and an explicit widget-named prop wins.
+const ALARM_ALIASES: readonly (readonly [irKey: string, widgetKey: string])[] = [
+  ['alarmSensitive', 'alarmSensitiveContent'],
+  ['alarmBorder', 'alarmSensitiveBorder'],
+];
+
 /**
  * Map an IR node's type + (macro-resolved, rule-patched) props onto a widget
  * registry type + component props. Returns undefined for IR types with no
@@ -343,9 +352,17 @@ export function mapIRWidget(
   const props: WidgetProps = {};
   entry.map(irProps, props);
 
+  const aliased: string[] = [];
+  for (const [irKey, widgetKey] of ALARM_ALIASES) {
+    const flag = bool(irProps[irKey]);
+    if (flag === undefined) continue;
+    aliased.push(irKey);
+    if (!(widgetKey in props) && irProps[widgetKey] === undefined) props[widgetKey] = flag;
+  }
+
   const consumed = entry.consumes;
   for (const [key, value] of Object.entries(irProps)) {
-    if (!consumed.includes(key) && !(key in props)) props[key] = value;
+    if (!consumed.includes(key) && !aliased.includes(key) && !(key in props)) props[key] = value;
   }
   return { type: entry.type, props };
 }

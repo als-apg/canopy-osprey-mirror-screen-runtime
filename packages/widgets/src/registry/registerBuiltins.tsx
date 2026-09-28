@@ -20,6 +20,7 @@ import { ScreenImageWidget } from '../drawing/ScreenImageWidget.js';
 import { WaveformPlot } from '../charts/WaveformPlot.js';
 import { useFitText } from '../shared/useFitText.js';
 import { ArcWidget } from '../drawing/ArcWidget.js';
+import { useRenderProfile } from '../renderMode.js';
 
 // ── Shared prop schemas ─────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ const FLEX_ALIGN = { left: 'flex-start', center: 'center', right: 'flex-end' } a
 
 function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
   const text = (props.text as string) ?? 'Label';
+  const { textInset } = useRenderProfile();
   // IR `align` (EDM/Qt label alignment; absent = left) positions the text
   // block and aligns its lines; `fontFamily` when the IR carries one.
   const align = props.align === 'center' || props.align === 'right' ? props.align : 'left';
@@ -115,7 +117,8 @@ function StaticLabelWidget({ layout, props, isSelected }: WidgetRendererProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: FLEX_ALIGN[align],
-        padding: '0 4px',
+        // Render-mode text metrics (edm: flush like EDM's static text).
+        padding: `0 ${textInset ?? 4}px`,
         outline: isSelected ? '1px solid #0f62fe' : 'none',
         userSelect: 'none',
         overflow: 'hidden',

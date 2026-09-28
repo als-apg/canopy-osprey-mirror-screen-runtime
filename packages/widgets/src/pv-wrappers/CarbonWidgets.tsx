@@ -12,9 +12,12 @@ import {
   RadioButton,
 } from '@carbon/react';
 import { usePV } from '@slaclab/canopy-react';
-import { alarmBorderStyle } from '../alarm.js';
+import { alarmBorderStyle, alarmContentColor } from '../alarm.js';
 import { AlarmSeverity, AlarmSeverityName } from '@slaclab/canopy-client';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
+import { useRenderProfile } from '../renderMode.js';
+import type { RenderProfile } from '../renderMode.js';
+import type { WidgetProps } from '../types.js';
 import { useFitText } from '../shared/useFitText.js';
 
 /**
@@ -61,13 +64,81 @@ function authoredFieldStyle(
   return { backgroundColor: background ?? 'transparent', borderColor: 'transparent' };
 }
 
+interface ReadoutAlarm {
+  /** Frame (border/background) overrides for the widget box. */
+  frame: CSSProperties;
+  /** Text colour: the authored colour, or the severity's when it repaints. */
+  color: string | undefined;
+  /** Show a severity pill. */
+  pill: boolean;
+  /** Draw no value text (EDM's disconnected box is empty). */
+  blank: boolean;
+}
+
+/**
+ * Alarm and connection presentation of a PV-bound readout under the render
+ * profile. `edm`: alarm-sensitive content (alarmSensitiveContent, the IR's
+ * `alarmSensitive`) is recoloured with the palette — the authored colour at
+ * NO_ALARM, EDM colors.list semantics — and a disconnected PV is an empty box
+ * outlined in the disconnected colour (x_text_dsp_obj.cc). `carbon`: severity
+ * pills on any alarming value. Either way an alarm border is drawn only when
+ * the widget is border-sensitive (prop, else the profile's default).
+ */
+function readoutAlarm(
+  pv: { connected: boolean; severity: AlarmSeverity },
+  props: WidgetProps,
+  profile: RenderProfile,
+  ownColor: string | undefined
+): ReadoutAlarm {
+  if (profile.disconnected === 'outline' && !pv.connected) {
+    return {
+      frame: {
+        borderColor: profile.alarmPalette[AlarmSeverity.DISCONNECTED] ?? 'transparent',
+        borderWidth: 2,
+        borderStyle: 'solid',
+        backgroundColor: 'transparent',
+      },
+      color: ownColor,
+      pill: false,
+      blank: true,
+    };
+  }
+  const borderSensitive =
+    typeof props.alarmSensitiveBorder === 'boolean'
+      ? props.alarmSensitiveBorder
+      : profile.alarmBorderDefault;
+  const frame = alarmBorderStyle(pv.severity, borderSensitive, profile.alarmPalette);
+  if (profile.alarmContent === 'colour') {
+    const color = pv.connected
+      ? alarmContentColor(
+          pv.severity,
+          props.alarmSensitiveContent === true,
+          ownColor,
+          profile.alarmPalette
+        )
+      : ownColor;
+    return { frame, color, pill: false, blank: false };
+  }
+  const pill = pv.connected && pv.severity !== AlarmSeverity.NO_ALARM;
+  return { frame, color: ownColor, pill, blank: false };
+}
+
+const NO_ALARM_PRESENTATION: ReadoutAlarm = {
+  frame: {},
+  color: undefined,
+  pill: false,
+  blank: false,
+};
+
 /** PVTextDisplay — Carbon Tag/Text showing live PV value */
 export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendererProps) {
   const pvName = props.pvName as string | undefined;
   const pv = usePV(pvName);
+  const profile = useRenderProfile();
 
   const label = props.label as string | undefined;
-  const align = (props.align as 'left' | 'center' | 'right' | undefined) ?? 'left';
+  const align =
+    (props.align as 'left' | 'center' | 'right' | undefined) ?? profile.readoutAlign ?? undefined;
   const staticText = props.text as string | undefined;
   const foregroundColor = styleProp(props.foregroundColor);
   const backgroundColor = styleProp(props.backgroundColor);
@@ -76,14 +147,20 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
   // A channel-less PyDMLabel is a static caption: show `text`, and skip the
   // alarm border (no PV, no alarm state) so it isn't drawn as a bordered field.
   const isStatic = !hasPv && staticText !== undefined;
-  const alarmBorder = isStatic
-    ? {}
-    : alarmBorderStyle(pv.severity, (props.alarmSensitiveBorder as boolean) ?? true);
+  const alarm = isStatic
+    ? { ...NO_ALARM_PRESENTATION, color: foregroundColor }
+    : readoutAlarm(pv, props, profile, foregroundColor);
+  // Text on an authored/display background uses the profile's text metrics;
+  // text in the Carbon field keeps a field inset.
+  const onCarbonField = !isStatic && foregroundColor === undefined && backgroundColor === undefined;
+  const inset = onCarbonField ? profile.fieldInset : profile.textInset;
   const value = pv.connected
     ? liveDisplayText(pv, props)
-    : !hasPv && staticText !== undefined
+    : isStatic
       ? staticText
-      : '---';
+      : alarm.blank
+        ? ''
+        : '---';
   // Default ~13px matches the .carbon-pv-display__value rule (0.8125rem).
   const maxFontSize = (props.fontSize as number) ?? 13;
   const { ref, fontSize } = useFitText<HTMLDivElement>(maxFontSize, [
@@ -115,7 +192,8 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
         width: layout.width,
         height: layout.height,
         ...authoredFieldStyle(foregroundColor, backgroundColor),
-        ...alarmBorder,
+        ...(inset !== null ? { paddingLeft: inset, paddingRight: inset } : {}),
+        ...alarm.frame,
       }}
     >
       <div ref={ref} className="carbon-pv-display__content" style={{ fontSize }}>
@@ -127,15 +205,15 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
               : 'carbon-pv-display__value'
           }
           style={{
-            textAlign: align !== 'left' ? align : undefined,
-            color: foregroundColor,
+            textAlign: align,
+            color: alarm.color,
             fontFamily,
           }}
         >
           {value}
         </span>
       </div>
-      {pv.connected && pv.severity !== AlarmSeverity.NO_ALARM && (
+      {alarm.pill && (
         <Tag size="sm" type={severityTag} className="carbon-pv-display__alarm-tag">
           {AlarmSeverityName[pv.severity]}
         </Tag>
@@ -153,20 +231,21 @@ export function CarbonPVTextInput({
   isEditing,
 }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
+  const profile = useRenderProfile();
   const [draft, setDraft] = useState<string | null>(null);
+  const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
   const fontSize = typeof props.fontSize === 'number' ? props.fontSize : undefined;
   const inputStyle: CSSProperties = {
-    color: styleProp(props.foregroundColor),
-    backgroundColor: styleProp(props.backgroundColor),
+    color: alarm.color,
+    backgroundColor: alarm.blank ? 'transparent' : styleProp(props.backgroundColor),
     fontFamily: styleProp(props.fontFamily),
     fontSize,
+    ...(profile.fieldInset !== null
+      ? { paddingLeft: profile.fieldInset, paddingRight: profile.fieldInset }
+      : {}),
   };
-  const alarmBorder = alarmBorderStyle(
-    pv.severity,
-    (props.alarmSensitiveBorder as boolean) ?? true
-  );
 
   const handleBlur = useCallback(() => {
     if (draft !== null && pv.connected) {
@@ -187,7 +266,7 @@ export function CarbonPVTextInput({
   return (
     <div
       className={`carbon-pv-input ${isSelected ? 'carbon-pv-input--selected' : ''}`}
-      style={{ width: layout.width, height: layout.height, ...alarmBorder }}
+      style={{ width: layout.width, height: layout.height, ...alarm.frame }}
     >
       <TextInput
         id={`pv-input-${id}`}
@@ -202,7 +281,9 @@ export function CarbonPVTextInput({
               : typeof pv.value === 'number' && pv.precision > 0
                 ? pv.value.toFixed(pv.precision)
                 : String(pv.value)
-            : '---')
+            : alarm.blank
+              ? ''
+              : '---')
         }
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
         onBlur={handleBlur}
@@ -725,9 +806,11 @@ export function CarbonPVMeter({ layout, props }: WidgetRendererProps) {
   const ny = cy - r * 0.9 * Math.sin(angle);
   const showValue = (props.showValue as boolean) ?? true;
   const label = props.label as string | undefined;
+  const profile = useRenderProfile();
   const alarmBorder = alarmBorderStyle(
     pv.severity,
-    (props.alarmSensitiveBorder as boolean) ?? true
+    (props.alarmSensitiveBorder as boolean) ?? profile.alarmBorderDefault,
+    profile.alarmPalette
   );
   return (
     <div style={{ width: w, height: h, position: 'relative', ...alarmBorder }}>

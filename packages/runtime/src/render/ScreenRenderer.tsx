@@ -18,14 +18,22 @@
 // rendered screen (root and every embedded screen) wraps the PV context in a
 // ScreenPVScope so `fox://<name>` widget channels evaluate that screen's own
 // formulas with its own macros.
+//
+// Presentation: `renderMode` (edm | carbon) is provided to every widget —
+// embedded screens included — through the widget set's RenderModeContext;
+// without the prop an enclosing provider (or the 'edm' default) applies.
 
 import { Component, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { SCHEMA_VERSION } from '@slaclab/canopy-screen-ir';
 import type { Geometry, MacroValues, ScreenJSON, WidgetNode } from '@slaclab/canopy-screen-ir';
 import type { FormulaDeclaration } from '@slaclab/canopy-screen-ir';
-import { AssetResolverContext, widgetRegistry } from '@slaclab/canopy-screen-widgets';
-import type { ResolveAsset } from '@slaclab/canopy-screen-widgets';
+import {
+  AssetResolverContext,
+  RenderModeContext,
+  widgetRegistry,
+} from '@slaclab/canopy-screen-widgets';
+import type { RenderMode, ResolveAsset } from '@slaclab/canopy-screen-widgets';
 import { childMacros, resolveScreenMacros, substituteMacros, substituteProps } from '../macros.js';
 import { applyRuleOutputs } from '../rules/applyRules.js';
 import { useWidgetRules } from '../rules/useWidgetRules.js';
@@ -48,6 +56,12 @@ export interface ScreenRendererProps {
   resolveAsset?: ResolveAsset;
   /** Embedding depth cap (default 8). */
   maxDepth?: number;
+  /**
+   * Presentation mode for every widget of the screen (alarm presentation,
+   * text metrics; see the widget set's RENDER_PROFILES). Default: an
+   * enclosing RenderModeContext, else 'edm'.
+   */
+  renderMode?: RenderMode;
 }
 
 interface EmbedContextValue {
@@ -442,7 +456,10 @@ export function ScreenRenderer({
   resolveScreen,
   resolveAsset,
   maxDepth = 8,
+  renderMode,
 }: ScreenRendererProps) {
+  const inheritedMode = useContext(RenderModeContext);
+  const mode = renderMode ?? inheritedMode;
   const effectiveMacros = useMemo(() => resolveScreenMacros(screen, macros), [screen, macros]);
   const embed = useMemo<EmbedContextValue>(
     () => ({ resolveScreen, depth: 0, ancestors: [], maxDepth }),
@@ -450,27 +467,30 @@ export function ScreenRenderer({
   );
 
   const tree = (
-    <EmbedContext.Provider value={embed}>
-      <div
-        data-testid="screen-root"
-        data-screen-id={screen.id}
-        style={{
-          position: 'relative',
-          width: screen.metadata.size.width,
-          height: screen.metadata.size.height,
-          overflow: 'hidden',
-        }}
-      >
-        <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
-          <WidgetNodeView
-            node={screen.root}
-            macros={effectiveMacros}
-            formulas={screen.formulas}
-            idChain={[]}
-          />
-        </ScreenPVScope>
-      </div>
-    </EmbedContext.Provider>
+    <RenderModeContext.Provider value={mode}>
+      <EmbedContext.Provider value={embed}>
+        <div
+          data-testid="screen-root"
+          data-screen-id={screen.id}
+          data-render-mode={mode}
+          style={{
+            position: 'relative',
+            width: screen.metadata.size.width,
+            height: screen.metadata.size.height,
+            overflow: 'hidden',
+          }}
+        >
+          <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
+            <WidgetNodeView
+              node={screen.root}
+              macros={effectiveMacros}
+              formulas={screen.formulas}
+              idChain={[]}
+            />
+          </ScreenPVScope>
+        </div>
+      </EmbedContext.Provider>
+    </RenderModeContext.Provider>
   );
 
   // Without a resolver the context's identity default applies.

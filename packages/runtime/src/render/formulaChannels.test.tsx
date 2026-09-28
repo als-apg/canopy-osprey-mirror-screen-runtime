@@ -110,10 +110,16 @@ function withServices(
   );
 }
 
+// Disconnection is asserted through carbon mode's '---' placeholder (edm mode
+// draws EDM's empty outlined box instead; see renderMode.test.tsx).
 describe('fox:// widget channels', () => {
   it('evaluates the screen formula with caller macros and shows the result', () => {
     const doc = screenDoc('pct', [PCT], [label('w-040', 'fox://f-001')], { DEV: 'UNSET' });
-    render(withServices(<ScreenRenderer screen={doc} macros={{ DEV: 'DEMO:VAC:GAUGE1' }} />));
+    render(
+      withServices(
+        <ScreenRenderer screen={doc} macros={{ DEV: 'DEMO:VAC:GAUGE1' }} renderMode="carbon" />
+      )
+    );
 
     expect(screen.getByText('---')).toBeTruthy();
     expect(stub.subscriptions.map((s) => s.spec)).toEqual([
@@ -212,7 +218,7 @@ describe('fox:// widget channels', () => {
 
   it('unknown formula names render disconnected with a warning (no crash)', () => {
     const doc = screenDoc('bad', [PCT], [label('w', 'fox://missing')], { DEV: 'D' });
-    render(withServices(<ScreenRenderer screen={doc} />));
+    render(withServices(<ScreenRenderer screen={doc} renderMode="carbon" />));
     expect(screen.getByText('---')).toBeTruthy();
     expect(screen.queryByTestId('widget-error')).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("'missing'"));
@@ -236,7 +242,7 @@ describe('fox:// widget channels', () => {
       [label('pct', 'fox://f-001', 10), label('sum', 'fox://sum', 40)],
       { DEV: 'D' }
     );
-    render(withServices(<ScreenRenderer screen={doc} />, page, mockSubscriber));
+    render(withServices(<ScreenRenderer screen={doc} renderMode="carbon" />, page, mockSubscriber));
 
     expect(screen.getByText('---')).toBeTruthy();
     expect(screen.getByText('5')).toBeTruthy();

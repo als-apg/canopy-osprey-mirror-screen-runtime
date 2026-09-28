@@ -4,6 +4,15 @@
 export { ScreenRenderer } from './render/ScreenRenderer.js';
 export type { ScreenRendererProps, ResolveScreen } from './render/ScreenRenderer.js';
 export type { ResolveAsset } from '@slaclab/canopy-screen-widgets';
+// Render mode (edm | carbon), re-exported so hosts need no direct widget-set
+// dependency to select it.
+export {
+  RENDER_MODES,
+  DEFAULT_RENDER_MODE,
+  RenderModeContext,
+  parseRenderMode,
+} from '@slaclab/canopy-screen-widgets';
+export type { RenderMode } from '@slaclab/canopy-screen-widgets';
 export { mapIRWidget } from './render/irMap.js';
 export type { MappedWidget } from './render/irMap.js';
 

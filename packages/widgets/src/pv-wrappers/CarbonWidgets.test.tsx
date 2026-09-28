@@ -113,10 +113,10 @@ describe('CarbonPVTextDisplay align', () => {
     expect(value.style.textAlign).toBe('center');
   });
 
-  it('leaves alignment unset (default) when align is absent', () => {
+  it('left-aligns when align is absent (the IR default) in edm mode', () => {
     const { container } = renderWith(CarbonPVTextDisplay, { text: 'Left caption' });
     const value = container.querySelector('.carbon-pv-display__value') as HTMLElement;
-    expect(value.style.textAlign).toBe('');
+    expect(value.style.textAlign).toBe('left');
   });
 });
 
@@ -176,6 +176,7 @@ describe('IR colours on text readouts', () => {
   });
 
   it('draws a foreground-only readout on the display background (no Carbon field)', () => {
+    livePV.current = { connected: true, value: 1, displayValue: '1.00' };
     const { container } = renderWith(CarbonPVTextDisplay, {
       pvName: 'X',
       foregroundColor: '#000000',
@@ -185,6 +186,7 @@ describe('IR colours on text readouts', () => {
   });
 
   it('keeps the Carbon field and text colour when the IR carries no colours', () => {
+    livePV.current = { connected: true, value: 1, displayValue: '1.00' };
     const { container } = renderWith(CarbonPVTextDisplay, { pvName: 'X' });
     expect(field(container).style.backgroundColor).toBe('');
     expect(field(container).style.borderColor).toBe('');
@@ -200,6 +202,7 @@ describe('IR colours on text readouts', () => {
   });
 
   it('paints text-input colours and font on the Carbon input itself', () => {
+    livePV.current = { connected: true, value: 1, displayValue: '1' };
     const { container } = renderWith(CarbonPVTextInput, {
       pvName: 'X',
       foregroundColor: '#000000',
@@ -215,6 +218,7 @@ describe('IR colours on text readouts', () => {
   });
 
   it('leaves the Carbon input untouched without IR colours', () => {
+    livePV.current = { connected: true, value: 1, displayValue: '1' };
     const { container } = renderWith(CarbonPVTextInput, { pvName: 'X' });
     const input = container.querySelector('input') as HTMLInputElement;
     expect(input.style.color).toBe('');
