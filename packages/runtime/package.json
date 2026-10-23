@@ -2,7 +2,7 @@
   "name": "@slaclab/canopy-screen-runtime",
   "version": "0.1.0",
   "private": false,
-  "description": "React runtime for Canopy screens — ScreenRenderer over the Screen IR with macro resolution, embedded screens, and Fox-compiled widget rules",
+  "description": "React runtime for Canopy screens — ScreenRenderer over the Screen IR with macro resolution, embedded screens, and widget rules compiled for the Formula Engine",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/slaclab/canopy-screen-runtime.git",
