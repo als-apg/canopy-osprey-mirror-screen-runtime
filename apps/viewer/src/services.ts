@@ -4,8 +4,7 @@
 import { createContext, useContext } from 'react';
 import type { PVService } from '@slaclab/canopy-client';
 import {
-  // Becomes `FormulaEngineService` with the next canopy-client release.
-  FoxFormulaService,
+  FormulaEngineService,
   HarePVService,
   LocalPVService,
   MockPVService,
@@ -39,7 +38,7 @@ export function createServices(config: ViewerConfig): ViewerServices {
     });
     const pv = new RoutedPVService({ 'loc://': locals }, hare);
     pv.connect();
-    const formulaEngine = new FoxFormulaService({
+    const formulaEngine = new FormulaEngineService({
       baseUrl: config.canopyBaseUrl,
       apiKey: config.canopyApiKey,
     });

@@ -3,7 +3,7 @@
 // exercised against a scripted fake of the same shape.
 
 import { describe, expect, it, vi } from 'vitest';
-import { FoxFormulaService } from '@slaclab/canopy-client';
+import { FormulaEngineService } from '@slaclab/canopy-client';
 import type { FormulaSpec } from '../formula.js';
 import type { FormulaEngineServiceLike } from './formulaEngineAdapter.js';
 import { createFormulaEngineSubscriber } from './formulaEngineAdapter.js';
@@ -16,7 +16,7 @@ const SPEC: FormulaSpec = {
 
 describe('createFormulaEngineSubscriber', () => {
   it('accepts the real SDK Formula Engine service (compile-time wiring)', () => {
-    const service: FormulaEngineServiceLike = new FoxFormulaService({
+    const service: FormulaEngineServiceLike = new FormulaEngineService({
       baseUrl: 'https://canopy.example.org',
       // No WebSocket in jsdom — inject a factory but never connect.
       webSocketFactory: () => {
