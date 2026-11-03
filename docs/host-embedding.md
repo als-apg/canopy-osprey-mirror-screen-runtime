@@ -7,7 +7,10 @@ icon: lucide/app-window
 The workspace (`/embed/`) can run as a tile of a host page, a _host shell_
 that frames it in an iframe and draws the tile's header bar itself. This page
 describes what the viewer expects from such a host and every message the two
-exchange. Message names carry a `canopy-host-` prefix.
+exchange. Message names carry a `canopy-host-` prefix. The viewer still
+accepts the host-to-viewer messages under their old `osprey-` names
+(`osprey-header-action`, `osprey-navigate`, `osprey-navigate-probe`) in 0.1.x;
+those names are deprecated and removed in 0.2.0.
 
 ## Being embedded
 

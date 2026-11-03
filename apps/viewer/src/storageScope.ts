@@ -12,11 +12,16 @@
 //     `data-canopy-storage-scope="<scope>"`, appended as `--<scope>`, so two
 //     users of one mount never share a record either.
 //
+// `data-osprey-storage-scope` is read as a deprecated alias of that attribute
+// when it is absent; the alias is removed in the next release.
+//
 // A scoped page never falls back to the unscoped key: that slot is precisely
 // the shared one the scope exists to escape.
 
 /** The attribute an embedding host stamps on `<html>` to scope storage per user. */
 export const STORAGE_SCOPE_ATTRIBUTE = 'data-canopy-storage-scope';
+/** Deprecated alias of STORAGE_SCOPE_ATTRIBUTE, read only when that one is absent. */
+export const DEPRECATED_STORAGE_SCOPE_ATTRIBUTE = 'data-osprey-storage-scope';
 
 /** The router basename of this document (`/` at the root, or outside a browser). */
 function currentBasename(): string {
@@ -31,7 +36,9 @@ function currentBasename(): string {
 export function storageScope(): string | null {
   try {
     const root = document.documentElement;
-    const scope = root.getAttribute(STORAGE_SCOPE_ATTRIBUTE);
+    const scope = root.hasAttribute(STORAGE_SCOPE_ATTRIBUTE)
+      ? root.getAttribute(STORAGE_SCOPE_ATTRIBUTE)
+      : root.getAttribute(DEPRECATED_STORAGE_SCOPE_ATTRIBUTE);
     return scope || null;
   } catch {
     return null;

@@ -22,6 +22,8 @@ import { isHostEmbedded } from './hostEmbed.js';
 export const HEADER_CONTRACT_VERSION = 1;
 export const CONTRIBUTION_TYPE = 'canopy-host-header-contribution';
 export const ACTION_TYPE = 'canopy-host-header-action';
+/** Deprecated name of ACTION_TYPE, still accepted in 0.1.x; removed in 0.2.0. */
+export const ACTION_TYPE_ALIAS = 'osprey-header-action';
 
 /** The host's caps: items per contribution, entries per menu or nav, characters per string. */
 export const MAX_ITEMS = 12;
@@ -224,7 +226,13 @@ export function onAction(callback: HeaderActionCallback): () => void {
     if (event.origin !== window.location.origin) return;
     if (event.source !== window.parent) return;
     const data = event.data as Loose | null;
-    if (!data || typeof data !== 'object' || data.type !== ACTION_TYPE || !isStr(data.id)) return;
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      (data.type !== ACTION_TYPE && data.type !== ACTION_TYPE_ALIAS) ||
+      !isStr(data.id)
+    )
+      return;
     callback(data.id, isStr(data.value) ? data.value : undefined);
   };
   window.addEventListener('message', listener);

@@ -74,7 +74,8 @@ sets the theme two ways:
   force after in-frame navigation drops it from the URL.
 - A message from the parent window, `{ "type": "canopy:theme", "theme": "<id>" }`,
   which wins over the URL. Messages from any other window or origin are
-  ignored.
+  ignored. The type `osprey-theme-change` is accepted as a deprecated alias for
+  one release; hosts should send `canopy:theme`.
 
 An id resolves to light or dark through `config.themes`, then through its own
 name (`light` or `*-light` is light, anything else dark).
@@ -84,7 +85,9 @@ width) is keyed by the mount path, so two mounts on one origin never share a
 record. A host that serves several users under one mount stamps a per-user
 scope on the framed page's root element,
 `<html data-canopy-storage-scope="<scope>">`, and every key gains `--<scope>`;
-a scoped page never reads the unscoped keys.
+a scoped page never reads the unscoped keys. `data-osprey-storage-scope` is
+read as a deprecated alias when `data-canopy-storage-scope` is absent, for one
+release; hosts should stamp `data-canopy-storage-scope`.
 
 ## Local dev against a canopy-screens checkout (smoke test)
 

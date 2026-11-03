@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { STORAGE_SCOPE_ATTRIBUTE, storageKey, storageScope } from './storageScope.js';
+import {
+  DEPRECATED_STORAGE_SCOPE_ATTRIBUTE,
+  STORAGE_SCOPE_ATTRIBUTE,
+  storageKey,
+  storageScope,
+} from './storageScope.js';
 
 const root = () => document.documentElement;
 
 afterEach(() => {
   root().removeAttribute(STORAGE_SCOPE_ATTRIBUTE);
+  root().removeAttribute(DEPRECATED_STORAGE_SCOPE_ATTRIBUTE);
 });
 
 describe('storageKey', () => {
@@ -46,8 +52,9 @@ describe('storageKey', () => {
 });
 
 describe('storageScope', () => {
-  it('reads the scope attribute; an empty one is no scope', () => {
-    expect(storageScope()).toBeNull();
+  it('reads the deprecated attribute only when the new one is absent', () => {
+    root().setAttribute(DEPRECATED_STORAGE_SCOPE_ATTRIBUTE, 'alice');
+    expect(storageScope()).toBe('alice');
     root().setAttribute(STORAGE_SCOPE_ATTRIBUTE, 'bob');
     expect(storageScope()).toBe('bob');
     root().setAttribute(STORAGE_SCOPE_ATTRIBUTE, '');

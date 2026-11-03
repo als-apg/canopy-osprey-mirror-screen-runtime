@@ -5,7 +5,8 @@
 //   * ?theme=<id> — the theme the page loaded with. It stays in force after
 //     in-page navigation drops it from the URL.
 //   * theme messages ({type: 'canopy:theme', theme: <id>}) from window.parent,
-//     which win over the URL.
+//     which win over the URL. The type 'osprey-theme-change' is accepted as a
+//     deprecated alias for one release.
 //
 // An id resolves to light/dark through config.themes, then through its own
 // name (canopy-shell's modeFromThemeId: 'light' or '*-light' is light,
@@ -31,6 +32,9 @@ import type { ThemeName } from './config.js';
 /** The `type` of a theme message from the parent page. */
 export const THEME_MESSAGE = 'canopy:theme';
 
+/** Deprecated alias of THEME_MESSAGE, still accepted for one release. */
+export const THEME_MESSAGE_ALIAS = 'osprey-theme-change';
+
 /** A theme id -> light/dark: config.themes first, then the id's own name. */
 export function resolveMode(
   id: string | null,
@@ -44,8 +48,8 @@ export function resolveMode(
 }
 
 /**
- * Calls `onTheme(id)` for every theme message (THEME_MESSAGE) from the
- * parent. The host serves the viewer from its own origin, so a message from
+ * Calls `onTheme(id)` for every theme message (THEME_MESSAGE or its alias)
+ * from the parent. The host serves the viewer from its own origin, so a message from
  * any other origin is ignored.
  */
 export function useThemeMessages(onTheme: (id: string) => void) {
@@ -56,7 +60,7 @@ export function useThemeMessages(onTheme: (id: string) => void) {
       const data: unknown = event.data;
       if (typeof data !== 'object' || data === null) return;
       const { type, theme } = data as { type?: unknown; theme?: unknown };
-      if (type !== THEME_MESSAGE) return;
+      if (type !== THEME_MESSAGE && type !== THEME_MESSAGE_ALIAS) return;
       if (typeof theme === 'string') onTheme(theme);
     };
     window.addEventListener('message', onMessage);

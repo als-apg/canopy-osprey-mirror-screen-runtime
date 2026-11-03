@@ -15,6 +15,9 @@ import { OPEN_PARAM } from '../useCollections.js';
 export const NAVIGATE_MESSAGE = 'canopy-host-navigate';
 export const NAVIGATE_PROBE = 'canopy-host-navigate-probe';
 export const NAVIGATE_READY = 'canopy-host-navigate-ready';
+/** Deprecated names of NAVIGATE_MESSAGE and NAVIGATE_PROBE, still accepted in 0.1.x; removed in 0.2.0. */
+export const NAVIGATE_MESSAGE_ALIAS = 'osprey-navigate';
+export const NAVIGATE_PROBE_ALIAS = 'osprey-navigate-probe';
 
 /**
  * A same-origin `url` as a router-relative pathname and search, the router
@@ -67,11 +70,12 @@ export function useHostNavigation({
       const data: unknown = event.data;
       if (typeof data !== 'object' || data === null) return;
       const { type, url } = data as { type?: unknown; url?: unknown };
-      if (type === NAVIGATE_PROBE) {
+      if (type === NAVIGATE_PROBE || type === NAVIGATE_PROBE_ALIAS) {
         ready();
         return;
       }
-      if (type !== NAVIGATE_MESSAGE || typeof url !== 'string') return;
+      if ((type !== NAVIGATE_MESSAGE && type !== NAVIGATE_MESSAGE_ALIAS) || typeof url !== 'string')
+        return;
       const target = routerPath(url, basename);
       if (target === null) {
         console.warn(`Workspace: ignoring ${NAVIGATE_MESSAGE} to ${url}.`);

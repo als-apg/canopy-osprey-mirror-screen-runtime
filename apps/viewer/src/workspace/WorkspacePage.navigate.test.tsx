@@ -18,7 +18,9 @@ import { ZoomProvider } from '../ZoomContext.js';
 import { tabsStorageKey } from './tabs.js';
 import {
   NAVIGATE_MESSAGE,
+  NAVIGATE_MESSAGE_ALIAS,
   NAVIGATE_PROBE,
+  NAVIGATE_PROBE_ALIAS,
   NAVIGATE_READY,
   routerPath,
 } from './host/useHostNavigation.js';
@@ -208,6 +210,13 @@ describe('navigation readiness', () => {
     expect(readyPosts()).toBe(3);
   });
 
+  it('answers a probe under the deprecated osprey-navigate-probe name', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    send({ type: NAVIGATE_PROBE_ALIAS });
+    expect(readyPosts()).toBe(2);
+  });
+
   it('ignores a probe from another window or origin', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
@@ -237,6 +246,13 @@ describe('canopy-host-navigate', () => {
     send({ type: NAVIGATE_MESSAGE, url: '/embed/bts/knob' });
     await waitFor(() => expect(storedActive()).toBe('bts/knob'));
     expect(storedKeys()).toEqual(['bts/knob', 'common/magnet']);
+  });
+
+  it('takes the deprecated osprey-navigate name too', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    send({ type: NAVIGATE_MESSAGE_ALIAS, url: '/embed/common/magnet' });
+    await waitFor(() => expect(storedActive()).toBe('common/magnet'));
   });
 
   it('strips the router basename from the URL', async () => {

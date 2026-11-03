@@ -12,7 +12,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { getMode, setMode, subscribe } from '@slaclab/canopy-screen-runtime';
 import type { ThemeName } from './config.js';
-import { resolveMode, THEME_MESSAGE, useThemeInput } from './useThemeInput.js';
+import { resolveMode, THEME_MESSAGE, THEME_MESSAGE_ALIAS, useThemeInput } from './useThemeInput.js';
 
 // Node >= 25 ships a global `localStorage` that is undefined without
 // --localstorage-file and shadows jsdom's; install an in-memory one before
@@ -151,6 +151,13 @@ describe('useThemeInput', () => {
 
   it('names the message canopy:theme', () => {
     expect(THEME_MESSAGE).toBe('canopy:theme');
+  });
+
+  it('still accepts the deprecated osprey-theme-change type', () => {
+    renderWriter('/s/a/b?theme=light', 'light', { 'host-night': 'dark' });
+    expect(getMode()).toBe('light');
+    hostMessage('host-night', window.parent, window.location.origin, THEME_MESSAGE_ALIAS);
+    expect(getMode()).toBe('dark');
   });
 
   it('follows theme messages from the parent only', () => {

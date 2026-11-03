@@ -29,6 +29,7 @@ vi.hoisted(() => {
 
 import { resetHostEmbeddedForTests } from './hostEmbed.js';
 import {
+  ACTION_TYPE_ALIAS,
   type HeaderItem,
   contribute,
   onAction,
@@ -259,6 +260,15 @@ describe('onAction', () => {
     const cb = vi.fn();
     const off = onAction(cb);
     send(FAKE_PARENT, { type: 'canopy-host-header-action', id: 'search' });
+    expect(cb).toHaveBeenCalledWith('search', undefined);
+    off();
+  });
+
+  it('takes the deprecated osprey-header-action name too', () => {
+    hostEmbed();
+    const cb = vi.fn();
+    const off = onAction(cb);
+    send(FAKE_PARENT, { type: ACTION_TYPE_ALIAS, id: 'search' });
     expect(cb).toHaveBeenCalledWith('search', undefined);
     off();
   });
