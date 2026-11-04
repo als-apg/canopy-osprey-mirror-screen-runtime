@@ -2,13 +2,24 @@
 // verb view per tile state (no screen, Plot in Data Browser only when
 // configured, nav flags, zoom, download); invoke reaching each handler and
 // refusing an unavailable one; outcomes as status text or through notify;
-// the relay hand-over with no bar; and the bar path unchanged.
+// the relay hand-over with no bar; the bar path unchanged; and, in the
+// workspace embedded in a host with one tile and no bar mounted, ⌘S / ⌘I / ⌘P
+// reaching the tile with their outcome in the toast column.
 
 import { createElement, useEffect } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { Download, Link } from '@carbon/icons-react';
+import type { Manifest } from '../api.js';
+import { createBackendBadgeStore } from '../backendBadge.js';
+import { EmbedThemeContext } from '../pages/EmbedPage.js';
 import type { ScreenHistory } from '../ScreenHeader.js';
+import { ServicesContext } from '../services.js';
+import type { ViewerServices } from '../services.js';
+import { resetHostEmbeddedForTests } from '../workspace/host/hostEmbed.js';
+import { WorkspacePage } from '../workspace/WorkspacePage.js';
+import { ZoomProvider } from '../ZoomContext.js';
 import { ScreenActionBar, ShortcutRelayContext } from './ScreenActionBar.js';
 import type { ShortcutRelay } from './ScreenActionBar.js';
 import type { ScreenAction, ScreenTarget } from './types.js';
@@ -402,5 +413,124 @@ describe('ScreenActionBar on the hook: the bar path unchanged', () => {
       fireEvent.keyDown(window, { key: 's', ctrlKey: true });
     });
     expect(save.run).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The workspace embedded in a host, one docked screen tile: no tile bar, no screen
+// header, so no ScreenActionBar is mounted; the shortcuts still run.
+
+const MANIFEST: Manifest = {
+  screens: [
+    {
+      id: 'knob',
+      kind: 'ir',
+      title: 'Knob device',
+      category: 'bts',
+      path: 'screens/bts/knob.screen.json',
+    },
+  ],
+};
+
+const FAKE_PARENT = { postMessage: () => {} } as unknown as Window;
+
+function renderWorkspace(path: string) {
+  const backend = createBackendBadgeStore({
+    backend: { name: 'example', label: 'Simulator', notice: null },
+    binding: 'va@3',
+  });
+  const services = { backend } as unknown as ViewerServices;
+  return render(
+    <ServicesContext.Provider value={services}>
+      <MemoryRouter initialEntries={[path]}>
+        <ZoomProvider>
+          <EmbedThemeContext.Provider
+            value={{ mode: 'dark', id: 'dark', anchorRef: { current: null } }}
+          >
+            <WorkspacePage screensBaseUrl="https://host/screens" />
+          </EmbedThemeContext.Provider>
+        </ZoomProvider>
+      </MemoryRouter>
+    </ServicesContext.Provider>
+  );
+}
+
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+describe('workspace embedded in a host, one tile, no bar: ⌘S ⌘I ⌘P', () => {
+  beforeEach(() => {
+    resetHostEmbeddedForTests();
+    fakes.download.calls.length = 0;
+    fakes.exportPng.calls.length = 0;
+    fakes.print.calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(MANIFEST), { status: 200 }))
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(window, 'parent', 'get').mockReturnValue(FAKE_PARENT);
+    window.history.replaceState(null, '', '/?embedded=true');
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, '', '/');
+    resetHostEmbeddedForTests();
+    for (const store of [globalThis.sessionStorage, globalThis.localStorage]) {
+      try {
+        store?.clear();
+      } catch {
+        // Storage unavailable: nothing to clear.
+      }
+    }
+  });
+
+  it('runs Download screen, Export PNG and Print on the tile and toasts the outcome', async () => {
+    renderWorkspace('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    await settle();
+    // No bar is mounted: no action button and no screen header anywhere.
+    expect(document.querySelector('[data-screen-action]')).toBeNull();
+    expect(document.querySelector('[data-testid="screen-header-title"]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    });
+    expect(fakes.download.calls).toEqual(['bts/knob']);
+    expect(await screen.findByText('Download started')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'i', ctrlKey: true });
+    });
+    expect(fakes.exportPng.calls).toEqual(['bts/knob']);
+    expect(await screen.findByText('PNG exported')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+    });
+    expect(fakes.print.calls).toEqual(['bts/knob']);
+    expect(await screen.findByText('Printed')).toBeTruthy();
+  });
+
+  it('standalone, the lone tile keeps its bar, which runs ⌘S with its own status', async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    window.history.replaceState(null, '', '/');
+    resetHostEmbeddedForTests();
+    renderWorkspace('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    await settle();
+    expect(document.querySelector('[data-screen-action="download"]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    });
+    expect(fakes.download.calls).toEqual(['bts/knob']);
+    expect(screen.getByTestId('screen-action-status').textContent).toBe('Download started');
   });
 });

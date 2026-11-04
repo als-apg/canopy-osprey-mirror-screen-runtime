@@ -88,49 +88,6 @@ body,
   margin: 0.5rem 1rem;
 }
 
-/* Browse cards */
-.screen-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.screen-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem;
-  background: var(--canopy-bg-panel);
-  border: 1px solid var(--canopy-border);
-  border-radius: var(--canopy-radius-sm);
-  color: inherit;
-  text-decoration: none;
-}
-
-.screen-card:hover {
-  border-color: var(--canopy-accent);
-}
-
-.screen-card--disabled {
-  opacity: 0.6;
-}
-
-.screen-card__title {
-  font-weight: 600;
-}
-
-.screen-card__meta {
-  font-size: 0.75rem;
-  color: var(--canopy-text-secondary);
-  font-family: var(--canopy-font-mono);
-}
-
-.screen-card__note {
-  font-size: 0.75rem;
-  color: var(--canopy-status-warning);
-}
-
 /* Error panel */
 .viewer-error {
   max-width: 48rem;

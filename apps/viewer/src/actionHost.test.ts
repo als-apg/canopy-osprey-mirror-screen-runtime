@@ -5,7 +5,15 @@
 
 import { createElement, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ActionHostContext, warnOnlyActionHost } from '@slaclab/canopy-screen-runtime';
@@ -21,6 +29,8 @@ import {
   useViewerActionHost,
 } from './actionHost.js';
 import type { ActionHostDeps, WorkspaceTabs } from './actionHost.js';
+import { tabsStorageKey } from './workspace/tabs.js';
+import { DOCK_VERSION, removeDock, writeDock } from './workspace/dock/storage.js';
 
 // Node >= 25 ships an experimental global `localStorage` that is undefined
 // unless --localstorage-file is given, and it shadows jsdom's. canopy-shell's
@@ -445,7 +455,7 @@ describe('useViewerActionHost', () => {
 });
 
 describe('App ActionHost provider', () => {
-  it('provides the viewer host to a deep-linked screen and renders showError as an ErrorPanel', async () => {
+  it('provides the viewer host to a workspace screen and renders showError as an ErrorPanel', async () => {
     probedHost = null;
     vi.stubGlobal(
       'fetch',
@@ -454,13 +464,15 @@ describe('App ActionHost provider', () => {
     render(
       createElement(
         MemoryRouter,
-        { initialEntries: ['/s/bts/knob-device'] },
+        { initialEntries: ['/embed/bts/knob-device'] },
         createElement(App, { screensBaseUrl: 'https://host/screens' })
       )
     );
     fireEvent.click(await screen.findByRole('button', { name: 'fail' }));
     expect(probedHost).not.toBeNull();
     expect(probedHost).not.toBe(warnOnlyActionHost);
+    // The dock mounts dockview's own role="alert" live region, so the
+    // ErrorPanel is picked out by its class rather than by role alone.
     const errorPanel = screen
       .getAllByRole('alert')
       .find((el) => el.classList.contains('viewer-error'));
@@ -724,5 +736,104 @@ describe('useViewerActionHost hostFor (one host per workspace tile)', () => {
     const first = result.current.viewer.hostFor;
     rerender();
     expect(result.current.viewer.hostFor).toBe(first);
+  });
+});
+
+describe('WorkspacePage: one action host per tile', () => {
+  const KNOB = 'bts/knob-device';
+  const LANDING = 'cbx fel/CBXFEL/Landing?P=1';
+  const MAGNET = 'common/common-magnet';
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  // Two tiles side by side, one screen each, the knob device focused (the
+  // URL names it), as a reload of such a session would restore them.
+  function renderTwoTiles() {
+    const keys = [KNOB, LANDING];
+    sessionStorage.setItem(
+      tabsStorageKey('/'),
+      JSON.stringify({ keys, active: KNOB, instances: {}, toolMru: [] })
+    );
+    // writeDock skips a value equal to the last one it saw; start clean.
+    removeDock('/');
+    writeDock('/', {
+      version: DOCK_VERSION,
+      layout: {
+        split: 'row',
+        items: [
+          { tile: 't1', tabs: [KNOB], showing: KNOB, size: 0.5 },
+          { tile: 't2', tabs: [LANDING], showing: LANDING, size: 0.5 },
+        ],
+      },
+      panels: {},
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(MANIFEST), { status: 200 }))
+    );
+    render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ['/embed/bts/knob-device'] },
+        createElement(App, { screensBaseUrl: 'https://host/screens' })
+      )
+    );
+  }
+
+  /** The showing tab of each tile, in tile order (the dock root's data-showing). */
+  const showing = (): unknown =>
+    JSON.parse(screen.getByTestId('workspace-dock').getAttribute('data-showing') ?? '[]');
+  const focusedKey = () =>
+    document.querySelector('.workspace__screen[data-active="true"]')?.getAttribute('data-tab-key');
+
+  it('starts with one screen per tile and the knob device focused', async () => {
+    renderTwoTiles();
+    await screen.findByRole('button', { name: 'navigate from CBXFEL/Landing' });
+    expect(showing()).toEqual([KNOB, LANDING]);
+    expect(focusedKey()).toBe(KNOB);
+  });
+
+  it('a navigate from an unfocused tile swaps its own occupant, not the focused one', async () => {
+    renderTwoTiles();
+    fireEvent.click(await screen.findByRole('button', { name: 'navigate from CBXFEL/Landing' }));
+    await waitFor(() => expect(showing()).toEqual([KNOB, MAGNET]));
+    expect(focusedKey()).toBe(MAGNET);
+  });
+
+  it('close from a tile closes that key, not the focused one', async () => {
+    renderTwoTiles();
+    fireEvent.click(await screen.findByRole('button', { name: 'close CBXFEL/Landing' }));
+    await waitFor(() => expect(showing()).toEqual([KNOB]));
+    expect(document.querySelector(`[data-tab-key="${LANDING}"]`)).toBeNull();
+    expect(document.querySelector(`[data-tab-key="${KNOB}"]`)).not.toBeNull();
+  });
+
+  it("a macro screen's relative path resolves against its own tile", async () => {
+    renderTwoTiles();
+    fireEvent.click(await screen.findByRole('button', { name: 'resolve from CBXFEL/Landing' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('resolved CBXFEL/Landing').textContent).toBe(
+        '/embed/common/common-magnet'
+      )
+    );
+    // From the knob device (screens/bts/) the same file escapes the root.
+    fireEvent.click(screen.getByRole('button', { name: 'resolve from knob-device' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('resolved knob-device').textContent).toBe('null')
+    );
+  });
+
+  it("an unfocused tile's error shows in the workspace banner", async () => {
+    renderTwoTiles();
+    fireEvent.click(await screen.findByRole('button', { name: 'fail from CBXFEL/Landing' }));
+    const banner = await waitFor(() => {
+      const el = document.querySelector('.viewer-error');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(banner.textContent).toContain('Failed on CBXFEL/Landing');
   });
 });
