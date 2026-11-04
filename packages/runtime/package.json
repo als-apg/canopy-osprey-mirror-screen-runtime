@@ -48,18 +48,18 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@slaclab/canopy-screen-ir": "^0.3.1-als.1",
+    "@slaclab/canopy-screen-ir": "^0.3.1-als.2",
     "@slaclab/canopy-screen-widgets": "workspace:^"
   },
   "peerDependencies": {
-    "@slaclab/canopy-react": "^0.3.1-als.1",
+    "@slaclab/canopy-react": "^0.3.1-als.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@carbon/react": "^1.108.0",
-    "@slaclab/canopy-client": "^0.3.1-als.1",
-    "@slaclab/canopy-react": "^0.3.1-als.1",
+    "@slaclab/canopy-client": "^0.3.1-als.2",
+    "@slaclab/canopy-react": "^0.3.1-als.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
