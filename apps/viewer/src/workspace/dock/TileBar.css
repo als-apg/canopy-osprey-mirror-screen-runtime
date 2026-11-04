@@ -19,12 +19,11 @@
   width: 100%;
   min-width: 0;
   max-width: var(--canopy-tile-bar-cap, none);
-  min-height: 1.75rem;
+  height: var(--canopy-bar-h);
   padding: 0 0.25rem 0 0;
   background: var(--canopy-bg-panel);
   color: var(--canopy-text-secondary);
   border-bottom: 1px solid var(--canopy-border);
-  border-top: 2px solid transparent;
   font-size: var(--canopy-text-sm);
   overflow: hidden;
   user-select: none;
@@ -35,10 +34,11 @@
   outline-offset: -2px;
 }
 
-/* Painted only while focused, two or more tiles are open and the document has focus. */
+/* Painted only while focused, two or more tiles are open and the document has focus: the
+   bottom hairline takes the accent. */
 .canopy-tile-bar--focused {
   color: var(--canopy-text-primary);
-  border-top-color: var(--canopy-accent);
+  border-bottom-color: var(--canopy-accent);
 }
 
 /* The tile's drag handle, always present at the bar's left edge. */
