@@ -10,30 +10,35 @@
 //                      binding changed, or no heartbeat came in time.
 //   "writes changed"   clientOutcome('write-state-changed', label): "the write state of
 //                      <label> changed; nothing written". The live socket's
-//                      statement says `off`, `locked` or a word this client
-//                      does not know.
+//                      statement says `off`, `locked`, `held` or a word this
+//                      client does not know, or it changed under an open
+//                      dialog.
 //   "coalesced"        WRITE_OUTCOME_COALESCED_TOAST: a newer value replaced the write.
 //
 // The gate's rules:
 //
-//   writes()      inert while the live socket's statement is not `on` (its
-//                 reason, else a sentence naming the label), and while no
-//                 heartbeat is seen on an open socket once the page has seen a
-//                 statement ("Reconnecting to <label>"). A null statement on a
-//                 live socket is a legacy frame: live. Before any statement the
-//                 page is live, and run() answers "target changed" as below.
+//   writes()      inert while the live socket's statement is neither `on` nor
+//                 `asked` (its reason, else a sentence naming the label; at
+//                 `held`, a watchdog's hold on the session, the reason is the
+//                 hold's), and while no heartbeat is seen on an open socket
+//                 once the page has seen a statement ("Reconnecting to
+//                 <label>"). A null statement on a live socket is a legacy
+//                 frame: live. Before any statement the page is live, and
+//                 run() answers "target changed" as below.
 //   run(writes)   refused while writes() is inert: nothing sent, no dialog, one
 //                 toast ("writes changed" for a statement, "target changed" for
 //                 a closed socket). A run queued behind an open dialog is
 //                 re-checked when its turn comes. Otherwise at most one
-//                 confirmation dialog (iff confirmWrites), opened only with a
-//                 seen heartbeat and the link up (else "target changed"); the
-//                 binding and statement are captured when it opens. While it is
-//                 open, nothing is sent if: the binding changes on a live
-//                 socket ("target changed" at once); a live frame for its
-//                 binding says `off`, `locked` or a word this client does not
-//                 know ("writes changed" at once); the socket closes, or a live
-//                 frame says `applying` (either cause). The last two close it
+//                 confirmation dialog (iff confirmWrites, and always under
+//                 `asked`), opened only with a seen heartbeat and the link up
+//                 (else "target changed"); the binding and statement are
+//                 captured when it opens. While it is open, nothing is sent
+//                 if: the binding changes on a live socket ("target changed"
+//                 at once); a live frame for its binding says a word other
+//                 than the one it opened under (`off`, `locked`, `held`, a word
+//                 this client does not know, `asked` -> `on` and `on` ->
+//                 `asked` alike: "writes changed" at once); the socket closes,
+//                 or a live frame says `applying` (either cause). The last two close it
 //                 at once and the run answers "target changed" with no toast of
 //                 its own: the toast waits for the next socket's first
 //                 heartbeat, "writes changed" when it carries the same binding
@@ -44,7 +49,9 @@
 //                 Runs queued behind a dialog closed this way share its toast:
 //                 one for them all. confirm() re-checks all of this, the write
 //                 statement included. Then the writes in order, each with the
-//                 screen's origin and the captured binding, continuing only
+//                 screen's origin, the captured binding and, after a confirmed
+//                 dialog, `confirmed: true` (the `tail` and a momentary release
+//                 included), continuing only
 //                 after `confirmed`, `mismatch` or `unconfirmed` (a release
 //                 write: also after `unknown`), and never after a coalesced
 //                 result (it counts as not written). A `tail` is sent after the
@@ -270,15 +277,19 @@ function stateWord(writes: HareWrites | null | undefined): string {
   return writes?.state ?? 'on';
 }
 
+/** The words under which writes are accepted: `asked` asks first. */
+const LIVE_WORDS: ReadonlySet<string> = new Set(['on', 'asked']);
+
 const EMPTY: WriteGateState = Object.freeze({ dialog: null, toasts: Object.freeze([]) });
 
 const LIVE: WritesState = Object.freeze({ disabled: false, reason: null });
 
-/** The hover of a statement that is not `on`: its reason, else a sentence naming the target. */
+/** The hover of an inert statement: its reason, else a sentence naming the target. */
 function statementReason(writes: HareWrites, label: string | null): string {
   if (writes.reason != null) return writes.reason;
   const target = label ?? 'this target';
   if (writes.state === 'off') return `Writes are off for ${target}`;
+  if (writes.state === 'held') return `Writes are held for ${target}`;
   if (writes.state === 'applying') return `Applying the new write state for ${target}`;
   // `locked`, and any word this client does not know.
   return `Writes are locked for ${target}`;
@@ -342,7 +353,7 @@ export function createWriteGate(
     let next: { disabled: boolean; reason: string | null } = LIVE;
     let refusal: WriteOutcome | null = null;
     if (ready() !== null) {
-      if (said.writes !== null && said.writes.state !== 'on') {
+      if (said.writes !== null && !LIVE_WORDS.has(said.writes.state)) {
         next = { disabled: true, reason: statementReason(said.writes, label) };
         refusal = localOutcome(clientOutcome('write-state-changed', label));
       }
@@ -354,6 +365,11 @@ export function createWriteGate(
       writesState = next.disabled ? Object.freeze(next) : LIVE;
     }
     return { state: writesState, refusal };
+  }
+
+  /** Whether a run opens the dialog: the page's confirmWrites, and always under `asked`. */
+  function asks(): boolean {
+    return backend.confirmWrites() || stateWord(backend.writes?.().writes) === 'asked';
   }
 
   /** The one toast and result of a run that sent nothing. */
@@ -369,7 +385,7 @@ export function createWriteGate(
     if (hb === null) return { kind: 'closed' };
     if (hb.binding !== d.binding) return { kind: 'target_changed' };
     const word = stateWord(backend.writes?.().writes);
-    if (word === 'on') return null;
+    if (word === d.said) return null;
     if (word === 'applying') return { kind: 'closed' };
     return {
       kind: 'inert',
@@ -543,16 +559,17 @@ export function createWriteGate(
   async function send(
     listed: readonly WriteRequest[],
     tail: Promise<readonly WriteRequest[]> | undefined,
-    binding: string | null
+    binding: string | null,
+    confirmed: boolean
   ): Promise<{ outcomes: WriteOutcome[]; n: number }> {
     const outcomes: WriteOutcome[] = [];
     let n = listed.length;
     let prev: WriteOutcome | null = null;
     const sendOne = async (w: WriteRequest): Promise<boolean> => {
       if (prev !== null && !continuesAfter(prev, w)) return false;
-      const o = localOutcome(
-        await backend.submit(w.pv, w.value, { origin: { ...origin }, binding })
-      );
+      const options: SubmitOptions = { origin: { ...origin }, binding };
+      if (confirmed) options.confirmed = true;
+      const o = localOutcome(await backend.submit(w.pv, w.value, options));
       outcomes.push(o);
       prev = o;
       return true;
@@ -595,7 +612,7 @@ export function createWriteGate(
     const { refusal } = statement();
     if (refusal !== null) return unsent(refusal, listed.length);
 
-    const dialog = backend.confirmWrites();
+    const dialog = asks();
     const multi = listed.length > 1 || tail !== undefined;
     let held = dialog || multi;
     if (held) hold(1);
@@ -630,7 +647,7 @@ export function createWriteGate(
         await previous;
       }
       try {
-        const { outcomes, n } = await send(listed, tail, binding);
+        const { outcomes, n } = await send(listed, tail, binding, dialog);
         toast(summarize(outcomes, n));
         return outcomes;
       } finally {
@@ -642,7 +659,7 @@ export function createWriteGate(
   }
 
   return {
-    confirmWrites: () => backend.confirmWrites(),
+    confirmWrites: asks,
     run: (writes, options) =>
       run(writes, options).catch((): WriteRunResult => {
         // run() never rejects: a fault in the backend is nothing known written.

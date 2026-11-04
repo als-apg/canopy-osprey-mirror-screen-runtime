@@ -16,11 +16,13 @@
 //      (warning)
 //   7. unservable                   -> "<label> · cannot be served" (error)
 //   8. writes `off`                 -> "<label> · writes off" (warning);
-//      writes `locked`, or a word this page does not know, -> "<label> ·
-//      writes locked" (muted)
+//      writes `held` (a watchdog's hold on the session) -> "<label> · writes
+//      held" (warning); writes `locked`, or a word this page does not know,
+//      -> "<label> · writes locked" (muted)
 //   9. writes `applying`            -> cause `switching`: "<label> · switching
 //      target…", any other cause: "<label> · writes on · applying…" (muted)
-//  10. the label (normal)
+//  10. the label (normal); writes `on` and `asked` (a person confirms each
+//      write in the screen's dialog) add nothing
 //
 // A null statement (a frame without the fields) adds nothing, so such a frame
 // renders as rows 1-4, 6, 7 and 10 alone. A reachable state other than `yes`
@@ -57,6 +59,7 @@ export const BADGE_NO_DATA = CONNECTION_HEALTH_LABELS['no-data-connection'];
 export const BADGE_NOT_ANSWERING = fragment('not-answering');
 export const WRITES_SUFFIX = {
   off: '· writes off',
+  held: '· writes held',
   locked: '· writes locked',
   switching: '· switching target…',
   applying: '· writes on · applying…',
@@ -68,8 +71,9 @@ interface WritesRow {
 }
 
 function writesRow(writes: HareWrites | null): WritesRow | null {
-  if (writes === null || writes.state === 'on') return null;
+  if (writes === null || writes.state === 'on' || writes.state === 'asked') return null;
   if (writes.state === 'off') return { suffix: WRITES_SUFFIX.off, tone: 'warning' };
+  if (writes.state === 'held') return { suffix: WRITES_SUFFIX.held, tone: 'warning' };
   if (writes.state === 'applying') {
     const suffix = writes.cause === 'switching' ? WRITES_SUFFIX.switching : WRITES_SUFFIX.applying;
     return { suffix, tone: 'muted' };

@@ -1,7 +1,9 @@
 // The viewer's write gate over a fake Hare backend: the dialog rule, the
 // binding capture and cancellation, the stop rule, serialisation, the dialog
 // queue, dispose, the one summary toast per run, and the writes state with its
-// one refusal (statement not `on`, or a closed socket after a statement).
+// one refusal (statement neither `on` nor `asked`, or a closed socket after a
+// statement), the dialog every run opens under `asked` and the `confirmed`
+// its writes then carry.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -109,8 +111,8 @@ describe('gate.run — the dialog', () => {
     const result = await p;
     expect(result).toEqual([outcome('confirmed'), outcome('confirmed')]);
     expect(f.sent.map((s) => [s.pv, s.value, s.options])).toEqual([
-      ['A', 1, { origin: ORIGIN, binding: 'va@1' }],
-      ['B', 'on', { origin: ORIGIN, binding: 'va@1' }],
+      ['A', 1, { origin: ORIGIN, binding: 'va@1', confirmed: true }],
+      ['B', 'on', { origin: ORIGIN, binding: 'va@1', confirmed: true }],
     ]);
     expect(gate.getSnapshot().dialog).toBeNull();
     expect(gate.getSnapshot().toasts.map((t) => [t.outcome, t.text])).toEqual([
@@ -202,7 +204,7 @@ describe('gate.run — the dialog', () => {
     expect(f.sent).toEqual([]);
   });
 
-  it('sends the binding captured when the dialog opened', async () => {
+  it('sends the binding captured when the dialog opened, and no confirmed key without a dialog', async () => {
     const f = fakeBackend({ confirm: false });
     f.st.answers = [outcome('confirmed')];
     const gate = createWriteGate(f.backend, ORIGIN);
@@ -883,7 +885,7 @@ describe('gate.writes — the state widgets read', () => {
 });
 
 describe('gate.run — the writes refusal', () => {
-  it.each(['off', 'locked', 'applying', 'frozen'])(
+  it.each(['off', 'locked', 'applying', 'held', 'frozen'])(
     'under writes: %s sends nothing and opens no dialog, with one "writes changed" toast',
     async (word) => {
       for (const confirm of [true, false]) {
@@ -947,6 +949,124 @@ describe('gate.run — the writes refusal', () => {
     expect(await second).toEqual([outcome('target_changed', WRITES_CHANGED_SIM)]);
     expect(gate.getSnapshot().dialog).toBeNull();
     expect(f.sent).toEqual([]);
+  });
+});
+
+// `asked`: live, and every run asks first, whatever confirmWrites says; the
+// writes of a confirmed run carry `confirmed: true`. `held`: inert with the
+// hold's reason. A word change under an open dialog closes it, `asked` <-> `on`
+// included.
+describe('gate.run — asked and held', () => {
+  const asked = () => ws('asked');
+  const held = (reason: string | null = 'writes are held while a watchdog flag is open') =>
+    ws('held', reason);
+
+  it('under asked a run opens the dialog with confirmWrites off; confirm sends every write with confirmed: true', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    f.state(asked());
+    const gate = createWriteGate(f.backend, ORIGIN);
+    expect(gate.writes()).toEqual({ disabled: false, reason: null });
+    expect(gate.confirmWrites()).toBe(true);
+    const p = gate.run([w('A', 1), w('B', 2)]);
+    await tick();
+    const dialog = gate.getSnapshot().dialog!;
+    expect(dialog.writes).toEqual([w('A', 1), w('B', 2)]);
+    expect(f.sent).toEqual([]);
+    gate.confirm(dialog.id);
+    expect(await p).toEqual([outcome('confirmed'), outcome('confirmed')]);
+    expect(f.sent.map((s) => [s.pv, s.options])).toEqual([
+      ['A', { origin: ORIGIN, binding: 'va@1', confirmed: true }],
+      ['B', { origin: ORIGIN, binding: 'va@1', confirmed: true }],
+    ]);
+  });
+
+  it('under asked the momentary release and the tail carry confirmed: true too', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    f.state(asked());
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('P', 1)], { tail: Promise.resolve([w('P', 0, true)]) });
+    await tick();
+    gate.confirm(gate.getSnapshot().dialog!.id);
+    expect(await p).toEqual([outcome('confirmed'), outcome('confirmed')]);
+    expect(f.sent.map((s) => [s.pv, s.value, s.options.confirmed])).toEqual([
+      ['P', 1, true],
+      ['P', 0, true],
+    ]);
+  });
+
+  it('under asked decline sends nothing', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.state(asked());
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('A', 1)]);
+    await tick();
+    gate.decline(gate.getSnapshot().dialog!.id);
+    expect(await p).toBe('declined');
+    expect(f.sent).toEqual([]);
+    expect(gate.getSnapshot().toasts).toEqual([]);
+  });
+
+  it('confirmWrites() reads the page under on and true under asked, at each run', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.state(ws('on'));
+    const gate = createWriteGate(f.backend, ORIGIN);
+    expect(gate.confirmWrites()).toBe(false);
+    f.state(asked());
+    expect(gate.confirmWrites()).toBe(true);
+    f.state(ws('on'));
+    expect(gate.confirmWrites()).toBe(false);
+  });
+
+  it.each([
+    ['asked', 'held', held()],
+    ['asked', 'on', ws('on')],
+    ['on', 'asked', ws('asked')],
+  ])(
+    '%s -> %s while the dialog is open closes it: "writes changed", nothing sent',
+    async (from, _to, next) => {
+      const f = fakeBackend({ confirm: true });
+      f.st.label = 'Simulator';
+      f.state(ws(from));
+      const gate = createWriteGate(f.backend, ORIGIN);
+      const p = gate.run([w('A', 1)]);
+      await tick();
+      expect(gate.getSnapshot().dialog).not.toBeNull();
+      f.state(next);
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      expect(gate.getSnapshot().dialog).toBeNull();
+      expect(await p).toEqual([outcome('target_changed', WRITES_CHANGED_SIM)]);
+      expect(f.sent).toEqual([]);
+      expect(gate.getSnapshot().toasts.map((t) => t.text)).toEqual([WRITES_CHANGED_SIM]);
+    }
+  );
+
+  it('confirm() under asked re-checks the statement: held unannounced is "writes changed"', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.label = 'Simulator';
+    f.state(asked());
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('A', 1)]);
+    await tick();
+    const id = gate.getSnapshot().dialog!.id;
+    f.st.writes = held();
+    gate.confirm(id);
+    expect(await p).toEqual([outcome('target_changed', WRITES_CHANGED_SIM)]);
+    expect(f.sent).toEqual([]);
+  });
+
+  it('held is inert with the hold\'s reason, else "Writes are held for <label>"', () => {
+    const f = fakeBackend();
+    f.st.label = 'Simulator';
+    const gate = createWriteGate(f.backend, ORIGIN);
+    f.state(held());
+    expect(gate.writes()).toEqual({
+      disabled: true,
+      reason: 'writes are held while a watchdog flag is open',
+    });
+    f.state(held(null));
+    expect(gate.writes()).toEqual({ disabled: true, reason: 'Writes are held for Simulator' });
   });
 });
 

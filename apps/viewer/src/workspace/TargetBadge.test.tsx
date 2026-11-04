@@ -345,6 +345,8 @@ describe('TargetBadge statement rows (heartbeat vectors)', () => {
   });
 
   it.each([
+    ['asked', 'asked', 'Simulator', 'normal'],
+    ['held', 'session_held', 'Simulator · writes held', 'warning'],
     ['locked', 'ceiling', 'Simulator · writes locked', 'muted'],
     ['off', 'narrowing', 'Simulator · writes off', 'warning'],
     ['applying', 'applying', 'Simulator · writes on · applying…', 'muted'],

@@ -155,6 +155,37 @@ describe('machine toasts — writes', () => {
     ]);
   });
 
+  it('asked reads as on: on → asked → on is silent, off → asked is "Writes are on"', () => {
+    const p = track(page());
+    const ASKED: HareWrites = { state: 'asked', reason: null, cause: 'asked' };
+    p.frame({ writes: ON });
+    p.frame({ writes: ASKED });
+    p.frame({ writes: ON });
+    expect(p.texts()).toEqual([]);
+    p.frame({ writes: OFF });
+    p.frame({ writes: ASKED });
+    expect(p.texts()).toEqual([
+      OFF_REASON[0].toUpperCase() + OFF_REASON.slice(1),
+      'Writes are on for Simulator',
+    ]);
+  });
+
+  it('held toasts the hold\'s reason, else "Writes are held for <label>"', () => {
+    const p = track(page());
+    p.frame({ writes: ON });
+    p.frame({
+      writes: { state: 'held', reason: 'writes are held: a flag is open', cause: 'session_held' },
+    });
+    p.frame({ writes: ON });
+    p.frame({ writes: { state: 'held', reason: null, cause: 'session_held' } });
+    expect(p.texts()).toEqual([
+      'Writes are held: a flag is open',
+      'Writes are on for Simulator',
+      'Writes are held for Simulator',
+    ]);
+    expect(p.toaster.getSnapshot().toasts[0]).toMatchObject({ kind: 'warning' });
+  });
+
   it('a change of reason under the same state does not toast', () => {
     const p = track(page());
     p.frame({ writes: OFF });

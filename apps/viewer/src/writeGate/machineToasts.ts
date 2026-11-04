@@ -6,7 +6,8 @@
 // The emitter reads the page's backend badge store (backendBadge.ts) and
 // keeps a page-lifetime memory for the current binding: the last definite
 // reachability (`yes` / `no`) and the last definite write state (`on`,
-// `off`, `locked`; a word this client does not know reads `locked`).
+// `off`, `locked`, `held`; `asked` reads `on`, since writes stay available,
+// and a word this client does not know reads `locked`).
 //
 //   definite only   a toast marks a change between two definite states of
 //                   the same binding. `unknown`, `applying`, a frame with no
@@ -23,9 +24,10 @@
 //                   the window; changes inside it are only recorded; at its
 //                   end the then-current state toasts if it differs from the
 //                   last one toasted (and opens a new window).
-//   writes          `on` reads "Writes are on for <label>"; `off` / `locked`
-//                   the statement's reason with its first letter upper-cased,
-//                   or "Writes are off|locked for <label>" when it has none.
+//   writes          `on` reads "Writes are on for <label>"; `off` / `locked` /
+//                   `held` the statement's reason with its first letter
+//                   upper-cased, or "Writes are off|locked|held for <label>"
+//                   when it has none.
 //                   The toast waits one task: when a screen's write gate
 //                   reports the same change (its "writes changed" toast, a dialog that
 //                   the change closed), the machine toast is dropped.
@@ -126,7 +128,7 @@ export interface MachineToaster {
 }
 
 type Reach = 'yes' | 'no';
-type Writes = 'on' | 'off' | 'locked';
+type Writes = 'on' | 'off' | 'locked' | 'held';
 
 function definiteReach(r: HareReachable | null): Reach | null {
   const word = r?.state;
@@ -135,8 +137,9 @@ function definiteReach(r: HareReachable | null): Reach | null {
 
 function definiteWrites(w: HareWrites | null): Writes | null {
   if (w === null || w.state === 'applying') return null;
-  if (w.state === 'on') return 'on';
+  if (w.state === 'on' || w.state === 'asked') return 'on';
   if (w.state === 'off') return 'off';
+  if (w.state === 'held') return 'held';
   return 'locked';
 }
 
@@ -149,7 +152,7 @@ export function writesToastText(word: Writes, w: HareWrites, label: string | nul
   const target = label ?? 'this target';
   if (word === 'on') return `Writes are on for ${target}`;
   if (w.reason != null && w.reason !== '') return capitalised(w.reason);
-  return word === 'off' ? `Writes are off for ${target}` : `Writes are locked for ${target}`;
+  return `Writes are ${word} for ${target}`;
 }
 
 /** The text of a reachability toast. */

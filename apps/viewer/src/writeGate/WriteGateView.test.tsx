@@ -7,7 +7,12 @@ import { useState } from 'react';
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
-import type { HareHeartbeatState, WriteOutcome, WriteOutcomeKind } from '@slaclab/canopy-client';
+import type {
+  HareHeartbeatState,
+  HareWrites,
+  WriteOutcome,
+  WriteOutcomeKind,
+} from '@slaclab/canopy-client';
 
 let pvState: Record<string, { connected: boolean; value: number | string }> = {};
 const directPuts: Array<[string, unknown]> = [];
@@ -40,15 +45,19 @@ function outcome(kind: WriteOutcomeKind, detail: string = kind, coalesced = fals
 
 let confirm = true;
 let hb: HareHeartbeatState = { seen: true, binding: 'va@1' };
+/** The socket's write statement; null is a legacy frame. */
+let said: HareWrites | null = null;
 let answers: WriteOutcome[] = [];
 let sent: Array<[string, unknown]> = [];
+let sentConfirmed: boolean[] = [];
 const hbListeners = new Set<(s: HareHeartbeatState) => void>();
 
 const backend: WriteBackend = {
   heartbeat: () => hb,
   linkUp: () => true,
-  submit: async (pv, value) => {
+  submit: async (pv, value, options) => {
     sent.push([pv, value]);
+    sentConfirmed.push(options.confirmed === true);
     return answers.shift() ?? outcome('confirmed', 'written');
   },
   onHeartbeat: (l) => {
@@ -57,6 +66,7 @@ const backend: WriteBackend = {
   },
   confirmWrites: () => confirm,
   machineLabel: () => 'VA simulator',
+  writes: () => ({ writes: said, seen: said !== null }),
 };
 
 beforeEach(() => {
@@ -73,8 +83,10 @@ beforeEach(() => {
   directPuts.length = 0;
   confirm = true;
   hb = { seen: true, binding: 'va@1' };
+  said = null;
   answers = [];
   sent = [];
+  sentConfirmed = [];
 });
 afterEach(() => {
   cleanup();
@@ -281,7 +293,35 @@ describe('the dialog', () => {
     await flush();
     expect(dialogs()).toHaveLength(0);
     expect(sent).toEqual([['SIM:CMD', 2]]);
+    expect(sentConfirmed).toEqual([false]);
     expect(toasts()).toEqual([['confirmed', 'written']]);
+  });
+
+  it('under asked: a dialog with confirmWrites off, and the confirmed writes say so', async () => {
+    confirm = false;
+    said = { state: 'asked', reason: null, cause: 'asked' };
+    KINDS[4].render();
+    KINDS[4].act();
+    await flush();
+    expect(dialogs()).toHaveLength(1);
+    expect(sent).toEqual([]);
+    await answer('canopy-write-confirm');
+    expect(sent).toEqual(KINDS[4].writes);
+    expect(sentConfirmed).toEqual([true, true]);
+    expect(toasts()).toEqual([['confirmed', 'written']]);
+  });
+
+  it("under held: the widget is inert with the hold's reason; a click opens nothing", async () => {
+    const reason = 'writes are held while a watchdog flag is open';
+    said = { state: 'held', reason, cause: 'session_held' };
+    KINDS[1].render();
+    const button = document.querySelector('button') as HTMLButtonElement;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('title')).toBe(reason);
+    KINDS[1].act();
+    await flush();
+    expect(dialogs()).toHaveLength(0);
+    expect(sent).toEqual([]);
   });
 
   it('drops a waiting click when the screen unmounts', async () => {

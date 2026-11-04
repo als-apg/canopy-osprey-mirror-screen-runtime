@@ -1,12 +1,15 @@
 // The viewer against the machine's statement of whether it accepts writes, as
 // the mocked PV socket's heartbeat frames carry it (machineFrames.ts).
 //
-// Write-inert widgets: while the statement is not `on`, a machine write widget
+// Write-inert widgets: while the statement is neither `on` nor `asked`, a machine write widget
 // (HCM 01) and an action button whose list holds a machine write stay
 // focusable, are aria-disabled, carry the reason as hover and accessible
 // description, and a click or Enter sends no put, opens no dialog, runs
 // nothing in its list and toasts nothing. A list of only navigation and
 // loc:// writes stays live. A legacy frame (no statement) changes nothing.
+// `asked` asks before every write whatever `confirmWrites` says, and the PUT
+// then carries `confirmed: true`; `held` is inert with the hold's reason and
+// the badge says "writes held".
 //
 // Machine toasts: the page's own notices, visual only, titled by the machine
 // label. A change between definite states of the same binding toasts once;
@@ -217,6 +220,23 @@ test.describe('write-inert widgets', () => {
     }
   });
 
+  test("writes held: inert with the hold's reason, and the badge says writes held", async ({
+    page,
+  }) => {
+    const held = recordedWritesFrame('held-with-reason');
+    const holdReason = (held.frame.writes as { reason: string }).reason;
+    const { socket, puts } = await openScreen(page, held.frame);
+    const hcm = button(page, HCM);
+    await expect(hcm).toHaveAttribute('aria-disabled', 'true');
+    await expect(hcm).toHaveAttribute('title', holdReason);
+    await expect(badge(page)).toHaveText(held.expected.badge as string);
+    await hcm.click({ force: true });
+    await page.waitForTimeout(300);
+    expect(puts.count).toBe(0);
+    expect(socket.received.put ?? 0).toBe(0);
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
   test('recorded legacy frame: nothing is inert and HCM 01 opens the write dialog', async ({
     page,
   }) => {
@@ -249,6 +269,70 @@ function sim(state: string, cause: string | null = null, binding = 'sim@3') {
 
 const bts = (state: string) =>
   heartbeat({ backend: 'bts', label: 'BTS', binding: 'bts@4', writes: writes(state) });
+
+test.describe('asked', () => {
+  /** Opens the screen with the served `confirmWrites` false under Simulator `asked`. */
+  async function openAsked(page: Page) {
+    const socket = await installHareMock(page, { onOpen: sim('asked', 'asked') });
+    // Registered after installHareMock's own config route, so it answers first.
+    await page.route('**/config.json', async (route) => {
+      const response = await route.fetch();
+      const config = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...config, pvMode: 'hare', confirmWrites: false } });
+    });
+    const puts = await installPvWriteRoute(page);
+    await serveMachineScreen(page);
+    await page.goto(`${PREFIX}embed/${SCREEN}`);
+    await expect(button(page, HCM)).toBeVisible();
+    return { socket, puts };
+  }
+
+  test('asks with confirmWrites off; the confirmed write carries confirmed: true', async ({
+    page,
+  }) => {
+    const { puts } = await openAsked(page);
+    const hcm = button(page, HCM);
+    await expect(hcm).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(badge(page)).toHaveText('Simulator');
+    await hcm.click();
+    await expect(dialog(page)).toBeVisible();
+    expect(puts.count).toBe(0);
+    await page.getByTestId('canopy-write-confirm').click();
+    await expect.poll(() => puts.count).toBe(1);
+    expect(puts.writes[0].body).toMatchObject({ confirmed: true });
+    await expect(toasts(page)).toHaveText(['written']);
+  });
+
+  test('a flip to held while the dialog is open closes it: "writes changed", nothing written', async ({
+    page,
+  }) => {
+    const { socket, puts } = await openAsked(page);
+    await button(page, HCM).click();
+    await expect(dialog(page)).toBeVisible();
+    await socket.send(sim('held', 'session_held'));
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(toasts(page)).toHaveText([WRITES_CHANGED_SIM]);
+    await expect(button(page, HCM)).toHaveAttribute('aria-disabled', 'true');
+    await expect(badge(page)).toHaveText('Simulator · writes held');
+    expect(puts.count).toBe(0);
+  });
+
+  test('a flip to on while the dialog is open closes it too, and the next click sends without a dialog', async ({
+    page,
+  }) => {
+    const { socket, puts } = await openAsked(page);
+    await button(page, HCM).click();
+    await expect(dialog(page)).toBeVisible();
+    await socket.send(sim('on'));
+    await expect(dialog(page)).toHaveCount(0);
+    await expect(toasts(page)).toHaveText([WRITES_CHANGED_SIM]);
+    expect(puts.count).toBe(0);
+    await button(page, HCM).click();
+    await expect.poll(() => puts.count).toBe(1);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(puts.writes[0].body).not.toHaveProperty('confirmed');
+  });
+});
 
 test.describe('an open write dialog and the statement', () => {
   /** Opens the screen under Simulator `on` and opens HCM 01's dialog. */
@@ -530,6 +614,8 @@ test.describe('machine toasts', () => {
     'flip-off-during-an-outage',
     'flip-on-during-an-outage',
     'switch-during-an-outage',
+    'asked-to-held',
+    'asked-to-on',
   ]) {
     test(`sequence ${id}: its toast count`, async ({ page }) => {
       const sequence = recordedSequence(id);

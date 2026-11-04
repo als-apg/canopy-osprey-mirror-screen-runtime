@@ -46,7 +46,7 @@ it — the viewer talks to the origin that serves it.
 | `colorScheme`   | bundled | Flattened color scheme (screen-ir `FlatScheme`); an invalid value falls back to the bundled default      |
 | `backend`       | absent  | Hare mode: the data backend's identity `{ name, label, notice }`, or `null` when it was unreachable      |
 | `binding`       | absent  | Hare mode: the data backend's binding id, or `null`. Seeds the backend badge with `backend`              |
-| `confirmWrites` | `true`  | Hare mode: ask before every machine write; only a literal `false` turns it off                           |
+| `confirmWrites` | `true`  | Hare mode: ask before each machine write; only a literal `false` turns it off; `asked` asks anyway       |
 | `workspace`     | absent  | `{ "path", "protocol" }` of the server's shared workspace routes; absent makes no workspace request      |
 | `home`          | absent  | `{ "screen" }`: the library screen an embedded workspace opens on its first visit                        |
 
