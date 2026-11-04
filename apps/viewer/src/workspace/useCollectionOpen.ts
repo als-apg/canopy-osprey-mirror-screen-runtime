@@ -49,7 +49,7 @@
 //   before that is held; a later call replaces a held one); an unknown ref
 //   or an absent/erroring store notifies once. `_canopyOpen=<ref>`
 //   (OPEN_PARAM), latched by the page and passed in as openRef, is the
-//   first-render caller; the host's in-place `osprey-navigate` message is the
+//   first-render caller; the host's in-place `canopy-host-navigate` message is the
 //   other. The parameter, when in the URL, is then dropped with a replace
 //   navigation (writeUrl). Without chrome a deep link is ignored: no open,
 //   no URL write, one console.warn.

@@ -34,6 +34,12 @@ import {
   isHostEmbedded,
   resetHostEmbeddedForTests,
 } from './hostEmbed.js';
+import { traceSrc } from '../TraceTab.js';
+import {
+  HOST_SHELL_CAPABILITIES,
+  STANDALONE_CAPABILITIES,
+  embeddedCapabilities,
+} from './hostCapabilities.js';
 
 const FAKE_PARENT = {} as Window;
 
@@ -170,5 +176,30 @@ describe('applyHostEmbeddedClass', () => {
     at('/?embedded=true');
     applyHostEmbeddedClass();
     expect(document.body.classList.contains('embedded')).toBe(false);
+  });
+});
+
+describe('embeddedCapabilities', () => {
+  it('is the host shell when host-embedded', () => {
+    stubParent();
+    at('/?embedded=true');
+    expect(embeddedCapabilities()).toEqual(HOST_SHELL_CAPABILITIES);
+  });
+
+  it('is standalone when not host-embedded', () => {
+    at('/?embedded=true');
+    expect(embeddedCapabilities()).toEqual(STANDALONE_CAPABILITIES);
+  });
+});
+
+describe('traceSrc hostbar=1', () => {
+  it('appends hostbar=1 when the host owns the header, and only then', () => {
+    const url = new URL(traceSrc('trace/', 'pv=A', 'dark', 'dark', true));
+    expect(url.searchParams.get('hostbar')).toBe('1');
+    expect(url.searchParams.get('embedded')).toBe('true');
+    expect(url.searchParams.get('pv')).toBe('A');
+    const plain = new URL(traceSrc('trace/', 'pv=A', 'dark'));
+    expect(plain.searchParams.has('hostbar')).toBe(false);
+    expect(plain.href).not.toContain('hostbar');
   });
 });

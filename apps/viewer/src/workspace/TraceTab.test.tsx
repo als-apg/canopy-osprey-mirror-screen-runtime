@@ -160,9 +160,9 @@ describe('TraceTab src', () => {
     expect(iframe.src).toBe(expected);
   });
 
-  it('adds hub=1 only when the host owns the header', () => {
+  it('adds hostbar=1 only when the host owns the header', () => {
     const { iframe } = renderTab();
-    expect(new URL(iframe.src).searchParams.has('hub')).toBe(false);
+    expect(new URL(iframe.src).searchParams.has('hostbar')).toBe(false);
     cleanup();
     const hosted = render(
       <HostCapabilitiesContext.Provider value={HOST_SHELL_CAPABILITIES}>
@@ -170,7 +170,7 @@ describe('TraceTab src', () => {
       </HostCapabilitiesContext.Provider>
     );
     const frame = hosted.container.querySelector('iframe')!;
-    expect(new URL(frame.src).searchParams.get('hub')).toBe('1');
+    expect(new URL(frame.src).searchParams.get('hostbar')).toBe('1');
   });
 
   it('omits the query separator when the query is empty', () => {

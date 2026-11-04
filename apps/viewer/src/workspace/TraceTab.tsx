@@ -8,7 +8,7 @@
 // the data browser).
 //
 //   src         frozen at first mount: `<path>?<query>&theme=<id>&embedded=true`
-//               resolved against document.baseURI, plus `&hub=1` when the
+//               resolved against document.baseURI, plus `&hostbar=1` when the
 //               host owns the header (HostCapabilities.headerOwnedByHost, so
 //               the tool reports its actions instead of drawing them); <id>
 //               is the host theme id when it is well-formed, else the mode.
@@ -106,18 +106,18 @@ export interface TraceTabProps {
  * `theme` reaches the URL only when it is a well-formed host theme id; any
  * other value could carry its own `&key=value` pairs into the frame's query
  * (the viewer URL it comes from is not trusted), so the mode stands in.
- * `hub` (the host owns the header) appends `hub=1`.
+ * `hostBar` (the host owns the header) appends `hostbar=1`.
  */
 export function traceSrc(
   path: string,
   query: string,
   theme: string | null | undefined,
   mode: ThemeName = 'dark',
-  hub = false
+  hostBar = false
 ): string {
   const prefix = query ? `${query}&` : '';
   const t = typeof theme === 'string' && HOST_THEME_ID.test(theme) ? theme : mode;
-  const suffix = hub ? '&hub=1' : '';
+  const suffix = hostBar ? '&hostbar=1' : '';
   return new URL(`${path}?${prefix}theme=${t}&embedded=true${suffix}`, document.baseURI).href;
 }
 

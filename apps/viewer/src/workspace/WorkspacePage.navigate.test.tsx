@@ -1,6 +1,6 @@
 // WorkspacePage's half of in-place navigation from the host: the page
-// posts osprey-navigate-ready to window.parent once its handler is installed
-// and in reply to every probe from that parent; osprey-navigate is taken only
+// posts canopy-host-navigate-ready to window.parent once its handler is installed
+// and in reply to every probe from that parent; canopy-host-navigate is taken only
 // from window.parent with the page's origin, the router basename is stripped,
 // ?_canopyOpen=<ref> runs the collections deep link, and any other path opens
 // through the outside-URL effect (append; focus when already open).
@@ -193,7 +193,7 @@ function listGets(): number {
 }
 
 describe('navigation readiness', () => {
-  it('posts osprey-navigate-ready to the parent on mount, with the page origin', async () => {
+  it('posts canopy-host-navigate-ready to the parent on mount, with the page origin', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
     expect(readyPosts()).toBe(1);
@@ -226,7 +226,7 @@ describe('navigation readiness', () => {
   });
 });
 
-describe('osprey-navigate', () => {
+describe('canopy-host-navigate', () => {
   it('a path URL appends its tab, and focuses one already open', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
