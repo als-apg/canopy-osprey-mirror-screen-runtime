@@ -1424,9 +1424,12 @@ describe('WorkspacePage tool instances', () => {
       const body = JSON.parse(String(init?.body)) as { name: string; query: string; kind?: string };
       writes.push({ url, body });
       if (putStatus === 409) {
-        return new Response(JSON.stringify({ error: `view '${id}' is of another kind` }), {
-          status: 409,
-        });
+        return new Response(
+          JSON.stringify({ code: 'kind_conflict', detail: `view '${id}' is of another kind` }),
+          {
+            status: 409,
+          }
+        );
       }
       const view = { id, ...body };
       views = [...views.filter((v) => v.id !== id), view];

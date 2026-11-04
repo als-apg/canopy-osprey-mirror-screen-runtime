@@ -114,7 +114,7 @@ async function failure(response: Response, what: string): Promise<Error> {
   let detail = `${response.status} ${response.statusText}`.trim();
   try {
     const body: unknown = await response.json();
-    if (isRecord(body) && typeof body.error === 'string') detail = body.error;
+    if (isRecord(body) && typeof body.detail === 'string') detail = body.detail;
   } catch {
     // No JSON body: the status line says enough.
   }

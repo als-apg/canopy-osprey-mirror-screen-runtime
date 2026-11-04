@@ -106,7 +106,7 @@ describe('requests', () => {
   });
 
   it("reports the server's error text and refuses a bad name before any request", async () => {
-    serve(400, { error: 'query is over 4096 bytes' });
+    serve(400, { code: 'invalid_view', detail: 'query is over 4096 bytes' });
     await expect(saveView('views', 'http://h/', 'X', 'pv=A')).rejects.toThrow(
       'Could not save the view: query is over 4096 bytes'
     );
@@ -179,7 +179,7 @@ describe('requests', () => {
   });
 
   it('shows a 409 (another kind under that id) as the error', async () => {
-    serve(409, { error: "view 'rf' is a trace view" });
+    serve(409, { code: 'kind_conflict', detail: "view 'rf' is a trace view" });
     await expect(saveView('views', 'http://h/', 'RF', 'pv=A')).rejects.toThrow(
       "Could not save the view: view 'rf' is a trace view"
     );
@@ -188,7 +188,7 @@ describe('requests', () => {
   it('treats deleting a missing view as done', async () => {
     serve(404);
     await expect(deleteView('views', 'http://h/', 'gone')).resolves.toBeUndefined();
-    serve(403, { error: 'cross-site write refused' });
+    serve(403, { code: 'cross_site', detail: 'cross-site write refused' });
     await expect(deleteView('views', 'http://h/', 'x')).rejects.toThrow('cross-site');
   });
 });
