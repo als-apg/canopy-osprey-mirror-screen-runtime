@@ -3,11 +3,17 @@
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { useReducer, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ScreenHeader } from './ScreenHeader.js';
+import { tileFloor, tileStep } from './workspace/dock/tileHeaderFit.js';
+import { TILE_HEADER_FIT, TileHeaderContext, tileHeaderCaps } from './workspace/dock/TileBar.js';
 import type { ScreenHistory, ScreenZoom } from './ScreenHeader.js';
 import type { ScreenActionContext } from './screenActions/types.js';
+import { useKeyedZoom, ZoomStore } from './ZoomContext.js';
+import { stepZoom } from './zoom.js';
+import { EMPTY_TABS, tabsReducer } from './workspace/tabs.js';
 
 // Same in-memory localStorage shim as App.test.tsx: Node >= 25 can shadow
 // jsdom's with an unusable global, and canopy-shell's themeStore reads
@@ -209,6 +215,86 @@ describe('ScreenHeader history buttons', () => {
   });
 });
 
+/**
+ * One screen slot as the workspace wires it: the tabs reducer's history for
+ * ◀ ▶ and the shared ZoomStore keyed by the slot's current screen.
+ */
+function SlotHarness({ store }: { store: ZoomStore }) {
+  const [state, dispatch] = useReducer(
+    tabsReducer,
+    tabsReducer(EMPTY_TABS, { type: 'open', key: 'a/one', mode: 'append' })
+  );
+  const [next, setNext] = useState(0);
+  const key = state.active ?? '';
+  const { mode, scale: manual, setFit, setManual } = useKeyedZoom(store, key);
+  const scale = mode === 'manual' ? manual : 1;
+  const entry = state.history?.[key];
+  return (
+    <>
+      <ScreenHeader
+        title={key}
+        zoom={{
+          scale,
+          fit: mode === 'fit',
+          onZoomOut: () => setManual(stepZoom(scale, -1)),
+          onZoomIn: () => setManual(stepZoom(scale, 1)),
+          onFit: setFit,
+          onActualSize: () => setManual(1),
+        }}
+        history={{
+          back: {
+            enabled: (entry?.back.length ?? 0) > 0,
+            onClick: () => dispatch({ type: 'historyBack', key }),
+          },
+          forward: {
+            enabled: (entry?.forward.length ?? 0) > 0,
+            onClick: () => dispatch({ type: 'historyForward', key }),
+          },
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          setNext(next + 1);
+          dispatch({ type: 'open', key: `a/two${next}`, mode: 'replace' });
+        }}
+      >
+        replace
+      </button>
+    </>
+  );
+}
+
+describe('ScreenHeader history in a slot', () => {
+  it("◀ restores the old screen's own zoom", () => {
+    const store = new ZoomStore('/');
+    render(<SlotHarness store={store} />);
+    const percent = () => screen.getByTestId('zoom-percent').textContent;
+    const title = () => screen.getByTestId('screen-header-title').textContent;
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveProperty('disabled', true);
+    // The operator zooms the first screen past 100%.
+    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    const zoomed = percent();
+    expect(zoomed).not.toBe('100%');
+    // A single click replaces it: the new screen opens at Fit.
+    fireEvent.click(screen.getByRole('button', { name: 'replace' }));
+    expect(title()).toBe('a/two0');
+    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Forward' })).toHaveProperty('disabled', true);
+    // ◀ brings the replaced screen back at the zoom it had.
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(title()).toBe('a/one');
+    expect(percent()).toBe(zoomed);
+    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveProperty('disabled', true);
+    // ▶ returns to the replacing screen, still at Fit.
+    fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
+    expect(title()).toBe('a/two0');
+    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
 /** A header `header` px wide whose fixed parts are 100 px each. */
 function stubWidths(header: number, part = 100) {
   // A real observer reports once on observe.
@@ -369,6 +455,207 @@ describe('ScreenHeader in a narrow header', () => {
     render(<ScreenHeader title="GTL" history={history()} />);
     expect(screen.queryByRole('button', { name: 'More controls' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Back' })).toBeDefined();
+  });
+});
+
+// Inside a tile bar (TileHeaderContext, which TileActions provides) the header fits the lane its
+// tile leaves it, in this order: the path, the title, the zoom group into "41 % ▾", the actions
+// into "⋯", then ◀ ▶. The standalone cases above stay as they are.
+describe('ScreenHeader in a tile bar (the header fits its tile)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // The parts as a real tile lays them out: ◀ ▶ 64, title 120, path 150, zoom group 210,
+  // actions 288 (six icons). The floor is ◀ ▶ + the zoom button + "⋯": 64 + 72 + 32 = 168.
+  const PARTS = { history: 64, title: 120, detail: 150, zoom: 210, actions: 288 };
+  const HAS = { detail: true, zoom: true, actions: true };
+  const LONE_TAB = 170; // the grip and one "Facility overview" tab
+
+  /** Stubs the lane at `lane` px and every part at its PARTS width. */
+  function stubTile(lane: number) {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        private readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe() {
+          this.callback();
+        }
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('screen-header') ? lane : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const has = (name: string) => this.classList.contains(name);
+      if (has('screen-header__history')) return PARTS.history;
+      if (has('screen-header__title-text')) return PARTS.title;
+      if (has('screen-header__detail')) return PARTS.detail;
+      if (has('screen-header__zoom')) return PARTS.zoom;
+      if (has('cds--header__global')) return PARTS.actions;
+      return 0;
+    });
+  }
+
+  function renderInTile(lane: number, reportNeed?: (px: number) => void) {
+    stubTile(lane);
+    const z = zoom();
+    const h = history();
+    render(
+      <TileHeaderContext.Provider value={{ ...TILE_HEADER_FIT, reportNeed }}>
+        <ScreenHeader
+          title="Facility overview"
+          detail="library/facility/overview"
+          zoom={z}
+          history={h}
+          actions={actionCtx}
+        />
+      </TileHeaderContext.Provider>
+    );
+    return { bar: screen.getByTestId('screen-header'), z, h };
+  }
+
+  const shows = (bar: HTMLElement) => ({
+    step: bar.dataset.step,
+    path: bar.querySelector('.screen-header__detail') !== null,
+    title: bar.querySelector('.screen-header__title') !== null,
+    zoom: bar.querySelector('.screen-header__zoom') !== null,
+    zoomButton: bar.querySelector('.screen-header__zoom-menu') !== null,
+    actions: bar.querySelector('[data-screen-action]') !== null,
+    history: bar.querySelector('[aria-label="Back"]') !== null,
+    more: bar.querySelector('.screen-header__more') !== null,
+  });
+
+  it.each([
+    // tile px, the step its lane reaches
+    [1600, 0],
+    [800, 2],
+    [500, 4],
+    [350, 4],
+  ])('a %i px tile with one tab: step %i', (tile, step) => {
+    const floor = tileFloor(PARTS, TILE_HEADER_FIT, HAS);
+    const lane = tileHeaderCaps(tile, LONE_TAB, 0, floor, true).actions;
+    expect(tileStep(lane, PARTS, TILE_HEADER_FIT, HAS)).toBe(step);
+    // The tab keeps its whole name at every one of these widths.
+    expect(tile - lane).toBe(LONE_TAB);
+  });
+
+  it('collapses in order: path, title, zoom group, actions, then ◀ ▶', () => {
+    const order = [900, 700, 600, 450, 300, 120, 90].map((lane) => {
+      const { bar } = renderInTile(lane);
+      const seen = shows(bar);
+      cleanup();
+      vi.restoreAllMocks();
+      return seen;
+    });
+    expect(order.map((s) => s.step)).toEqual(['0', '1', '2', '3', '4', '5', '6']);
+    expect(order.map((s) => s.path)).toEqual([true, false, false, false, false, false, false]);
+    expect(order.map((s) => s.title)).toEqual([true, true, false, false, false, false, false]);
+    expect(order.map((s) => s.zoom)).toEqual([true, true, true, false, false, false, false]);
+    expect(order.map((s) => s.zoomButton)).toEqual([false, false, false, true, true, true, false]);
+    expect(order.map((s) => s.actions)).toEqual([true, true, true, true, false, false, false]);
+    expect(order.map((s) => s.history)).toEqual([true, true, true, true, true, false, false]);
+    expect(order.map((s) => s.more)).toEqual([false, false, false, false, true, true, true]);
+  });
+
+  it('never shows the SCREEN label in a tile', () => {
+    const { bar } = renderInTile(2000);
+    expect(bar.classList.contains('screen-header--no-label')).toBe(true);
+    expect(bar.classList.contains('screen-header--tile')).toBe(true);
+  });
+
+  it('puts Fit, 1:1 and the zoom steps behind the "41 % ▾" button', () => {
+    renderInTile(450);
+    cleanup();
+    stubTile(450);
+    const z = zoom({ scale: 0.41 });
+    render(
+      <TileHeaderContext.Provider value={TILE_HEADER_FIT}>
+        <ScreenHeader title="T" zoom={z} history={history()} actions={actionCtx} />
+      </TileHeaderContext.Provider>
+    );
+    const button = screen.getByRole('button', { name: /^Zoom 41/ });
+    expect(button.textContent).toContain('▾');
+    fireEvent.click(button);
+    const menu = screen.getByTestId('screen-header-zoom-menu');
+    expect(menu.hidden).toBe(false);
+    expect(menu.closest('.cds--g100')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByText('Fit'));
+    expect(z.onZoomIn).toHaveBeenCalledTimes(1);
+    expect(z.onActualSize).toHaveBeenCalledTimes(1);
+    expect(z.onFit).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves ◀ ▶ into "⋯" with the actions once even the floor does not fit', () => {
+    const { h } = renderInTile(120);
+    fireEvent.click(screen.getByRole('button', { name: 'More controls' }));
+    const menu = screen.getByRole('group', { name: 'Screen controls' });
+    expect(menu.querySelector('[data-screen-action="print"]')).not.toBeNull();
+    fireEvent.click(menu.querySelector<HTMLElement>('[aria-label="Back"]')!);
+    expect(h.back.onClick).toHaveBeenCalledTimes(1);
+    expect(menu.querySelector('.screen-header__zoom')).toBeNull();
+  });
+
+  it('comes back as the lane widens: the widths of gone parts are kept', () => {
+    stubTile(300);
+    const observers: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        private readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+          observers.push(callback);
+        }
+        observe() {
+          this.callback();
+        }
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    let lane = 900;
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('screen-header') ? lane : 0;
+    });
+    render(
+      <TileHeaderContext.Provider value={TILE_HEADER_FIT}>
+        <ScreenHeader title="T" detail="d" zoom={zoom()} history={history()} actions={actionCtx} />
+      </TileHeaderContext.Provider>
+    );
+    const bar = screen.getByTestId('screen-header');
+    expect(bar.dataset.step).toBe('0');
+    lane = 300;
+    act(() => observers.forEach((callback) => callback()));
+    expect(bar.dataset.step).toBe('4');
+    lane = 900;
+    act(() => observers.forEach((callback) => callback()));
+    expect(bar.dataset.step).toBe('0');
+  });
+
+  it('reports its floor (◀ ▶, the zoom button, "⋯") to the tile, and 0 once gone', () => {
+    const reportNeed = vi.fn<(px: number) => void>();
+    renderInTile(900, reportNeed);
+    expect(reportNeed).toHaveBeenLastCalledWith(64 + 72 + 32);
+    cleanup();
+    expect(reportNeed).toHaveBeenLastCalledWith(0);
+  });
+
+  it('is off outside a tile bar: the context defaults to a standalone header', () => {
+    stubWidths(1200);
+    render(<ScreenHeader title="GTL" zoom={zoom()} history={history()} actions={actionCtx} />);
+    const bar = screen.getByTestId('screen-header');
+    expect(bar.classList.contains('screen-header--tile')).toBe(false);
+    expect(bar.dataset.step).toBeUndefined();
   });
 });
 

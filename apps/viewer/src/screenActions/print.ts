@@ -15,6 +15,7 @@
 // screen fits. Unlike fit-to-view, a print shrinks but never magnifies.
 
 import { useEffect } from 'react';
+import { OVERLAY_ITEM_CLASS } from '../workspace/dock/DockOverlay.js';
 import { fitScale } from '../zoom.js';
 
 const MM = 96 / 25.4; // CSS px per millimetre
@@ -63,7 +64,7 @@ export function clearPrintLayout(): void {
 }
 
 /** The docked tile element a screen renders in (the dock overlay's item). */
-const TILE_SELECTOR = '.canopy-dock-overlay__item';
+const TILE_SELECTOR = `.${OVERLAY_ITEM_CLASS}`;
 export const PRINTING_ATTR = 'data-printing';
 
 /**

@@ -20,8 +20,17 @@
 // the actions in the menu. That menu is portalled to the body, so the tile
 // bar's clipping and transform do not reach it, and stays mounted while the
 // header is narrow, so the actions' shortcuts keep working.
+//
+// Inside a tile bar (`TileHeaderContext`, which the tile's actions provide) the header fits
+// its tile instead: the "SCREEN" label is never shown (the tile's tab names the screen), and
+// as the lane the tile leaves it narrows, the controls give way in this order, nothing ever
+// wrapping or clipping mid-glyph: 1. the path (the detail) goes, 2. the title goes, 3. the
+// zoom group becomes one "41 % ▾" menu button (Fit, 1:1 and the steps inside), 4. the actions
+// move into one "⋯" menu, 5. ◀ ▶ join them there; only a lane narrower than the zoom button
+// and the "⋯" puts the zoom group into the "⋯" menu too. The header reports its floor (◀ ▶,
+// the zoom button and the "⋯"), which the tile keeps for it beside the tabs.
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Theme } from '@carbon/react';
@@ -30,6 +39,8 @@ import { AppHeader } from '@slaclab/canopy-shell';
 import { ScreenActionBar } from './screenActions/ScreenActionBar.js';
 import type { ScreenActionContext } from './screenActions/types.js';
 import { formatPercent } from './zoom.js';
+import { TileHeaderContext } from './workspace/dock/TileBar.js';
+import { actionsWidth, useTileStep } from './workspace/dock/tileHeaderFit.js';
 import './ScreenHeader.css';
 
 /** The product label, styled like Trace's "TRACE". */
@@ -174,12 +185,6 @@ interface Widths {
  * "SCREEN" label hidden too; the zoom group into the menu as well.
  */
 type Collapse = 'none' | 'actions' | 'label' | 'all';
-
-/** The action bar's width without its transient status text. */
-function actionsWidth(global: HTMLElement): number {
-  const status = global.querySelector<HTMLElement>('.screen-actions__status');
-  return global.offsetWidth - (status?.offsetWidth ?? 0);
-}
 
 /** A standalone bar's parts' widths. */
 function measure(root: HTMLElement): Widths | null {
@@ -363,6 +368,30 @@ function OverflowControls({
   );
 }
 
+/** The tile header's compact zoom: "41 % ▾", opening the zoom group (steps, Fit, 1:1). */
+function ZoomMenu({ zoom }: { zoom: ScreenZoom }) {
+  const percent = formatPercent(zoom.scale);
+  return (
+    <HeaderMenu
+      className="canopy-btn screen-header__zoom-menu"
+      label={`Zoom ${percent}`}
+      title={`Zoom ${percent}: steps, Fit, 1:1`}
+      menuLabel="Zoom controls"
+      testId="screen-header-zoom-menu"
+      trigger={
+        <>
+          <span className="screen-header__percent" data-testid="zoom-percent">
+            {percent}
+          </span>
+          <span aria-hidden="true">▾</span>
+        </>
+      }
+    >
+      <ZoomGroup zoom={zoom} />
+    </HeaderMenu>
+  );
+}
+
 export function ScreenHeader({
   title,
   detail,
@@ -372,19 +401,44 @@ export function ScreenHeader({
   children,
 }: ScreenHeaderProps) {
   const root = useRef<HTMLDivElement>(null);
-  const collapse = useCollapse(root, zoom !== undefined || actions !== undefined);
+  const fit = useContext(TileHeaderContext);
+  const has = { detail: Boolean(detail), zoom: zoom !== undefined, actions: actions !== undefined };
+  const collapse = useCollapse(root, fit === null && (has.zoom || has.actions));
+  const step = useTileStep(root, fit, has);
 
+  let showDetail = true;
+  let showTitle = true;
   let barZoom: ReactNode = zoom && <ZoomGroup zoom={zoom} />;
   let bar: ReactNode;
-  const label = collapse === 'none' || collapse === 'actions';
-  const menuZoom = collapse === 'all' ? zoom : undefined;
-  if (menuZoom) barZoom = null;
-  if (collapse === 'none') bar = actions && <ScreenActionBar ctx={actions} />;
-  else if (actions || menuZoom) bar = <OverflowControls zoom={menuZoom} actions={actions} />;
+  let barHistory = history;
+  let label = collapse === 'none' || collapse === 'actions';
+  if (fit !== null) {
+    label = false;
+    showDetail = step === 0;
+    showTitle = step <= 1;
+    if (zoom && step >= 3) barZoom = step <= 5 ? <ZoomMenu zoom={zoom} /> : null;
+    if (step >= 5) barHistory = undefined;
+    const menuActions = step >= 4 ? actions : undefined;
+    const menuHistory = step >= 5 ? history : undefined;
+    const menuZoom = step >= 6 ? zoom : undefined;
+    if (menuActions || menuHistory || menuZoom)
+      bar = <OverflowControls zoom={menuZoom} actions={menuActions} history={menuHistory} />;
+    else bar = actions && <ScreenActionBar ctx={actions} />;
+  } else {
+    const menuZoom = collapse === 'all' ? zoom : undefined;
+    if (menuZoom) barZoom = null;
+    if (collapse === 'none') bar = actions && <ScreenActionBar ctx={actions} />;
+    else if (actions || menuZoom) bar = <OverflowControls zoom={menuZoom} actions={actions} />;
+  }
   return (
     <div
-      className={'screen-header' + (label ? '' : ' screen-header--no-label')}
+      className={
+        'screen-header' +
+        (label ? '' : ' screen-header--no-label') +
+        (fit !== null ? ' screen-header--tile' : '')
+      }
       data-testid="screen-header"
+      data-step={fit !== null ? step : undefined}
       ref={root}
     >
       {/* shell 0.2 defaults to a page-themed bar with a red "SLAC" prefix and
@@ -398,16 +452,18 @@ export function ScreenHeader({
         skipToContent={false}
         actions={bar}
       >
-        {history && <HistoryGroup history={history} />}
+        {barHistory && <HistoryGroup history={barHistory} />}
         <div className="screen-header__info">
-          <span
-            className="screen-header__title"
-            title={detail ? `${title} (${detail})` : title}
-            data-testid="screen-header-title"
-          >
-            <span className="screen-header__title-text">{title}</span>
-            {detail && <span className="screen-header__detail">{detail}</span>}
-          </span>
+          {showTitle && (
+            <span
+              className="screen-header__title"
+              title={detail ? `${title} (${detail})` : title}
+              data-testid="screen-header-title"
+            >
+              <span className="screen-header__title-text">{title}</span>
+              {detail && showDetail && <span className="screen-header__detail">{detail}</span>}
+            </span>
+          )}
           {children}
         </div>
         {barZoom}
