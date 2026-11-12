@@ -99,7 +99,7 @@ export interface WorkspaceSyncOptions {
   doc?: SyncDocument;
   /** Re-reads config.json. Default readWorkspaceAdvertisement(baseURI). */
   reread?: () => Promise<WorkspaceAdvertisement>;
-  /** Mints the windowId. Default crypto.randomUUID. */
+  /** Mints the windowId. Default mintWindowId. */
   randomId?: () => string;
   /** Called with each batch delivered to this window. */
   onBatch?: (batch: BatchEvent) => void;
@@ -168,6 +168,18 @@ export function topHasFocus(win: SyncWindow, doc: SyncDocument): boolean {
   return doc.hasFocus();
 }
 
+// crypto.randomUUID exists only in a secure context (HTTPS or localhost). A
+// viewer served over plain HTTP from another host still has getRandomValues,
+// so the id is built from that there: an RFC 4122 version 4 UUID either way.
+export function mintWindowId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 export function createWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
   const baseURI = options.baseURI ?? document.baseURI;
   const doFetch =
@@ -176,7 +188,7 @@ export function createWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSyn
   const win = options.win ?? (window as unknown as SyncWindow);
   const doc = options.doc ?? (document as unknown as SyncDocument);
   const reread = options.reread ?? (() => readWorkspaceAdvertisement(baseURI));
-  const windowId = (options.randomId ?? (() => crypto.randomUUID()))();
+  const windowId = (options.randomId ?? mintWindowId)();
   let path = options.workspace.path.replace(/\/+$/, '');
 
   let started = false;
