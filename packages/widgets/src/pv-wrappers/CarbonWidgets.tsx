@@ -249,15 +249,20 @@ export function CarbonPVTextInput({
 }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const profile = useRenderProfile();
-  const [draft, setDraft] = useState<string | null>(null);
+  // The text being entered, and whether any of it was typed: a draft made only
+  // with the arrow keys is written by Enter alone, never by leaving the field.
+  const [edit, setEdit] = useState<{ text: string; typed: boolean } | null>(null);
+  const draft = edit?.text ?? null;
   const gated = useGatedWrite(pv);
   const inert = useInert(ownInertReason(gated, pv.address));
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
   const fontSize = typeof props.fontSize === 'number' ? props.fontSize : undefined;
+  const align = props.align as CSSProperties['textAlign'] | undefined;
   const inputStyle: CSSProperties = {
     color: alarm.color,
+    textAlign: align,
     backgroundColor: alarm.blank ? 'transparent' : styleProp(props.backgroundColor),
     fontFamily: styleProp(props.fontFamily),
     fontSize,
@@ -270,13 +275,14 @@ export function CarbonPVTextInput({
   // draft is checked here, so an empty or non-numeric one never reaches the
   // write dialog, and the reason sits under the field while it is typed.
   const numeric = pv.connected && typeof pv.value === 'number' && pv.enumChoices === undefined;
+  if (numeric) inputStyle.fontVariantNumeric = 'tabular-nums';
   const entry = numeric && draft !== null ? parseNumericEntry(draft) : null;
   const rejected = entry !== null && !entry.ok ? entry.message : null;
 
   const commit = useCallback(() => {
     if (draft === null || !pv.connected) return;
     if (inert.inert) {
-      setDraft(null);
+      setEdit(null);
       return;
     }
     if (numeric) {
@@ -287,21 +293,42 @@ export function CarbonPVTextInput({
       const numVal = parseFloat(draft);
       void gated.write(isNaN(numVal) ? draft : numVal);
     }
-    setDraft(null);
+    setEdit(null);
   }, [draft, numeric, pv.connected, gated, inert.inert]);
 
   const handleBlur = useCallback(() => {
-    // Leaving the field with a draft it cannot write drops the draft, as Escape does.
-    if (rejected !== null) setDraft(null);
+    // Leaving the field with a draft it cannot write drops the draft, as Escape
+    // does; so does leaving it with a draft only nudged by the arrow keys.
+    if (rejected !== null || edit?.typed === false) setEdit(null);
     else commit();
-  }, [rejected, commit]);
+  }, [rejected, edit, commit]);
+
+  // Arrow up/down nudge a numeric draft by one unit of its last shown digit
+  // (Shift: ten units). Only the draft changes: Enter writes it.
+  const nudge = useCallback(
+    (direction: 1 | -1, coarse: boolean) => {
+      const shown = draft ?? entryText(pv, props);
+      const parsed = parseNumericEntry(shown);
+      if (!parsed.ok) return;
+      const dot = shown.indexOf('.');
+      const decimals = dot === -1 ? 0 : shown.length - dot - 1;
+      const step = 10 ** -decimals * (coarse ? 10 : 1);
+      const text = (parsed.value + direction * step).toFixed(decimals);
+      setEdit((prev) => ({ text, typed: prev?.typed ?? false }));
+    },
+    [draft, pv, props]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') commit();
-      if (e.key === 'Escape') setDraft(null);
+      if (e.key === 'Escape') setEdit(null);
+      if (numeric && !inert.inert && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+      }
     },
-    [commit]
+    [commit, numeric, inert.inert, nudge]
   );
 
   const className = [
@@ -328,7 +355,7 @@ export function CarbonPVTextInput({
         size="sm"
         value={draft ?? (pv.connected ? entryText(pv, props) : alarm.blank ? '' : '---')}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          if (!inert.inert) setDraft(e.target.value);
+          if (!inert.inert) setEdit({ text: e.target.value, typed: true });
         }}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}

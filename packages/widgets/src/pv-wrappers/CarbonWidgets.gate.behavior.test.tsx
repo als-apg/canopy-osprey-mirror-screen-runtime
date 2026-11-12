@@ -180,6 +180,26 @@ describe('text input', () => {
     expect(input.value).toBe('1');
     expect(container.querySelector('.cds--form-requirement')).toBeNull();
   });
+
+  it('writes an arrow-key draft on Enter only, never on leaving the field', async () => {
+    pvState['SIM:SP'] = { connected: true, value: 2.5 };
+    const { container } = renderGated(W.CarbonPVTextInput, { pvName: 'SIM:SP' });
+    const input = container.querySelector('input') as HTMLInputElement;
+    const shown = input.value;
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(input.value).not.toBe(shown);
+    fireEvent.blur(input);
+    await flush();
+    expect(runs).toHaveLength(0);
+    expect(input.value).toBe(shown);
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    const nudged = input.value;
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    expect(written()).toEqual([[{ pv: 'SIM:SP', value: Number(nudged), entered: nudged }]]);
+  });
 });
 
 describe('toggle', () => {
