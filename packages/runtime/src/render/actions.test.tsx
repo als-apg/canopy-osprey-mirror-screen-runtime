@@ -98,6 +98,39 @@ describe('widget actions', () => {
     expect(put.mock.calls[1]).toEqual(['X:B', 'on']);
   });
 
+  describe('props.actionsAsMenu', () => {
+    const onOff = [
+      { type: 'write_pv', pvName: 'X:HV_ON:SP', value: '1', description: 'ON' },
+      { type: 'write_pv', pvName: 'X:HV_ON:SP', value: '0', description: 'OFF' },
+    ];
+
+    it('offers the actions by description and runs only the one picked', async () => {
+      const put = vi.spyOn(service, 'put');
+      const node = button('b1', 'HV ON/OFF', onOff);
+      const screenJson = doc('top', [{ ...node, props: { ...node.props, actionsAsMenu: true } }]);
+      render(wrap(<ScreenRenderer screen={screenJson} />));
+
+      fireEvent.click(screen.getByRole('button', { name: 'HV ON/OFF' }));
+      expect(put).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'OFF' }));
+
+      await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+      expect(put.mock.calls[0]).toEqual(['X:HV_ON:SP', '0']);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('without it, writes to one channel still run in order (a pulse)', async () => {
+      const put = vi.spyOn(service, 'put');
+      render(wrap(<ScreenRenderer screen={doc('top', [button('b1', 'Reset', onOff)])} />));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(put).toHaveBeenCalledTimes(2));
+      expect(put.mock.calls.map((c) => c[1])).toEqual(['1', '0']);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+  });
+
   it("sends a click's machine writes as one run of the provided WriteGate, loc:// on the router", async () => {
     const put = vi.spyOn(service, 'put');
     const runs: WriteRequest[][] = [];

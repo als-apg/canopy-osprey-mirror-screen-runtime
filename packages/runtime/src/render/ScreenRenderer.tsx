@@ -78,6 +78,9 @@ import { SchemeContext } from '../theme/schemeContext.js';
 import { getMode, subscribe as subscribeMode } from '../theme/modeStore.js';
 import { useSchemeStyleSheet } from '../theme/schemeStyleSheet.js';
 import { rebaseThroughEmbed, resolveAgainstChain } from './resolveRef.js';
+import { actionName, offersMenu } from './actionMenu.js';
+import { PopupMenu } from './popupMenu.js';
+import type { MenuAnchor } from './popupMenu.js';
 import {
   embedFile,
   embedInstanceKey,
@@ -413,6 +416,9 @@ function MountedNodeView({
   const gate = useWriteGate();
   const writesInert = useWritesInertReason(gate);
   const [hovered, setHovered] = useState(false);
+  // The open menu of a click whose actions are alternatives (actionMenu.tsx).
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null);
+  const closeMenu = useCallback(() => setMenuAt(null), []);
   // Color roles -> CSS strings over the substituted props, with the type's
   // default roles filled in first. Memoized so a node whose props, macros and
   // scheme are unchanged keeps one props identity.
@@ -440,7 +446,11 @@ function MountedNodeView({
   const chain = [...idChain, node.id];
 
   const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
-  if (!effective.visible) return null;
+  if (!effective.visible) {
+    // A menu left open would come back with the node.
+    if (menuAt !== null) setMenuAt(null);
+    return null;
+  }
 
   const style = positionStyle(effective.geometry, parentOrigin, node.type);
   const attrs = wrapperAttributes(node.id, embed.instanceKey, linkChannels.channels, pvState);
@@ -456,7 +466,7 @@ function MountedNodeView({
     attrs['aria-disabled'] = 'true';
     attrs.title = inertReason;
   }
-  let onClick: (() => void) | undefined;
+  let onClick: ((e: { clientX: number; clientY: number }) => void) | undefined;
   if (actions.length > 0) style.pointerEvents = 'auto';
   // A clickable node: pointer cursor, and a highlight layer while hovered.
   // The link cue outranks the hover outline, which outranks the resting one.
@@ -473,31 +483,50 @@ function MountedNodeView({
     ? { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }
     : undefined;
   if (clickable) style.cursor = 'pointer';
-  const hoverLayer = showHover ? (
-    <HoverLayer
-      label={hoverLabel(effective.props)}
-      placement={hoverLabelPlacement(effective.props)}
-      flat={flat}
-    />
-  ) : null;
-  if (actions.length > 0 && inertReason === null) {
-    onClick = () => {
-      void dispatchActions(actions, {
-        ...host,
-        macros,
-        pvService: pvService ?? {
-          put: (pv: string) =>
-            console.warn(`[canopy-screen-runtime] no PV service; write to '${pv}' ignored`),
-        },
-        // Relative display files resolve against the declaring document.
-        resolveManifest: (file) =>
-          host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
-        gate,
-      }).catch((err: unknown) => {
-        host.showError(err instanceof Error ? err.message : String(err));
-      });
-    };
+  const run = (chosen: readonly Action[]) => {
+    void dispatchActions(chosen, {
+      ...host,
+      macros,
+      pvService: pvService ?? {
+        put: (pv: string) =>
+          console.warn(`[canopy-screen-runtime] no PV service; write to '${pv}' ignored`),
+      },
+      // Relative display files resolve against the declaring document.
+      resolveManifest: (file) =>
+        host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
+      gate,
+    }).catch((err: unknown) => {
+      host.showError(err instanceof Error ? err.message : String(err));
+    });
+  };
+  // Alternatives (props.actionsAsMenu): the click opens a menu, the pick runs.
+  const asMenu = clickable && offersMenu(effective.props, actions);
+  // A menu stays only while it can run: writes turned off close it.
+  if (menuAt !== null && !asMenu) setMenuAt(null);
+  if (clickable) {
+    onClick = asMenu ? (e) => setMenuAt({ x: e.clientX, y: e.clientY }) : () => run(actions);
   }
+  const hoverLayer = (
+    <>
+      {showHover && (
+        <HoverLayer
+          label={hoverLabel(effective.props)}
+          placement={hoverLabelPlacement(effective.props)}
+          flat={flat}
+        />
+      )}
+      {menuAt !== null && asMenu && (
+        <PopupMenu
+          anchor={menuAt}
+          close={closeMenu}
+          items={actions.map((action) => ({
+            label: actionName(action, macros),
+            run: () => run([action]),
+          }))}
+        />
+      )}
+    </>
+  );
 
   // Carrier props the wrapper applies (parity with the builder's preview).
   const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
