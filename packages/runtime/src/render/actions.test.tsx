@@ -228,3 +228,36 @@ describe('widget actions', () => {
     expect(String(warn.mock.calls[0][0])).toContain('ActionHost');
   });
 });
+
+describe('device right-click menu', () => {
+  const node = (id: string, type: string, pv: string): WidgetNode => ({
+    id,
+    type,
+    props: { pv, device: 'SYS:QF1' },
+    geometry: { x: 10, y: 10, width: 100, height: 30 },
+  });
+  // A setpoint entry first in the screen and by name, its readback second.
+  const tile = [
+    node('w-sp', 'pv-text-input', 'SYS:QF1:A_SP'),
+    node('w-rb', 'pv-label', 'SYS:QF1:Z_RB'),
+  ];
+  const wrapper = () => document.querySelector('[data-node-id="w-rb"]') as HTMLElement;
+
+  it("plots the device's channels in Trace, values before setpoints", () => {
+    const host = { ...makeHost(), plotPVs: vi.fn<NonNullable<ActionHost['plotPVs']>>() };
+    render(wrap(<ScreenRenderer screen={doc('top', tile)} />, host));
+
+    expect(fireEvent.contextMenu(wrapper())).toBe(false); // the browser menu is replaced
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Trace' }));
+
+    expect(host.plotPVs).toHaveBeenCalledWith(['SYS:QF1:Z_RB', 'SYS:QF1:A_SP']);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('leaves the browser menu where the host cannot plot', () => {
+    render(wrap(<ScreenRenderer screen={doc('top', tile)} />, makeHost()));
+
+    expect(fireEvent.contextMenu(wrapper())).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});

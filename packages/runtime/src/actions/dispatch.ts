@@ -42,6 +42,12 @@ export interface ActionContext {
   navigate(url: string): void;
   /** Open a URL in a new tab/window. */
   openWindow(url: string): void;
+  /**
+   * Plot `pvs` in the viewer's data browser (Trace), as its "Plot in Data
+   * Browser" does: the first ones up to its cap, in the most recently used
+   * instance's time range. Absent where there is no workspace.
+   */
+  plotPVs?(pvs: readonly string[]): void;
   /** Close the screen hosting the widget. */
   close(): void;
   /** Surface a user-visible error. */
