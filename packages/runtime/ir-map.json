@@ -275,6 +275,7 @@
   "pv-text-input": {
     "consumes": [
       "pv",
+      "align",
       "confirmOnWrite",
       "confirmMessage",
       "precision",

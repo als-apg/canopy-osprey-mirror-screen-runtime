@@ -36,7 +36,7 @@ function enumLabel(pv: PVText): string | undefined {
 
 /**
  * A connected PV's text as a display shows it: a number with the widget's
- * precision and the PV's units, else the PV's own `displayValue` (enum
+ * precision and the PV's units (left out when `showUnits` is false), else the PV's own `displayValue` (enum
  * labels, strings, and every number the widget leaves to the PV).
  */
 export function displayText(pv: PVText, props: Record<string, unknown>): string {
@@ -45,7 +45,7 @@ export function displayText(pv: PVText, props: Record<string, unknown>): string 
     return pv.displayValue;
   }
   const text = pv.value.toFixed(decimals);
-  return pv.units ? `${text} ${pv.units}` : text;
+  return pv.units && props.showUnits !== false ? `${text} ${pv.units}` : text;
 }
 
 /**

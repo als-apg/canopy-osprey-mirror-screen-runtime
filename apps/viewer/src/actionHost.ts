@@ -36,6 +36,8 @@ export interface ActionHostDeps {
    * screen then opens in a window as before.
    */
   openTab?(url: string): boolean;
+  /** Plot PVs in the data browser (Trace); absent without a workspace. */
+  plotPVs?(pvs: readonly string[]): void;
 }
 
 /** The two routes a screen renders under. */
@@ -158,6 +160,7 @@ export function createActionHost(deps: ActionHostDeps): ActionHost {
     },
     close: () => deps.close(),
     showError: (message) => deps.showError(message),
+    ...(deps.plotPVs ? { plotPVs: (pvs: readonly string[]) => deps.plotPVs?.(pvs) } : {}),
   };
 }
 
@@ -202,6 +205,8 @@ export interface WorkspaceTabs {
    * screen files; omitted or undefined falls back to the router location.
    */
   currentPathname?(): string | undefined;
+  /** Plot PVs in the data browser, as "Plot in Data Browser" does. */
+  plotPVs?(pvs: readonly string[]): void;
 }
 
 /**
@@ -248,6 +253,7 @@ function routerActionHost(
       workspace.open(url, 'append');
       return true;
     },
+    plotPVs: (pvs) => tabs()?.plotPVs?.(pvs),
     close: () => {
       const workspace = tabs();
       if (workspace) {

@@ -149,6 +149,11 @@ const ROLE_BY_TYPE: Record<string, ScreenPVRole> = {
   'pv-byte-led': 'status',
 };
 
+/** The role a widget of IR type `type` gives its channels. */
+export function pvRoleOf(type: string): ScreenPVRole {
+  return ROLE_BY_TYPE[type] ?? 'other';
+}
+
 // Prop keys that name a PV channel, at any depth (plot curves nest them):
 // `pv`, `pvName`, `channel`, `x_channel`/`y_channel`, `y_channels` (one channel
 // per array item), `readbackPV`, `controlPV`, ...
@@ -438,7 +443,7 @@ export async function expandScreen(
         screenRef: instance.screenRef,
         ruleChannels: ruleChannels(node.rules, doc.formulas, macros),
       });
-      const role = ROLE_BY_TYPE[node.type] ?? 'other';
+      const role = pvRoleOf(node.type);
       for (const name of nodeChannels(node.type, props)) group.add(name, role);
       group.rules(node.rules);
     });

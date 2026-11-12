@@ -128,6 +128,7 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
     type: 'PVTextInput',
     map: (ir, p) => {
       put(p, 'pvName', str(ir.pv));
+      put(p, 'align', str(ir.align));
       put(p, 'confirmOnWrite', bool(ir.confirmOnWrite));
       put(p, 'confirmMessage', str(ir.confirmMessage));
       copyAppearance(ir, p);
@@ -136,6 +137,7 @@ const TYPE_MAP: Record<string, TypeMapEntry> = {
     },
     consumes: [
       'pv',
+      'align',
       'confirmOnWrite',
       'confirmMessage',
       'precision',

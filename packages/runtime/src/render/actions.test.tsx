@@ -98,6 +98,39 @@ describe('widget actions', () => {
     expect(put.mock.calls[1]).toEqual(['X:B', 'on']);
   });
 
+  describe('props.actionsAsMenu', () => {
+    const onOff = [
+      { type: 'write_pv', pvName: 'X:HV_ON:SP', value: '1', description: 'ON' },
+      { type: 'write_pv', pvName: 'X:HV_ON:SP', value: '0', description: 'OFF' },
+    ];
+
+    it('offers the actions by description and runs only the one picked', async () => {
+      const put = vi.spyOn(service, 'put');
+      const node = button('b1', 'HV ON/OFF', onOff);
+      const screenJson = doc('top', [{ ...node, props: { ...node.props, actionsAsMenu: true } }]);
+      render(wrap(<ScreenRenderer screen={screenJson} />));
+
+      fireEvent.click(screen.getByRole('button', { name: 'HV ON/OFF' }));
+      expect(put).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'OFF' }));
+
+      await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+      expect(put.mock.calls[0]).toEqual(['X:HV_ON:SP', '0']);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('without it, writes to one channel still run in order (a pulse)', async () => {
+      const put = vi.spyOn(service, 'put');
+      render(wrap(<ScreenRenderer screen={doc('top', [button('b1', 'Reset', onOff)])} />));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+      await waitFor(() => expect(put).toHaveBeenCalledTimes(2));
+      expect(put.mock.calls.map((c) => c[1])).toEqual(['1', '0']);
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+  });
+
   it("sends a click's machine writes as one run of the provided WriteGate, loc:// on the router", async () => {
     const put = vi.spyOn(service, 'put');
     const runs: WriteRequest[][] = [];
@@ -193,5 +226,38 @@ describe('widget actions', () => {
 
     await waitFor(() => expect(warn).toHaveBeenCalled());
     expect(String(warn.mock.calls[0][0])).toContain('ActionHost');
+  });
+});
+
+describe('device right-click menu', () => {
+  const node = (id: string, type: string, pv: string): WidgetNode => ({
+    id,
+    type,
+    props: { pv, device: 'SYS:QF1' },
+    geometry: { x: 10, y: 10, width: 100, height: 30 },
+  });
+  // A setpoint entry first in the screen and by name, its readback second.
+  const tile = [
+    node('w-sp', 'pv-text-input', 'SYS:QF1:A_SP'),
+    node('w-rb', 'pv-label', 'SYS:QF1:Z_RB'),
+  ];
+  const wrapper = () => document.querySelector('[data-node-id="w-rb"]') as HTMLElement;
+
+  it("plots the device's channels in Trace, values before setpoints", () => {
+    const host = { ...makeHost(), plotPVs: vi.fn<NonNullable<ActionHost['plotPVs']>>() };
+    render(wrap(<ScreenRenderer screen={doc('top', tile)} />, host));
+
+    expect(fireEvent.contextMenu(wrapper())).toBe(false); // the browser menu is replaced
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Trace' }));
+
+    expect(host.plotPVs).toHaveBeenCalledWith(['SYS:QF1:Z_RB', 'SYS:QF1:A_SP']);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('leaves the browser menu where the host cannot plot', () => {
+    render(wrap(<ScreenRenderer screen={doc('top', tile)} />, makeHost()));
+
+    expect(fireEvent.contextMenu(wrapper())).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });

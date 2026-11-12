@@ -118,6 +118,7 @@ import type { Member, MemberKey } from './collections.js';
 import { CollectionsPopover, openCollections } from './CollectionsPopover.js';
 import { deriveConnectionHealth } from './connectionHealth.js';
 import { PlotPVsDialog } from './PlotPVsDialog.js';
+import { MAX_PLOT_PVS, plotQuery } from './plotPVs.js';
 import { QuickOpen, openQuickOpen } from './QuickOpen.js';
 import {
   SaveCollectionDialog,
@@ -644,8 +645,12 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     },
     []
   );
+  // PVs a screen hands over to plot (a device's "Open in Trace") take the
+  // "Plot in Data Browser" path; the handler is defined further down.
+  const plotPVsRef = useRef<(pvs: readonly string[]) => void>(() => {});
   const tabsFor = useCallback(
     (tile: string | null): WorkspaceTabs => ({
+      plotPVs: (pvs: readonly string[]) => plotPVsRef.current(pvs),
       open: (url: string, mode: OpenMode) => {
         const key = keyForUrl(url);
         // A screen action never opens a tool: that would bypass the opening
@@ -1033,6 +1038,12 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     },
     [plotKey]
   );
+  // Every render: the handler reads this render's instances and target.
+  useLayoutEffect(() => {
+    plotPVsRef.current = (pvs) => {
+      if (trace) onPlot(plotQuery(pvs.slice(0, MAX_PLOT_PVS), instanceQuery(plotKey)));
+    };
+  });
   const plotDialog = plotTarget ? (
     <PlotPVsDialog
       screen={plotTarget}

@@ -35,7 +35,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import {
   canopyDefaultFlat,
   isSupportedSchemaVersion,
@@ -79,11 +79,27 @@ import { getMode, subscribe as subscribeMode } from '../theme/modeStore.js';
 import { useSchemeStyleSheet } from '../theme/schemeStyleSheet.js';
 import { rebaseThroughEmbed, resolveAgainstChain } from './resolveRef.js';
 import {
+  DeviceMenu,
+  DeviceStore,
+  DeviceStoreContext,
+  InheritedDeviceContext,
+  deviceOf,
+  linkedOutline,
+  useDeviceFocused,
+  useDeviceHover,
+  useRegisterDeviceChannels,
+} from './device.js';
+import { actionName, offersMenu } from './actionMenu.js';
+import { PopupMenu } from './popupMenu.js';
+import type { MenuAnchor } from './popupMenu.js';
+import {
   embedFile,
   embedInstanceKey,
   embedNodeMacros,
   embedOrder,
   isBaseHidden,
+  pvRoleOf,
+  ruleChannels,
 } from './collectPVs.js';
 
 /**
@@ -413,6 +429,15 @@ function MountedNodeView({
   const gate = useWriteGate();
   const writesInert = useWritesInertReason(gate);
   const [hovered, setHovered] = useState(false);
+  // The open menu of a click whose actions are alternatives (actionMenu.tsx).
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null);
+  const closeMenu = useCallback(() => setMenuAt(null), []);
+  // Device link: an authored `device` makes the node a link target; the
+  // node's channels register under it, or under the device of the embedded
+  // tile it sits in.
+  const inherited = useContext(InheritedDeviceContext);
+  const ownDevice = deviceOf(baseProps);
+  const linked = useDeviceFocused(ownDevice);
   // Color roles -> CSS strings over the substituted props, with the type's
   // default roles filled in first. Memoized so a node whose props, macros and
   // scheme are unchanged keeps one props identity.
@@ -432,6 +457,14 @@ function MountedNodeView({
     propLink,
     linkChannels.ruleBound ? ruleLinkState(rulesLink) : null
   );
+  const deviceRuleChannels = useMemo(
+    () => ruleChannels(node.rules, formulas, macros),
+    [node.rules, formulas, macros]
+  );
+  useRegisterDeviceChannels(ownDevice ?? inherited, linkChannels.channels, pvRoleOf(node.type));
+  useRegisterDeviceChannels(ownDevice ?? inherited, deviceRuleChannels, 'rule');
+  const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
+  const deviceHover = useDeviceHover(ownDevice, effective.visible);
 
   if (idChain.includes(node.id)) {
     console.warn(`widget '${node.id}' appears in its own ancestor chain; skipping (cycle)`);
@@ -439,8 +472,11 @@ function MountedNodeView({
   }
   const chain = [...idChain, node.id];
 
-  const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
-  if (!effective.visible) return null;
+  if (!effective.visible) {
+    // A menu left open would come back with the node.
+    if (menuAt !== null) setMenuAt(null);
+    return null;
+  }
 
   const style = positionStyle(effective.geometry, parentOrigin, node.type);
   const attrs = wrapperAttributes(node.id, embed.instanceKey, linkChannels.channels, pvState);
@@ -456,7 +492,7 @@ function MountedNodeView({
     attrs['aria-disabled'] = 'true';
     attrs.title = inertReason;
   }
-  let onClick: (() => void) | undefined;
+  let onClick: ((e: { clientX: number; clientY: number }) => void) | undefined;
   if (actions.length > 0) style.pointerEvents = 'auto';
   // A clickable node: pointer cursor, and a highlight layer while hovered.
   // The link cue outranks the hover outline, which outranks the resting one.
@@ -466,38 +502,86 @@ function MountedNodeView({
   if (drawsCue(pvState)) {
     style.outline = `1px dashed ${resolveRole(CUE_COLOR, flat)}`;
     style.outlineOffset = -1;
+  } else if (linked && !showHover) {
+    Object.assign(style, linkedOutline(flat));
   } else if (resting !== null && !showHover) {
     Object.assign(style, resting);
   }
-  const hoverHandlers = clickable
-    ? { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }
-    : undefined;
-  if (clickable) style.cursor = 'pointer';
-  const hoverLayer = showHover ? (
-    <HoverLayer
-      label={hoverLabel(effective.props)}
-      placement={hoverLabelPlacement(effective.props)}
-      flat={flat}
-    />
-  ) : null;
-  if (actions.length > 0 && inertReason === null) {
-    onClick = () => {
-      void dispatchActions(actions, {
-        ...host,
-        macros,
-        pvService: pvService ?? {
-          put: (pv: string) =>
-            console.warn(`[canopy-screen-runtime] no PV service; write to '${pv}' ignored`),
-        },
-        // Relative display files resolve against the declaring document.
-        resolveManifest: (file) =>
-          host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
-        gate,
-      }).catch((err: unknown) => {
-        host.showError(err instanceof Error ? err.message : String(err));
-      });
+  let pointerHandlers:
+    | {
+        onMouseEnter: () => void;
+        onMouseLeave: () => void;
+        onContextMenu?: (e: MouseEvent<HTMLDivElement>) => void;
+      }
+    | undefined;
+  if (clickable || deviceHover !== null) {
+    pointerHandlers = {
+      onMouseEnter: () => {
+        if (clickable) setHovered(true);
+        deviceHover?.enter();
+      },
+      onMouseLeave: () => {
+        if (clickable) setHovered(false);
+        deviceHover?.leave();
+      },
     };
   }
+  // A right click on a device opens its Trace menu where the host can plot;
+  // a text field keeps the browser's own menu (copy, paste).
+  if (pointerHandlers !== undefined && deviceHover !== null && host.plotPVs !== undefined) {
+    pointerHandlers.onContextMenu = (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (!deviceHover.openMenu(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+  }
+  if (ownDevice !== null) style.pointerEvents = 'auto';
+  if (clickable) style.cursor = 'pointer';
+  const run = (chosen: readonly Action[]) => {
+    void dispatchActions(chosen, {
+      ...host,
+      macros,
+      pvService: pvService ?? {
+        put: (pv: string) =>
+          console.warn(`[canopy-screen-runtime] no PV service; write to '${pv}' ignored`),
+      },
+      // Relative display files resolve against the declaring document.
+      resolveManifest: (file) =>
+        host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
+      gate,
+    }).catch((err: unknown) => {
+      host.showError(err instanceof Error ? err.message : String(err));
+    });
+  };
+  // Alternatives (props.actionsAsMenu): the click opens a menu, the pick runs.
+  const asMenu = clickable && offersMenu(effective.props, actions);
+  // A menu stays only while it can run: writes turned off close it.
+  if (menuAt !== null && !asMenu) setMenuAt(null);
+  if (clickable) {
+    onClick = asMenu ? (e) => setMenuAt({ x: e.clientX, y: e.clientY }) : () => run(actions);
+  }
+  const hoverLayer = (
+    <>
+      {showHover && (
+        <HoverLayer
+          label={hoverLabel(effective.props)}
+          placement={hoverLabelPlacement(effective.props)}
+          flat={flat}
+        />
+      )}
+      {menuAt !== null && asMenu && (
+        <PopupMenu
+          anchor={menuAt}
+          close={closeMenu}
+          items={actions.map((action) => ({
+            label: actionName(action, macros),
+            run: () => run([action]),
+          }))}
+        />
+      )}
+    </>
+  );
 
   // Carrier props the wrapper applies (parity with the builder's preview).
   const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
@@ -513,7 +597,7 @@ function MountedNodeView({
       style.backgroundColor = effective.props.backgroundColor;
     }
     return (
-      <div {...attrs} {...hoverHandlers} style={style} onClick={onClick}>
+      <div {...attrs} {...pointerHandlers} style={style} onClick={onClick}>
         {renderChildren(node, macros, formulas, chain)}
         {hoverLayer}
       </div>
@@ -521,15 +605,24 @@ function MountedNodeView({
   }
 
   if (node.type === 'embedded-display') {
+    const embedded = (
+      <EmbeddedScreenNode
+        node={node}
+        authored={embedFile(effective.props, macros)}
+        nodeMacros={embedNodeMacros(effective.props)}
+        parentMacros={macros}
+      />
+    );
     return (
-      <div {...attrs} {...hoverHandlers} style={style} onClick={onClick}>
+      <div {...attrs} {...pointerHandlers} style={style} onClick={onClick}>
         <WidgetErrorBoundary widgetId={node.id} widgetType={node.type}>
-          <EmbeddedScreenNode
-            node={node}
-            authored={embedFile(effective.props, macros)}
-            nodeMacros={embedNodeMacros(effective.props)}
-            parentMacros={macros}
-          />
+          {ownDevice !== null ? (
+            <InheritedDeviceContext.Provider value={ownDevice}>
+              {embedded}
+            </InheritedDeviceContext.Provider>
+          ) : (
+            embedded
+          )}
         </WidgetErrorBoundary>
         {hoverLayer}
       </div>
@@ -544,7 +637,7 @@ function MountedNodeView({
     const original =
       typeof effective.props.originalClass === 'string' ? effective.props.originalClass : node.type;
     return (
-      <div {...attrs} {...hoverHandlers} style={style} onClick={onClick}>
+      <div {...attrs} {...pointerHandlers} style={style} onClick={onClick}>
         <PlaceholderBox title="Unknown widget" detail={original} />
         {hoverLayer}
       </div>
@@ -552,10 +645,18 @@ function MountedNodeView({
   }
 
   const WidgetComponent = definition.component;
-  const children = renderChildren(node, macros, formulas, chain);
+  const rendered = renderChildren(node, macros, formulas, chain);
+  const children =
+    ownDevice !== null && rendered !== undefined ? (
+      <InheritedDeviceContext.Provider value={ownDevice}>
+        {rendered}
+      </InheritedDeviceContext.Provider>
+    ) : (
+      rendered
+    );
 
   return (
-    <div {...attrs} {...hoverHandlers} style={style} onClick={onClick}>
+    <div {...attrs} {...pointerHandlers} style={style} onClick={onClick}>
       <WidgetErrorBoundary widgetId={node.id} widgetType={node.type}>
         <WidgetComponent
           id={node.id}
@@ -785,6 +886,12 @@ export function ScreenRenderer({
   // The scheme's stylesheet, scoped to this root by data-scheme; the mode is
   // mirrored onto data-theme imperatively, so a mode flip renders nothing.
   useSchemeStyleSheet(colorScheme);
+  // One device store per screen document: a screen opened in place of this one
+  // starts with no focus or menu left over from it.
+  const [devices, setDevices] = useState(() => ({ screen, store: new DeviceStore() }));
+  if (devices.screen !== screen) setDevices({ screen, store: new DeviceStore() });
+  const deviceStore = devices.store;
+  const host = useContext(ActionHostContext);
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -802,29 +909,32 @@ export function ScreenRenderer({
     <RenderModeContext.Provider value={mode}>
       <SchemeContext.Provider value={colorScheme}>
         <EmbedContext.Provider value={embed}>
-          <div
-            ref={rootRef}
-            className="canopy-screen"
-            data-testid="screen-root"
-            data-screen-id={screen.id}
-            data-scheme={colorScheme.meta.flatHash}
-            data-render-mode={mode}
-            style={{
-              position: 'relative',
-              width: screen.metadata.size.width,
-              height: screen.metadata.size.height,
-              overflow: 'hidden',
-            }}
-          >
-            <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
-              <WidgetNodeView
-                node={screen.root}
-                macros={effectiveMacros}
-                formulas={screen.formulas}
-                idChain={[]}
-              />
-            </ScreenPVScope>
-          </div>
+          <DeviceStoreContext.Provider value={deviceStore}>
+            <div
+              ref={rootRef}
+              className="canopy-screen"
+              data-testid="screen-root"
+              data-screen-id={screen.id}
+              data-scheme={colorScheme.meta.flatHash}
+              data-render-mode={mode}
+              style={{
+                position: 'relative',
+                width: screen.metadata.size.width,
+                height: screen.metadata.size.height,
+                overflow: 'hidden',
+              }}
+            >
+              <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
+                <WidgetNodeView
+                  node={screen.root}
+                  macros={effectiveMacros}
+                  formulas={screen.formulas}
+                  idChain={[]}
+                />
+                {host.plotPVs !== undefined && <DeviceMenu plotPVs={host.plotPVs} />}
+              </ScreenPVScope>
+            </div>
+          </DeviceStoreContext.Provider>
         </EmbedContext.Provider>
       </SchemeContext.Provider>
     </RenderModeContext.Provider>
