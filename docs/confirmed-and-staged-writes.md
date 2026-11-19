@@ -66,14 +66,19 @@ A text entry with a `stage` prop does not write. The prop names a **scope**.
 
 - **Enter** (or leaving the field with typed text) stages the value. The
   field then shows the value that will be sent, in italics with a bar on its
-  left edge, in place of the live value.
+  left edge, in place of the live value. A number keeps the decimals as
+  typed (`2.50`) and is never shown with an exponent (`1e-7` shows as
+  `0.0000001`).
+- **Arrow up / down** step a staged number by one unit of its last shown
+  digit, as in any numeric entry.
 - **Escape** drops the text being typed; pressed again, it drops the staged
-  value and the field shows the live value.
+  value of this entry and the field shows the live value.
 - Only a value the entry accepts is staged. A numeric entry stages nothing
   for text that is not a number.
 - An entry that stages never writes on its own. Where staging is not
-  available (a host that renders the widget without a screen), the entry is
-  inert and says so; it does not fall back to writing.
+  available (a host that renders the widget without a screen), or where
+  `stage` names no scope (empty after macro substitution, not a string), the
+  entry is inert and says so; it does not fall back to writing.
 - An entry on a local channel (`loc://`, `formula://`) ignores `stage`: it
   is not a machine write.
 
@@ -87,7 +92,12 @@ channel. It is dropped, unwritten, when
 - the screen is reloaded or replaced, or opened with other macro values,
 - the embedded screen holding the entry is re-targeted or fetched again.
 
-So an Apply never writes a value the operator cannot see.
+An Apply checks this again before each single write, and when its dialog is
+confirmed: a value whose entry has left the screen since the press, or that
+is no longer the value that was staged, is not sent, and the run stops there
+with `<channel>: not sent; no longer on screen`. While a run writes a scope,
+the entries holding its values are locked (no typing, no Escape), so a field
+cannot go back to the live value while its write is on the way.
 
 ## Writing a scope: `apply_staged`
 
@@ -120,6 +130,11 @@ arrive. Then:
   example `DEMO:PS2:SETPOINT: not sent; above the limit (1 of 3 written)` or
   `DEMO:PS2:SETPOINT: sent, readback differs; ... (2 of 3 written)`.
 
+If the same channel is staged more than once under one Apply (in two
+embedded screens, say), it is written once when the values agree. When they
+differ, nothing is written at all and a message names the channel
+(`staged twice with different values`).
+
 A value leaves staging only when its write was confirmed. **Cancel** in the
 dialog keeps every value staged.
 
@@ -134,9 +149,28 @@ A node whose actions are all `apply_staged` or `clear_staged`
   value;
 - shows the number of staged values in its top right corner otherwise;
 - is disabled while a run is writing its scope. A second press does nothing.
-  Values can still be staged meanwhile; they are not part of the running run.
+  Entries with nothing staged can still take a value meanwhile; it is not
+  part of the running run.
 
 It is also disabled, like every writing node, while writes are not accepted.
+
+### Order in an action list
+
+A list runs in the order it is written. `write_pv` actions before an
+`apply_staged` are sent first, as one run; then the staged values; then the
+`write_pv` actions after it, as another run. A staged run that stops, or a
+declined dialog, holds back everything after it.
+
+```json
+[
+  { "type": "write_pv", "pvName": "DEMO:MODE:ARM", "value": 1 },
+  { "type": "apply_staged", "scope": "set" },
+  { "type": "write_pv", "pvName": "DEMO:MODE:GO", "value": 1 }
+]
+```
+
+A list with no `apply_staged` is unchanged: all its `write_pv` actions are
+one run.
 
 ## Dropping a scope: `clear_staged`
 
@@ -161,3 +195,18 @@ embedded card writes only that card. The count on the node follows the same
 rule. A scope does not reach another tile or window.
 
 Macros are substituted in a scope name, as in any string of a screen.
+
+## Two changes for every screen
+
+Two things changed for writes that use none of the above.
+
+- **A fault in the write path is shown.** When the write backend fails
+  outright on a single write (not a refusal, a fault), the viewer now shows a
+  message for it. Before, the write ended as unknown with no message.
+- **Several writes, fault in the middle.** The writes answered before the
+  fault keep their outcomes, and the message counts them
+  ("(k of n written)"). Before, the whole run was reported as one unknown
+  write.
+
+Unchanged: after such a fault nothing more of the run is sent, the release of
+a momentary button included.
