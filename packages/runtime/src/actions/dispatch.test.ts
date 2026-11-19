@@ -502,7 +502,9 @@ describe('apply_staged and clear_staged', () => {
         { pv: 'C', value: 'on' },
       ],
     ]);
-    expect(options).toEqual([{ nameStopped: true, stopUnlessConfirmed: true }]);
+    expect(options).toEqual([
+      { nameStopped: true, stopUnlessConfirmed: true, check: expect.any(Function) },
+    ]);
     expect(staging.list('view')).toEqual([]);
     expect(staging.list('other')).toEqual([{ pv: 'Z', value: 9 }]);
     expect(ctx.calls).toEqual(['run A=1,B=2,C=on', 'close']);
@@ -516,7 +518,9 @@ describe('apply_staged and clear_staged', () => {
     staging.attach('view', 'A');
     staging.set('view', { pv: 'A', value: 1 });
     await dispatchActions([apply], { ...ctx, gate, staging, confirm: true });
-    expect(options).toEqual([{ nameStopped: true, stopUnlessConfirmed: true, confirm: true }]);
+    expect(options).toEqual([
+      { nameStopped: true, stopUnlessConfirmed: true, confirm: true, check: expect.any(Function) },
+    ]);
   });
 
   it('substitutes macros in the scope', async () => {
@@ -732,20 +736,122 @@ describe('apply_staged and clear_staged', () => {
     expect(ctx.calls).toEqual(['close', 'close']);
   });
 
-  it("is a run of its own, after the click's write_pv run", async () => {
-    const ctx = makeCtx();
-    const staging = stagedView();
-    const { gate, runs } = fakeGate(ctx.calls, [
-      outcome('confirmed'),
-      outcome('confirmed'),
-      outcome('confirmed'),
-    ]);
-    await dispatchActions([{ type: 'write_pv', pvName: 'W', value: 7 }, apply], {
-      ...ctx,
-      gate,
-      staging,
+  describe('order in a list', () => {
+    const list = [
+      { type: 'write_pv', pvName: 'W1', value: 7 },
+      apply,
+      { type: 'write_pv', pvName: 'W2', value: 8 },
+      { type: 'write_pv', pvName: 'W3', value: 9 },
+      { type: 'close_display' },
+    ] as const;
+    const three = [outcome('confirmed'), outcome('confirmed'), outcome('confirmed')];
+
+    it('runs in the order written: the writes before, the staged run, the writes after', async () => {
+      const ctx = makeCtx();
+      const { gate, runs } = fakeGate(ctx.calls, three);
+      await dispatchActions(list, { ...ctx, gate, staging: stagedView() });
+      expect(runs.map((r) => r.map((x) => x.pv))).toEqual([['W1'], ['A', 'B', 'C'], ['W2', 'W3']]);
+      expect(ctx.calls.at(-1)).toBe('close');
     });
-    expect(runs.map((r) => r.map((x) => x.pv))).toEqual([['W'], ['A', 'B', 'C']]);
+
+    it('a stopped staged run holds back the writes after it', async () => {
+      const ctx = makeCtx();
+      const { gate, runs } = fakeGate(ctx.calls, [outcome('confirmed')]);
+      await dispatchActions(list, { ...ctx, gate, staging: stagedView() });
+      expect(runs.map((r) => r.map((x) => x.pv))).toEqual([['W1'], ['A', 'B', 'C']]);
+      expect(ctx.calls).not.toContain('close');
+    });
+
+    it('a list with no apply_staged is still one run for all its writes', async () => {
+      const ctx = makeCtx();
+      const { gate, runs } = fakeGate(ctx.calls, three);
+      await dispatchActions(
+        [
+          { type: 'write_pv', pvName: 'W1', value: 7 },
+          { type: 'clear_staged', scope: 'none' },
+          { type: 'close_display' },
+          { type: 'write_pv', pvName: 'W2', value: 8 },
+        ],
+        { ...ctx, gate, staging: stagedView() }
+      );
+      expect(runs.map((r) => r.map((x) => x.pv))).toEqual([['W1', 'W2']]);
+    });
+  });
+
+  describe('one channel staged in two instances', () => {
+    function two(a: number, b: number) {
+      const top = createStagingStore();
+      const left = createStagingStore(top);
+      const right = createStagingStore(top);
+      left.link();
+      right.link();
+      for (const s of [top, left, right]) s.attach('view', 'X');
+      top.attach('view', 'Y');
+      top.set('view', { pv: 'Y', value: 0 });
+      left.set('view', { pv: 'X', value: a });
+      right.set('view', { pv: 'X', value: b });
+      return top;
+    }
+
+    it('different values: nothing is sent, the channel is named, all stay staged', async () => {
+      const ctx = makeCtx();
+      const top = two(1, 2);
+      const { gate, runs } = fakeGate(ctx.calls, []);
+      await dispatchActions([apply, { type: 'close_display' }], { ...ctx, gate, staging: top });
+      expect(runs).toEqual([]);
+      expect(ctx.calls).toEqual(['error X: staged twice with different values; nothing written']);
+      expect(top.count('view')).toBe(3);
+      expect(top.busy('view')).toBe(false);
+    });
+
+    it('the same value: the channel is written once, both leave staging', async () => {
+      const ctx = makeCtx();
+      const top = two(5, 5);
+      const { gate, runs } = fakeGate(ctx.calls, [outcome('confirmed'), outcome('confirmed')]);
+      await dispatchActions([apply], { ...ctx, gate, staging: top });
+      expect(runs).toEqual([
+        [
+          { pv: 'Y', value: 0 },
+          { pv: 'X', value: 5 },
+        ],
+      ]);
+      expect(top.count('view')).toBe(0);
+    });
+  });
+
+  describe('a value that leaves the screen during the run', () => {
+    it('hands the gate a check that refuses a value no longer staged or since replaced', async () => {
+      const ctx = makeCtx();
+      const staging = createStagingStore();
+      const detach = ['A', 'B', 'C'].map((pv) => staging.attach('view', pv));
+      for (const pv of ['A', 'B', 'C']) staging.set('view', { pv, value: 1 });
+      const verdicts: Array<string | null> = [];
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: async (writes, options) => {
+          detach[1]!();
+          staging.set('view', { pv: 'C', value: 9 });
+          writes.forEach((w, i) => verdicts.push(options?.check?.(w, i) ?? null));
+          return [outcome('confirmed'), outcome('refused')];
+        },
+      };
+      await dispatchActions([apply], { ...ctx, gate, staging });
+      expect(verdicts).toEqual([null, 'no longer on screen', 'no longer on screen']);
+      expect(staging.list('view')).toEqual([{ pv: 'C', value: 9 }]);
+    });
+
+    it('with no gate stops before a value that is gone', async () => {
+      const ctx = makeCtx();
+      const staging = createStagingStore();
+      const detach = ['A', 'B'].map((pv) => staging.attach('view', pv));
+      for (const pv of ['A', 'B']) staging.set('view', { pv, value: 1 });
+      ctx.pvService.put = vi.fn((pv: string) => {
+        ctx.calls.push(`put ${pv}`);
+        detach[1]!();
+      });
+      await dispatchActions([apply, { type: 'close_display' }], { ...ctx, gate: null, staging });
+      expect(ctx.calls).toEqual(['put A']);
+    });
   });
 
   it('with no gate writes each value straight through and drops it', async () => {

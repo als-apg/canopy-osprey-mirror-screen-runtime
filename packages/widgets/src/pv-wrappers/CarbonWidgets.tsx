@@ -21,10 +21,10 @@ import type { WidgetProps } from '../types.js';
 import { useFitText } from '../shared/useFitText.js';
 import { useResolveAsset } from '../assets.js';
 import { gatedWriteOptions, isLocalChannel, useGatedWrite } from '../writeGate/useGatedWrite.js';
-import { stageScope, useStaged } from '../staging/staging.js';
+import { hasStage, stageScope, stagedText as textOfStaged, useStaged } from '../staging/staging.js';
 import { parseNumericEntry } from './numericEntry.js';
 import { hostInertReason, ownInertReason, useInert, useInertOnInner } from '../writeGate/inert.js';
-import { displayText, entryText } from './pvText.js';
+import { displayText, entryText, widgetPrecision } from './pvText.js';
 
 /**
  * A 50%-alpha glow of `color`. A literal hex keeps the absolute path: an existing hex
@@ -241,6 +241,10 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
 }
 
 /** PVTextInput — Carbon TextInput bound to PV */
+/** Why an entry whose `stage` names no scope is inert. */
+const STAGE_UNUSABLE = 'this entry stages its value, and its stage names no scope';
+/** Why an entry is locked while a run writes its staged value. */
+const STAGED_BEING_WRITTEN = 'its staged value is being written';
 /** Why an entry with a `stage` scope and no staging store is inert. */
 const STAGING_UNAVAILABLE = 'this entry stages its value, and staging is not available here';
 
@@ -264,13 +268,29 @@ export function CarbonPVTextInput({
   // writes the scope through the gate. Where nothing provides a store the
   // entry is inert: it never falls back to writing. A local channel is not a
   // machine write and ignores `stage`.
-  const scope = isLocalChannel(pv.address) ? null : stageScope(props);
-  const { store: staging, staged } = useStaged(scope, pv.address);
-  const cannotStage = scope !== null && staging === null && pv.address !== '';
+  // So is an entry whose `stage` names no scope (empty after macro
+  // substitution, not a string). While a run writes the scope, an entry
+  // holding a staged value is locked: no edit, no Escape.
+  const stages = pv.address !== '' && !isLocalChannel(pv.address) && hasStage(props);
+  const scope = stages ? stageScope(props) : null;
+  const { store: staging, staged, locked } = useStaged(scope, pv.address);
   const inert = useInert(
-    ownInertReason(gated, pv.address) ?? (cannotStage ? STAGING_UNAVAILABLE : null)
+    ownInertReason(gated, pv.address) ??
+      (stages && scope === null
+        ? STAGE_UNUSABLE
+        : stages && staging === null
+          ? STAGING_UNAVAILABLE
+          : locked
+            ? STAGED_BEING_WRITTEN
+            : null)
   );
-  const stagedText = staged === undefined ? null : String(staged.value);
+  const stagedText =
+    staged === undefined
+      ? null
+      : textOfStaged(
+          staged,
+          widgetPrecision(props) ?? (pv.precision > 0 ? pv.precision : undefined)
+        );
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
@@ -312,13 +332,13 @@ export function CarbonPVTextInput({
       const numVal = parseFloat(draft);
       value = isNaN(numVal) ? draft : numVal;
     }
-    if (scope !== null) {
+    if (stages) {
       // Staged or nothing: an entry that stages never writes.
-      staging?.set(scope, { pv: pv.address, value, entered: draft });
+      if (scope !== null) staging?.set(scope, { pv: pv.address, value, entered: draft });
     } else if (entered === undefined) void gated.write(value);
     else void gated.write(value, { entered });
     setEdit(null);
-  }, [draft, numeric, pv.connected, pv.address, gated, inert.inert, staging, scope]);
+  }, [draft, numeric, pv.connected, pv.address, gated, inert.inert, staging, scope, stages]);
 
   const handleBlur = useCallback(() => {
     // Leaving the field with a draft it cannot write drops the draft, as Escape
@@ -347,8 +367,11 @@ export function CarbonPVTextInput({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') commit();
       if (e.key === 'Escape') {
-        // Escape drops the text being entered; with none, the staged value.
-        if (edit === null && staging !== null && scope !== null) staging.clear(scope, pv.address);
+        // Escape drops the text being entered; with none, the staged value
+        // of this screen instance. Not while a run is writing it.
+        if (edit === null && staging !== null && scope !== null && !inert.inert) {
+          staging.drop(scope, pv.address);
+        }
         setEdit(null);
       }
       if (numeric && !inert.inert && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -373,6 +396,7 @@ export function CarbonPVTextInput({
       className={className}
       style={{ width: layout.width, height: layout.height, ...alarm.frame }}
       data-staged={staged !== undefined ? 'true' : undefined}
+      aria-busy={locked ? 'true' : undefined}
       {...inert.hover}
     >
       <TextInput

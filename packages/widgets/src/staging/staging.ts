@@ -50,6 +50,14 @@ export interface StagingStore {
    * since stays.
    */
   clear(scope: string, pv: string, only?: StagedValue): void;
+  /** Drop what `pv` holds in `scope` in this instance only, not below it. */
+  drop(scope: string, pv: string): void;
+  /**
+   * Whether `staged` is still held, as that very value, in this instance or
+   * one below it: its entry is still mounted on the same channel and nothing
+   * replaced or dropped the value.
+   */
+  holds(scope: string, staged: StagedValue): boolean;
   /** Drop every value of `scope`, in this instance and those below it. */
   clearScope(scope: string): void;
   /** The values of `scope` in this instance and those below it, in staging order. */
@@ -58,6 +66,11 @@ export interface StagingStore {
   count(scope: string): number;
   /** Whether a run is writing `scope` here, in a store above or in one below. */
   busy(scope: string): boolean;
+  /**
+   * Whether a run that covers this instance is writing `scope`: one started
+   * here or in a store above. Its staged entries are locked meanwhile.
+   */
+  writing(scope: string): boolean;
   /** A run starts writing `scope`; the returned function ends it. */
   begin(scope: string): () => void;
   /** Make this store reachable from its parent; the returned function undoes it. */
@@ -150,6 +163,11 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
       for (const n of below(node)) any = drop(n, scope, pv, only) || any;
       if (any) changed();
     },
+    drop(scope, pv) {
+      if (drop(node, scope, pv)) changed();
+    },
+    holds: (scope, staged) =>
+      below(node).some((n) => n.values.get(scope)?.get(staged.pv)?.staged === staged),
     clearScope(scope) {
       let any = false;
       for (const n of below(node)) any = n.values.delete(scope) || any;
@@ -162,6 +180,12 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
         if ((n.runs.get(scope) ?? 0) > 0) return true;
       }
       return below(node).some((n) => (n.runs.get(scope) ?? 0) > 0);
+    },
+    writing(scope) {
+      for (let n: Node | null = node; n !== null; n = n.parent) {
+        if ((n.runs.get(scope) ?? 0) > 0) return true;
+      }
+      return false;
     },
     begin(scope) {
       node.runs.set(scope, (node.runs.get(scope) ?? 0) + 1);
@@ -216,10 +240,53 @@ export const Staging = createContext<StagingStore | null>(null);
 /** The reserved prop that makes an entry stage: the scope's name, a non-empty string. */
 export const STAGE_PROP = 'stage';
 
-/** The scope `props` stages into, or null for an entry that writes. */
+/** The scope `props` stages into, or null for an entry with no usable one. */
 export function stageScope(props: Readonly<Record<string, unknown>>): string | null {
   const scope = props[STAGE_PROP];
   return typeof scope === 'string' && scope !== '' ? scope : null;
+}
+
+/**
+ * Whether `props` carry a `stage` at all. One that is present but names no
+ * scope (empty after macro substitution, or not a string) still means "this
+ * entry does not write": the entry is inert, it never falls back to writing.
+ */
+export function hasStage(props: Readonly<Record<string, unknown>>): boolean {
+  return props[STAGE_PROP] !== undefined && props[STAGE_PROP] !== null;
+}
+
+/** A number written out with no exponent, to about 15 significant digits. */
+function plainNumber(value: number): string {
+  const text = String(value);
+  if (!/e/i.test(text)) return text;
+  if (Math.abs(value) >= 1e21) return BigInt(Math.round(value)).toString();
+  const exponent = Math.floor(Math.log10(Math.abs(value)));
+  const fixed = value.toFixed(Math.min(100, Math.max(0, 14 - exponent)));
+  return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed;
+}
+
+const PLAIN_DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+
+/**
+ * The text a field shows for a staged value: the value that will be sent,
+ * never the raw text. A number keeps the decimals the operator typed (`2.50`
+ * stays `2.50`); typed another way (`1e-3`, `0x10`) it takes `decimals` (the
+ * widget's or the channel's precision) when that prints the value exactly.
+ * Never exponent notation, so the last shown digit is always the nudge step.
+ */
+export function stagedText(staged: StagedValue, decimals?: number): string {
+  if (typeof staged.value !== 'number') return String(staged.value);
+  const typed = staged.entered?.trim();
+  let places = decimals;
+  if (typed !== undefined && PLAIN_DECIMAL.test(typed)) {
+    const dot = typed.indexOf('.');
+    places = dot === -1 ? 0 : typed.length - dot - 1;
+  }
+  if (places !== undefined && Math.abs(staged.value) < 1e21) {
+    const text = staged.value.toFixed(Math.min(places, 100));
+    if (Number(text) === staged.value) return text;
+  }
+  return plainNumber(staged.value);
 }
 
 const NO_SUBSCRIPTION = () => {};
@@ -233,7 +300,12 @@ const NO_SUBSCRIPTION = () => {};
 export function useStaged(
   scope: string | null,
   pv: string
-): { store: StagingStore | null; staged: StagedValue | undefined } {
+): {
+  store: StagingStore | null;
+  staged: StagedValue | undefined;
+  /** A run is writing the entry's staged value, or may: the entry is locked. */
+  locked: boolean;
+} {
   const provided = useContext(Staging);
   const store = scope !== null && pv !== '' ? provided : null;
   useEffect(
@@ -248,5 +320,11 @@ export function useStaged(
     () => (store !== null && scope !== null ? store.get(scope, pv) : undefined),
     [store, scope, pv]
   );
-  return { store, staged: useSyncExternalStore(subscribe, snapshot, snapshot) };
+  const writing = useCallback(
+    () => store !== null && scope !== null && store.writing(scope),
+    [store, scope]
+  );
+  const staged = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const isWriting = useSyncExternalStore(subscribe, writing, writing);
+  return { store, staged, locked: isWriting && staged !== undefined };
 }

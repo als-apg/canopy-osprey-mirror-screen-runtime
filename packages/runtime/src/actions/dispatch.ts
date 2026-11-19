@@ -6,22 +6,31 @@
 //
 // Machine writes of one click go through the provided write gate as one run
 // (at most one confirmation dialog, one summary toast; a node that sets
-// `confirmWrites` asks for the dialog whatever the gate's own rule); a decline or a run
-// that stopped skips the rest of the action list. Every write that does not
-// go through the gate (a local channel, or any write with no gate) goes
-// through one call, `dispatchLocalWrite`: it is the only put in this module.
+// `confirmWrites` asks for the dialog whatever the gate's own rule); a decline
+// or a run that stopped skips the rest of the action list. Every write that
+// does not go through the gate (a local channel, or any write with no gate)
+// goes through one call, `dispatchLocalWrite`: it is the only put in this
+// module.
 //
 // `apply_staged` writes the values staged in its scope, in the node's screen
-// instance and the instances embedded below it, as one gate run of its own, at
-// its place in the list, in the order they were staged. The run stops at the
-// first write that is not confirmed, a readback mismatch and an unconfirmed
-// write included: what was sent stays sent, the values after it are not sent,
-// and the summary names the channel it stopped at and says whether its value
-// was sent. A value leaves the staging store only when its write was
-// confirmed; a declined dialog and a stopped run keep theirs. `clear_staged`
-// drops a scope unwritten. While a run writes a scope, a second
-// `apply_staged` or `clear_staged` on it does nothing and skips the rest of
-// its list.
+// instance and the instances embedded below it, as one gate run of its own, in
+// the order they were staged. The run stops at the first write that is not
+// confirmed, a readback mismatch and an unconfirmed write included: what was
+// sent stays sent, the values after it are not sent, and the summary names the
+// channel it stopped at and says whether its value was sent. Before each
+// write, and when the dialog is confirmed, the run checks that the value is
+// still staged, unchanged, for an entry on screen; one that is not stops the
+// run ("no longer on screen"). A channel staged more than once under one
+// Apply is written once when the values agree; when they differ nothing is
+// written. A value leaves the staging store only when its write was
+// confirmed. `clear_staged` drops a scope unwritten. While a run writes a
+// scope, a second `apply_staged` or `clear_staged` on it does nothing and
+// skips the rest of its list.
+//
+// Order: a list runs in the order it is written. An `apply_staged` splits the
+// list's `write_pv` actions: those before it are one run, sent before the
+// staged run, and those after it are another, sent after it and held back
+// when it stops. A list with no `apply_staged` is one run, as it always was.
 //
 // `open_webpage` and `open_display` only open http(s) or relative URLs; any
 // other scheme (`javascript:`, `data:`, ...) and protocol-relative `//host`
@@ -30,6 +39,7 @@
 
 import type { Action, MacroValues } from '@slaclab/canopy-screen-ir';
 import type {
+  StagedValue,
   StagingStore,
   WriteGateService,
   WriteOutcome,
@@ -184,10 +194,14 @@ function applyOptions(ctx: ActionContext): WriteRunOptions {
   return ctx.confirm === true ? { ...options, confirm: true } : options;
 }
 
+/** Why a staged value is not sent any more. */
+const NO_LONGER_ON_SCREEN = 'no longer on screen';
+
 /**
  * Write the values staged in `scope`. False when the rest of the action list
- * must not run: the scope is being written already, the dialog was declined,
- * or the run stopped before every value was confirmed.
+ * must not run: the scope is being written already, a channel is staged with
+ * two values, the dialog was declined, or the run stopped before every value
+ * was confirmed.
  */
 async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> {
   const staging = ctx.staging ?? null;
@@ -195,37 +209,55 @@ async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> 
   if (staging.busy(scope)) return false;
   const staged = staging.list(scope);
   if (staged.length === 0) return true;
+  // One write per channel: instances below may stage the same channel.
+  const groups = new Map<string, StagedValue[]>();
+  for (const s of staged) {
+    const group = groups.get(s.pv);
+    if (group === undefined) groups.set(s.pv, [s]);
+    else if (group[0]!.value === s.value) group.push(s);
+    else {
+      ctx.showError(`${s.pv}: staged twice with different values; nothing written`);
+      return false;
+    }
+  }
+  const writes = [...groups.values()];
+  const held = (group: readonly StagedValue[]) => group.every((s) => staging.holds(scope, s));
   const gate = ctx.gate ?? null;
   const end = staging.begin(scope);
   try {
     if (gate === null) {
-      for (const s of staged) {
+      for (const group of writes) {
+        if (!held(group)) return false;
+        const s = group[0]!;
         await dispatchLocalWrite(
           ctx,
           s.pv,
           typeof s.value === 'boolean' ? Number(s.value) : s.value
         );
-        staging.clear(scope, s.pv, s);
+        for (const each of group) staging.clear(scope, each.pv, each);
       }
       return true;
     }
     const result = await gate
       .run(
-        staged.map((s) =>
-          s.entered === undefined
-            ? { pv: s.pv, value: s.value }
-            : { pv: s.pv, value: s.value, entered: s.entered }
+        writes.map(([s]) =>
+          s!.entered === undefined
+            ? { pv: s!.pv, value: s!.value }
+            : { pv: s!.pv, value: s!.value, entered: s!.entered }
         ),
-        applyOptions(ctx)
+        {
+          ...applyOptions(ctx),
+          check: (_write, index) => (held(writes[index] ?? []) ? null : NO_LONGER_ON_SCREEN),
+        }
       )
       .catch((): WriteRunResult => []);
     if (result === 'declined') return false;
     const confirmed = (o: WriteOutcome | undefined) =>
       o !== undefined && !o.coalesced && o.outcome === 'confirmed';
-    staged.forEach((s, i) => {
-      if (confirmed(result[i])) staging.clear(scope, s.pv, s);
+    writes.forEach((group, i) => {
+      if (confirmed(result[i])) for (const s of group) staging.clear(scope, s.pv, s);
     });
-    return result.length === staged.length && result.every(confirmed);
+    return result.length === writes.length && result.every(confirmed);
   } finally {
     end();
   }
@@ -234,7 +266,8 @@ async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> 
 /**
  * Execute `actions` in declaration order, awaiting each before the next.
  *
- * With a gate, the list's machine `write_pv` actions run as ONE gate run, at
+ * With a gate, the machine `write_pv` actions of a stretch of the list (the
+ * whole list, or the part between two `apply_staged`) run as ONE gate run, at
  * the position of the first of them; after a decline, or a run that stopped
  * before writing them all, the rest of the list is skipped.
  */
@@ -243,16 +276,17 @@ export async function dispatchActions(
   ctx: ActionContext
 ): Promise<void> {
   const gate = ctx.gate ?? null;
-  const machine =
-    gate === null
-      ? []
-      : actions.flatMap((a) => {
-          if (a.type !== 'write_pv') return [];
-          const pv = substituteMacros(a.pvName, ctx.macros);
-          return isGateBypass(pv) ? [] : [{ pv, value: a.value }];
-        });
-  let ran = false;
-  for (const action of actions) {
+  // The stretch each action belongs to: a new one starts after an apply_staged.
+  let stretch = 0;
+  const stretchOf = actions.map((a) => (a.type === 'apply_staged' ? stretch++ : stretch));
+  const machineOf = (index: number) =>
+    actions.flatMap((a, i) => {
+      if (stretchOf[i] !== stretchOf[index] || a.type !== 'write_pv') return [];
+      const pv = substituteMacros(a.pvName, ctx.macros);
+      return isGateBypass(pv) ? [] : [{ pv, value: a.value }];
+    });
+  const ran = new Set<number>();
+  for (const [index, action] of actions.entries()) {
     switch (action.type) {
       case 'write_pv': {
         const pv = substituteMacros(action.pvName, ctx.macros);
@@ -260,8 +294,9 @@ export async function dispatchActions(
           await dispatchLocalWrite(ctx, pv, action.value);
           break;
         }
-        if (ran) break; // already sent with the click's run
-        ran = true;
+        if (ran.has(stretchOf[index]!)) break; // already sent with its stretch's run
+        ran.add(stretchOf[index]!);
+        const machine = machineOf(index);
         const result = await (
           ctx.confirm === true ? gate.run(machine, { confirm: true }) : gate.run(machine)
         ).catch((): WriteRunResult => []);

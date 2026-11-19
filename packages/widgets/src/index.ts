@@ -60,7 +60,14 @@ export {
   useGatedWrite,
 } from './writeGate/useGatedWrite.js';
 export { allConfirmed } from './writeGate/types.js';
-export { STAGE_PROP, Staging, createStagingStore, stageScope } from './staging/staging.js';
+export {
+  STAGE_PROP,
+  Staging,
+  createStagingStore,
+  hasStage,
+  stageScope,
+  stagedText,
+} from './staging/staging.js';
 export type { StagedValue, StagingStore } from './staging/staging.js';
 export { WRITES_INERT_PROP } from './writeGate/inert.js';
 export type {

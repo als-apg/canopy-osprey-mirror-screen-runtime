@@ -25,6 +25,8 @@ function setup(answers: Array<WriteOutcome | Error>, confirmWrites = false) {
     linkUp: () => true,
     submit: async (pv, value, options) => {
       sent.push({ pv, value, options });
+      onFirst?.();
+      onFirst = null;
       const next = answers.shift() ?? outcome('confirmed', 'written');
       if (next instanceof Error) throw next;
       return next;
@@ -36,14 +38,25 @@ function setup(answers: Array<WriteOutcome | Error>, confirmWrites = false) {
   };
   const gate = createWriteGate(backend, ORIGIN);
   const staging = createStagingStore();
+  const detachers = new Map<string, () => void>();
   for (const [pv, value] of [
     ['DEMO:A', 1],
     ['DEMO:B', 2],
     ['DEMO:C', 3],
   ] as const) {
-    staging.attach('set', pv);
+    detachers.set(pv, staging.attach('set', pv));
     staging.set('set', { pv, value, entered: String(value) });
   }
+  /** The entry of `pv` leaves the screen. */
+  const detach = (pv: string) => detachers.get(pv)?.();
+  let onFirst: (() => void) | null = null;
+  /** The entry of `pv` leaves the screen when the first write is answered. */
+  const hideOnFirstWrite = (pv: string) => {
+    onFirst = () => detach(pv);
+    return () => {
+      onFirst = null;
+    };
+  };
   const calls: string[] = [];
   const ctx = (confirm: boolean): ActionContext => ({
     macros: {},
@@ -64,7 +77,7 @@ function setup(answers: Array<WriteOutcome | Error>, confirmWrites = false) {
     );
   const toasts = () => gate.getSnapshot().toasts.map((t) => [t.outcome, t.text]);
   const staged = () => staging.list('set').map((v) => v.pv);
-  return { gate, staging, sent, calls, press, toasts, staged };
+  return { gate, staging, sent, calls, press, toasts, staged, detach, hideOnFirstWrite };
 }
 
 describe('apply_staged through the write gate', () => {
@@ -150,5 +163,36 @@ describe('apply_staged through the write gate', () => {
     t.gate.decline(t.gate.getSnapshot().dialog!.id);
     await pressed;
     expect(t.sent).toEqual([]);
+  });
+
+  it('write 1 takes entry 3 off the screen: the run stops there, the rest stays staged', async () => {
+    const t = setup([]);
+    const detach = t.staging.attach('set', 'DEMO:X');
+    t.staging.set('set', { pv: 'DEMO:X', value: 9 });
+    // DEMO:C's only entry goes when the first write is answered.
+    const sentBefore = t.sent.length;
+    const hide = t.hideOnFirstWrite('DEMO:C');
+    await t.press();
+    hide();
+    detach();
+    expect(t.sent.slice(sentBefore).map((s) => s.pv)).toEqual(['DEMO:A', 'DEMO:B']);
+    expect(t.toasts()).toEqual([
+      ['refused', 'DEMO:C: not sent; no longer on screen (2 of 4 written)'],
+    ]);
+    expect(t.calls).toEqual([]);
+  });
+
+  it('an entry hidden while the dialog is open: confirming sends nothing', async () => {
+    const t = setup([]);
+    const pressed = t.press(true);
+    await tick();
+    t.detach('DEMO:B');
+    t.gate.confirm(t.gate.getSnapshot().dialog!.id);
+    await pressed;
+    expect(t.sent).toEqual([]);
+    expect(t.toasts()).toEqual([
+      ['refused', 'DEMO:B: not sent; no longer on screen (0 of 3 written)'],
+    ]);
+    expect(t.staged()).toEqual(['DEMO:A', 'DEMO:C']);
   });
 });

@@ -99,8 +99,8 @@ describe('a staging text entry', () => {
     expect(input().value).toBe('1');
     expect(box().getAttribute('data-staged')).toBeNull();
     await enter('2.50');
-    // The value that will be sent, not the text as typed.
-    expect(input().value).toBe('2.5');
+    // The value that will be sent, with the decimals as typed.
+    expect(input().value).toBe('2.50');
     expect(box().getAttribute('data-staged')).toBe('true');
     expect(box().classList.contains('carbon-pv-input--staged')).toBe(true);
   });
@@ -118,7 +118,7 @@ describe('a staging text entry', () => {
     await enter('2.50');
     fireEvent.change(input(), { target: { value: '9' } });
     fireEvent.keyDown(input(), { key: 'Escape' });
-    expect(input().value).toBe('2.5');
+    expect(input().value).toBe('2.50');
     expect(store.list('view')).toHaveLength(1);
     fireEvent.keyDown(input(), { key: 'Escape' });
     expect(store.list('view')).toEqual([]);
@@ -200,8 +200,6 @@ describe('a staging text entry', () => {
 describe('an entry that does not stage writes as before', () => {
   for (const [name, props, staging] of [
     ['no stage prop', { pvName: 'SIM:SP' }, undefined],
-    ['an empty stage', { pvName: 'SIM:SP', stage: '' }, undefined],
-    ['a stage that is not a string', { pvName: 'SIM:SP', stage: true }, undefined],
   ] as const) {
     it(`${name}: Enter is one gate run`, async () => {
       renderEntry(props, staging === null ? null : store);
@@ -225,11 +223,103 @@ describe('an entry that does not stage writes as before', () => {
     expect(input().value).toBe('1');
   });
 
+  for (const stage of ['', true, 0]) {
+    it(`a stage that names no scope (${JSON.stringify(stage)}) writes nothing and says why`, async () => {
+      renderEntry({ pvName: 'SIM:SP', stage });
+      expect(input().getAttribute('aria-disabled')).toBe('true');
+      expect(input().getAttribute('title')).toContain('names no scope');
+      await enter('2.5');
+      fireEvent.blur(input());
+      await flush();
+      expect(runs).toEqual([]);
+      expect(puts).toEqual([]);
+      expect(store.count('')).toBe(0);
+    });
+  }
+
   it('a local channel never stages: it is written straight through', async () => {
     pvState['loc://x'] = { connected: true, value: 1 };
     renderEntry({ pvName: 'loc://x', stage: 'view' });
     await enter('2');
     expect(puts).toEqual([['loc://x', 2]]);
     expect(store.list('view')).toEqual([]);
+  });
+});
+
+describe('arrow keys on a staged value', () => {
+  const up = (shift = false) => fireEvent.keyDown(input(), { key: 'ArrowUp', shiftKey: shift });
+
+  it('step by the last digit the operator typed', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('2.50');
+    up();
+    expect(input().value).toBe('2.51');
+    up(true);
+    expect(input().value).toBe('2.61');
+  });
+
+  it('a value typed with an exponent is shown and stepped without one', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('1e-7');
+    expect(input().value).toBe('0.0000001');
+    up();
+    expect(input().value).toBe('0.0000002');
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await flush();
+    expect(store.list('view')[0].value).toBeCloseTo(2e-7, 15);
+    expect(input().value).not.toMatch(/e/i);
+  });
+
+  it('a value typed another way takes the precision of the widget', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view', precision: 3, precisionFromPV: false });
+    await enter('0x10');
+    expect(input().value).toBe('16.000');
+    up();
+    expect(input().value).toBe('16.001');
+  });
+});
+
+describe('while a run writes the scope', () => {
+  it('an entry holding a staged value is locked: no edit, no Escape, shown busy', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('2.50');
+    let end = () => {};
+    act(() => {
+      end = store.begin('view');
+    });
+    expect(box().getAttribute('aria-busy')).toBe('true');
+    expect(input().readOnly).toBe(true);
+    expect(input().getAttribute('title')).toBe('its staged value is being written');
+    fireEvent.keyDown(input(), { key: 'Escape' });
+    fireEvent.change(input(), { target: { value: '9' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await flush();
+    expect(store.list('view')).toEqual([{ pv: 'SIM:SP', value: 2.5, entered: '2.50' }]);
+    expect(input().value).toBe('2.50');
+    act(() => end());
+    expect(box().getAttribute('aria-busy')).toBeNull();
+    fireEvent.keyDown(input(), { key: 'Escape' });
+    expect(store.count('view')).toBe(0);
+  });
+
+  it('an entry with nothing staged stays usable', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    act(() => void store.begin('view'));
+    expect(input().readOnly).toBe(false);
+    await enter('3');
+    expect(store.count('view')).toBe(1);
+  });
+});
+
+describe('Escape in an entry of a screen that embeds others', () => {
+  it("drops this instance's value only", async () => {
+    const below = createStagingStore(store);
+    below.link();
+    below.attach('view', 'SIM:SP');
+    below.set('view', { pv: 'SIM:SP', value: 8 });
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('2');
+    fireEvent.keyDown(input(), { key: 'Escape' });
+    expect(store.list('view')).toEqual([{ pv: 'SIM:SP', value: 8 }]);
   });
 });

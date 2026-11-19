@@ -382,3 +382,120 @@ describe('while a run writes the scope', () => {
     expect(runs[1].map((w) => w.pv)).toEqual(['sim://ramp']);
   });
 });
+
+describe('a value that leaves the screen while its run is under way', () => {
+  /** A gate that asks the run's check for each write once the test lets it go on. */
+  function checkingGate() {
+    const verdicts: Array<[string, string | null]> = [];
+    let go: () => void = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      go = resolve;
+    });
+    const held: WriteGateService = {
+      confirmWrites: () => true,
+      run: async (writes, options) => {
+        runs.push([...writes]);
+        await waiting;
+        const outcomes: WriteOutcome[] = [];
+        for (const [i, w] of writes.entries()) {
+          const gone = options?.check?.(w, i) ?? null;
+          verdicts.push([w.pv, gone]);
+          if (gone !== null) break;
+          outcomes.push(confirmed());
+        }
+        return outcomes;
+      },
+    };
+    return { held, verdicts, go: () => act(async () => go()) };
+  }
+  function show(gateUnderTest: WriteGateService, screenJson: ScreenJSON, resolveScreen?: never) {
+    return render(
+      <PVServiceProvider service={service}>
+        <FormulaSubscriberContext.Provider value={stub}>
+          <WriteGate.Provider value={gateUnderTest}>
+            <ScreenRenderer screen={screenJson} resolveScreen={resolveScreen} />
+          </WriteGate.Provider>
+        </FormulaSubscriberContext.Provider>
+      </PVServiceProvider>
+    );
+  }
+
+  it('a rule hides an entry while the dialog is open: that value is not sent and the run stops', async () => {
+    const g = checkingGate();
+    show(
+      g.held,
+      doc('top', [
+        entry('e1', 'sim://sine', 50),
+        entry('e2', 'sim://ramp', 90, [rule('visible', true, false)]),
+        entry('e3', 'sim://noise', 130),
+        apply(),
+      ])
+    );
+    await type(node('e1'), '1');
+    await type(node('e2'), '2');
+    await type(node('e3'), '3');
+    await waitFor(() => expect(count('apply')).toBe('3'));
+    click(node('apply'));
+    await waitFor(() => expect(runs).toHaveLength(1));
+    stub.push(ARM);
+    await g.go();
+    await waitFor(() => expect(node('apply').getAttribute('aria-disabled')).toBeNull());
+    expect(g.verdicts).toEqual([
+      ['sim://sine', null],
+      ['sim://ramp', 'no longer on screen'],
+    ]);
+    // The first was written; the hidden one is gone; the third stays staged.
+    expect(count('apply')).toBe('1');
+    expect(node('e3').getAttribute('data-staged')).toBeNull();
+    expect(node('e3').querySelector('[data-staged="true"]')).not.toBeNull();
+  });
+
+  it('Escape and typing in a staged entry do nothing while its run is under way', async () => {
+    const g = checkingGate();
+    show(g.held, doc('top', [entry('e1', 'sim://sine', 50), apply()]));
+    const input = await type(node('e1'), '2.50');
+    await waitFor(() => expect(count('apply')).toBe('1'));
+    click(node('apply'));
+    await waitFor(() => expect(runs).toHaveLength(1));
+    await waitFor(() => expect(input.readOnly).toBe(true));
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.change(input, { target: { value: '9' } });
+    expect(input.value).toBe('2.50');
+    expect(count('apply')).toBe('1');
+    await g.go();
+    await waitFor(() => expect(count('apply')).toBe('0'));
+    expect(g.verdicts).toEqual([['sim://sine', null]]);
+  });
+
+  it('an embedded instance retargeted mid-run: its value is not sent', async () => {
+    const g = checkingGate();
+    const resolveScreen = vi.fn(async (ref: string) =>
+      ref.includes('other') ? doc('other', []) : card()
+    );
+    show(
+      g.held,
+      doc('top', [
+        entry('own', 'sim://noise', 170),
+        embed('row', 'card.screen.json', 'sine', 0, [
+          rule('file', 'card.screen.json', 'other.screen.json'),
+        ]),
+        apply(),
+      ]),
+      resolveScreen as never
+    );
+    await waitFor(() => expect(node('c-entry')).not.toBeNull());
+    await type(node('own'), '3');
+    await type(node('c-entry'), '1');
+    await waitFor(() => expect(count('apply')).toBe('2'));
+    click(node('apply'));
+    await waitFor(() => expect(runs).toHaveLength(1));
+    stub.push(ARM);
+    await waitFor(() => expect(node('c-entry')).toBeNull());
+    await g.go();
+    await waitFor(() => expect(count('apply')).toBe('0'));
+    expect(g.verdicts).toEqual([
+      ['sim://noise', null],
+      ['sim://sine', 'no longer on screen'],
+    ]);
+  });
+});
