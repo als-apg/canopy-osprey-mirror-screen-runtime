@@ -29,6 +29,20 @@ export type FormulaScalarValue = number | string | boolean;
 export type FormulaSeverity = 'NO_ALARM' | 'MINOR' | 'MAJOR' | 'INVALID';
 
 /**
+ * The members of a formula's vector tokens (`{*}`, `{g.*}`), summed up: how
+ * many there are and which have no value. Only a formula with a vector token
+ * has it.
+ */
+export interface FormulaVectorInputs {
+  /** Number of channels the vector tokens name. */
+  readonly count: number;
+  /** Channels that are disconnected or have no sample, in member order; capped. */
+  readonly missing: readonly string[];
+  /** Number of further such channels that `missing` does not name. */
+  readonly more: number;
+}
+
+/**
  * Optional per-result metadata. Rules ignore it; formula-backed widget
  * channels (see ScreenPVService) surface it as the channel's alarm state.
  */
@@ -37,6 +51,8 @@ export interface FormulaResultMeta {
   readonly severity?: FormulaSeverity;
   /** Result timestamp, epoch ms (Formula Engine: the newest input sample used). */
   readonly timestampMs?: number;
+  /** The members of the formula's vector tokens; absent = it has none. */
+  readonly vectorInputs?: FormulaVectorInputs;
 }
 
 /**

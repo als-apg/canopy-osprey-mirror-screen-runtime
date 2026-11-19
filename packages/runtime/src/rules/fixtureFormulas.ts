@@ -24,7 +24,9 @@ function fixtureEvaluator(fixture: LocalPVLike): FormulaSubscriber {
   const aliased: LocalPVLike = {
     subscribe: (address, listener) => fixture.subscribe(address.slice(LOC.length), listener),
   };
-  const evaluator = createLocalAwareFormulaSubscriber(aliased, null);
+  const evaluator = createLocalAwareFormulaSubscriber(aliased, null, {
+    nameOf: (address) => address.slice(LOC.length),
+  });
   return {
     subscribe(spec: FormulaSpec, options) {
       const bindings: Record<string, string> = {};

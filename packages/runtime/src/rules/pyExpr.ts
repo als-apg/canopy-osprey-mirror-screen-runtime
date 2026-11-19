@@ -4,6 +4,13 @@
 // nested conditionals (`a if c else b`), and/or/not, comparisons, arithmetic,
 // `{token}` placeholders, literals, and a small math-function namespace.
 //
+// Formulas over many channels evaluate here too, as on the server: a vector
+// token (`{*}`: every binding; `{g.*}`: the bindings whose key starts with
+// `g.`, ordered by key) is a vector of numbers, arithmetic and comparisons
+// work member by member, a reduction (`max`, `sum`, `count_nonzero`, the
+// `nan*` forms, ...) gives one value, and `severity({x})` / `connected({x})`
+// read a channel's status. The caller passes the status of each binding.
+//
 // This is NOT a general Python evaluator — anything outside the subset
 // throws PyExprError and the caller downgrades to a warning (same contract
 // as Formula Engine-side validation failures).
@@ -16,6 +23,54 @@ export class PyExprError extends Error {
 }
 
 export type PyValue = number | string | boolean | null;
+
+/** A binding's status, for `severity()` and `connected()`. */
+export interface PyStatus {
+  /** 0 NO_ALARM, 1 MINOR, 2 MAJOR, 3 INVALID. */
+  readonly severity: number;
+  /** Whether the channel is connected and has a sample. */
+  readonly connected: boolean;
+}
+
+/** A vector token's value, or a member-by-member result. `bool`: of a comparison. */
+class Vec {
+  readonly data: readonly number[];
+  readonly bool: boolean;
+  constructor(data: readonly number[], bool = false) {
+    this.data = data;
+    this.bool = bool;
+  }
+}
+
+type Val = PyValue | Vec;
+
+const STATUS_FUNCTIONS = new Set(['severity', 'connected']);
+const NO_STATUS: PyStatus = { severity: 3, connected: false };
+
+/**
+ * The key prefix a vector token covers ('' for `*`), or null for a plain
+ * token. A token that is itself a binding key is always plain.
+ */
+function vectorPrefix(token: string, has: (key: string) => boolean): string | null {
+  if (has(token)) return null;
+  if (token === '*') return '';
+  return token.endsWith('.*') ? token.slice(0, -1) : null;
+}
+
+/** The members of a vector token under `prefix`, ordered by key as text. */
+function membersOf(prefix: string, keys: Iterable<string>): string[] {
+  return [...keys]
+    .filter((key) => key.startsWith(prefix))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** A member's number: NaN when it has none (text, null, no sample). */
+function memberNumber(value: PyValue | undefined): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return NaN;
+}
 
 type TokenType = 'num' | 'str' | 'name' | 'binding' | 'op';
 
@@ -123,26 +178,153 @@ const FUNCTIONS: Record<string, (...args: number[]) => number> = {
   atan2: (a, b) => Math.atan2(a!, b!),
 } as Record<string, (...args: number[]) => number>;
 
-function truthy(value: PyValue): boolean {
+function truthy(value: Val): boolean {
+  if (value instanceof Vec) {
+    throw new PyExprError(
+      'and, or, not and the conditional need one value, not a vector; reduce it first'
+    );
+  }
   if (value === null || value === false) return false;
   if (value === 0 || value === '') return false;
   return true;
 }
 
-function asNumber(value: PyValue, context: string): number {
+function asNumber(value: Val, context: string): number {
+  if (value instanceof Vec) {
+    throw new PyExprError(`${context} needs one value, not a vector; reduce it first`);
+  }
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
   throw new PyExprError(`${context} needs a number, got ${JSON.stringify(value)}`);
 }
 
+/** `v` as a read of member `i` of a vector of `size`: its member, or its one number. */
+function spread(v: Val, size: number, context: string): (i: number) => number {
+  if (v instanceof Vec) {
+    if (v.data.length !== size) {
+      throw new PyExprError(`${context}: vectors of ${size} and ${v.data.length} members`);
+    }
+    return (i) => v.data[i]!;
+  }
+  const n = asNumber(v, context);
+  return () => n;
+}
+
+/** `f` member by member over operands of which at least one is a vector. */
+function lift(
+  operands: readonly Val[],
+  context: string,
+  f: (...members: number[]) => number,
+  bool = false
+): Vec {
+  const size = operands.find((v) => v instanceof Vec)!.data.length;
+  const reads = operands.map((v) => spread(v, size, context));
+  return new Vec(
+    Array.from({ length: size }, (_, i) => f(...reads.map((read) => read(i)))),
+    bool
+  );
+}
+
+const hasNaN = (data: readonly number[]) => data.some((v) => Number.isNaN(v));
+const present = (data: readonly number[]) => data.filter((v) => !Number.isNaN(v));
+const total = (data: readonly number[]) => data.reduce((sum, v) => sum + v, 0);
+
+/** Reductions of a vector to one number. */
+const REDUCTIONS: Record<string, (data: readonly number[]) => number> = {
+  max: (d) => (hasNaN(d) ? NaN : Math.max(...d)),
+  min: (d) => (hasNaN(d) ? NaN : Math.min(...d)),
+  sum: total,
+  mean: (d) => total(d) / d.length,
+  count: (d) => d.length,
+  count_nonzero: (d) => d.filter((v) => v !== 0).length,
+  nanmax: (d) => (present(d).length === 0 ? NaN : Math.max(...present(d))),
+  nanmin: (d) => (present(d).length === 0 ? NaN : Math.min(...present(d))),
+  nansum: (d) => total(present(d)),
+  nanmean: (d) => total(present(d)) / present(d).length,
+};
+/** Reductions that keep a comparison's truth value (`max({*} > 3)` is true or false). */
+const KEEPS_BOOL = new Set(['max', 'min', 'nanmax', 'nanmin']);
+/** Reductions that only a vector has; on one value they see one member. */
+const VECTOR_ONLY = new Set(Object.keys(REDUCTIONS).filter((n) => n !== 'max' && n !== 'min'));
+
 class Parser {
   private pos = 0;
   private readonly tokens: Token[];
   private readonly bindings: ReadonlyMap<string, PyValue>;
+  private readonly status: ReadonlyMap<string, PyStatus> | undefined;
 
-  constructor(tokens: Token[], bindings: ReadonlyMap<string, PyValue>) {
+  constructor(
+    tokens: Token[],
+    bindings: ReadonlyMap<string, PyValue>,
+    status?: ReadonlyMap<string, PyStatus>
+  ) {
     this.tokens = tokens;
     this.bindings = bindings;
+    this.status = status;
+  }
+
+  /** The value of `{token}`: a binding's, or the vector of a vector token's members. */
+  private read(token: string): Val {
+    if (this.bindings.has(token)) return this.bindings.get(token)!;
+    const prefix = vectorPrefix(token, (key) => this.bindings.has(key));
+    const members = prefix === null ? [] : membersOf(prefix, this.bindings.keys());
+    if (members.length === 0) throw new PyExprError(`unbound token {${token}}`);
+    return new Vec(
+      members.map((key) =>
+        this.status && !(this.status.get(key) ?? NO_STATUS).connected
+          ? NaN
+          : memberNumber(this.bindings.get(key))
+      )
+    );
+  }
+
+  /** `severity({token})` or `connected({token})`, after the name and `(`. */
+  private statusCall(name: string): Val {
+    const t = this.peek();
+    const close = this.tokens[this.pos + 1];
+    if (!t || t.type !== 'binding' || !close || close.type !== 'op' || close.text !== ')') {
+      throw new PyExprError(`${name}() takes exactly one {token}`);
+    }
+    this.pos += 2;
+    const one = (key: string): number => {
+      const s = this.status?.get(key) ?? NO_STATUS;
+      if (name === 'connected') return s.connected ? 1 : 0;
+      return s.connected ? s.severity : 3;
+    };
+    if (this.bindings.has(t.text)) return one(t.text);
+    const prefix = vectorPrefix(t.text, (key) => this.bindings.has(key));
+    const members = prefix === null ? [] : membersOf(prefix, this.bindings.keys());
+    if (members.length === 0) throw new PyExprError(`unbound token {${t.text}}`);
+    return new Vec(members.map(one));
+  }
+
+  /** A call of a function of the namespace, after the name and `(`. */
+  private call(name: string): Val {
+    const args: Val[] = [];
+    if (!this.takeOp(')')) {
+      for (;;) {
+        args.push(this.conditional());
+        if (this.takeOp(',')) continue;
+        if (this.takeOp(')')) break;
+        throw new PyExprError(`bad argument list for ${name}()`);
+      }
+    }
+    const first = args[0];
+    if (name === 'where') {
+      if (args.length !== 3) throw new PyExprError('where() takes a condition and two values');
+      if (!args.some((a) => a instanceof Vec)) return truthy(first!) ? args[1]! : args[2]!;
+      return lift(args, 'where()', (c, a, b) => (c !== 0 ? a! : b!));
+    }
+    const reduce = REDUCTIONS[name];
+    if (reduce && args.length === 1 && (first instanceof Vec || VECTOR_ONLY.has(name))) {
+      const data = first instanceof Vec ? first.data : [asNumber(first!, `${name}()`)];
+      const value = reduce(data);
+      return first instanceof Vec && first.bool && KEEPS_BOOL.has(name) ? value !== 0 : value;
+    }
+    const fn = FUNCTIONS[name];
+    if (!fn) throw new PyExprError(`unknown name '${name}'`);
+    if (args.length === 1 && first instanceof Vec) return new Vec(first.data.map((v) => fn(v)));
+    return fn(...args.map((a) => asNumber(a, `${name}()`)));
   }
 
   private peek(): Token | undefined {
@@ -172,11 +354,16 @@ class Parser {
     if (this.pos !== this.tokens.length) {
       throw new PyExprError(`trailing input at token ${this.pos}`);
     }
+    if (value instanceof Vec) {
+      throw new PyExprError(
+        'a scalar formula must reduce a vector token to one value, e.g. max(...), sum(...), count_nonzero(...)'
+      );
+    }
     return value;
   }
 
   // conditional := or ('if' or 'else' conditional)?
-  private conditional(): PyValue {
+  private conditional(): Val {
     const value = this.or();
     if (this.takeName('if')) {
       const cond = this.or();
@@ -187,7 +374,7 @@ class Parser {
     return value;
   }
 
-  private or(): PyValue {
+  private or(): Val {
     let value = this.and();
     while (this.takeName('or')) {
       const rhs = this.and();
@@ -196,7 +383,7 @@ class Parser {
     return value;
   }
 
-  private and(): PyValue {
+  private and(): Val {
     let value = this.not();
     while (this.takeName('and')) {
       const rhs = this.not();
@@ -205,17 +392,29 @@ class Parser {
     return value;
   }
 
-  private not(): PyValue {
+  private not(): Val {
     if (this.takeName('not')) return !truthy(this.not());
     return this.comparison();
   }
 
-  private comparison(): PyValue {
+  private comparison(): Val {
     const lhs = this.arith();
     const t = this.peek();
     if (t && t.type === 'op' && ['==', '!=', '<', '<=', '>', '>='].includes(t.text)) {
       this.pos += 1;
       const rhs = this.arith();
+      if (lhs instanceof Vec || rhs instanceof Vec) {
+        const compare: Record<string, (x: number, y: number) => boolean> = {
+          '==': (x, y) => x === y,
+          '!=': (x, y) => x !== y,
+          '<': (x, y) => x < y,
+          '<=': (x, y) => x <= y,
+          '>': (x, y) => x > y,
+          '>=': (x, y) => x >= y,
+        };
+        const test = compare[t.text]!;
+        return lift([lhs, rhs], t.text, (x, y) => (test(x!, y!) ? 1 : 0), true);
+      }
       switch (t.text) {
         case '==':
           return lhs === rhs;
@@ -234,51 +433,61 @@ class Parser {
     return lhs;
   }
 
-  private arith(): PyValue {
+  private arith(): Val {
     let value = this.term();
     for (;;) {
       if (this.takeOp('+')) {
         const rhs = this.term();
-        if (typeof value === 'string' && typeof rhs === 'string') {
+        if (value instanceof Vec || rhs instanceof Vec) {
+          value = lift([value, rhs], '+', (x, y) => x! + y!);
+        } else if (typeof value === 'string' && typeof rhs === 'string') {
           value = value + rhs;
         } else {
           value = asNumber(value, '+') + asNumber(rhs, '+');
         }
       } else if (this.takeOp('-')) {
-        value = asNumber(value, '-') - asNumber(this.term(), '-');
+        value = this.binary(value, this.term(), '-', (x, y) => x - y);
       } else {
         return value;
       }
     }
   }
 
-  private term(): PyValue {
+  private term(): Val {
     let value = this.factor();
     for (;;) {
-      if (this.takeOp('*')) value = asNumber(value, '*') * asNumber(this.factor(), '*');
-      else if (this.takeOp('/')) value = asNumber(value, '/') / asNumber(this.factor(), '/');
+      if (this.takeOp('*')) value = this.binary(value, this.factor(), '*', (x, y) => x * y);
+      else if (this.takeOp('/')) value = this.binary(value, this.factor(), '/', (x, y) => x / y);
       else if (this.takeOp('//'))
-        value = Math.floor(asNumber(value, '//') / asNumber(this.factor(), '//'));
-      else if (this.takeOp('%')) value = asNumber(value, '%') % asNumber(this.factor(), '%');
+        value = this.binary(value, this.factor(), '//', (x, y) => Math.floor(x / y));
+      else if (this.takeOp('%')) value = this.binary(value, this.factor(), '%', (x, y) => x % y);
       else return value;
     }
   }
 
-  private factor(): PyValue {
-    if (this.takeOp('+')) return asNumber(this.factor(), 'unary +');
-    if (this.takeOp('-')) return -asNumber(this.factor(), 'unary -');
+  /** `f` of two operands: of their numbers, or member by member. */
+  private binary(a: Val, b: Val, context: string, f: (x: number, y: number) => number): Val {
+    if (a instanceof Vec || b instanceof Vec) {
+      return lift([a, b], context, (x, y) => f(x!, y!));
+    }
+    return f(asNumber(a, context), asNumber(b, context));
+  }
+
+  private factor(): Val {
+    if (this.takeOp('+')) return this.binary(this.factor(), 0, 'unary +', (x) => x);
+    if (this.takeOp('-')) return this.binary(this.factor(), 0, 'unary -', (x) => -x);
     return this.power();
   }
 
-  private power(): PyValue {
+  private power(): Val {
     const base = this.atom();
     if (this.takeOp('**')) {
-      return Math.pow(asNumber(base, '**'), asNumber(this.factor(), '**'));
+      return this.binary(base, this.factor(), '**', (x, y) => Math.pow(x, y));
     }
     return base;
   }
 
-  private atom(): PyValue {
+  private atom(): Val {
     const t = this.peek();
     if (!t) throw new PyExprError('unexpected end of expression');
     if (t.type === 'num') {
@@ -291,8 +500,7 @@ class Parser {
     }
     if (t.type === 'binding') {
       this.pos += 1;
-      if (!this.bindings.has(t.text)) throw new PyExprError(`unbound token {${t.text}}`);
-      return this.bindings.get(t.text)!;
+      return this.read(t.text);
     }
     if (t.type === 'op' && t.text === '(') {
       this.pos += 1;
@@ -305,18 +513,13 @@ class Parser {
       if (t.text === 'True') return true;
       if (t.text === 'False') return false;
       if (t.text === 'None') return null;
-      const fn = FUNCTIONS[t.text];
-      if (fn && this.takeOp('(')) {
-        const args: number[] = [];
-        if (!this.takeOp(')')) {
-          for (;;) {
-            args.push(asNumber(this.conditional(), `${t.text}()`));
-            if (this.takeOp(',')) continue;
-            if (this.takeOp(')')) break;
-            throw new PyExprError(`bad argument list for ${t.text}()`);
-          }
-        }
-        return fn(...args);
+      const known =
+        STATUS_FUNCTIONS.has(t.text) ||
+        t.text === 'where' ||
+        t.text in REDUCTIONS ||
+        t.text in FUNCTIONS;
+      if (known && this.takeOp('(')) {
+        return STATUS_FUNCTIONS.has(t.text) ? this.statusCall(t.text) : this.call(t.text);
       }
       throw new PyExprError(`unknown name '${t.text}'`);
     }
@@ -324,10 +527,69 @@ class Parser {
   }
 }
 
-/** Evaluate a Formula Engine wire expression against `{token}` binding values. */
+/**
+ * Evaluate a Formula Engine wire expression against `{token}` binding values.
+ * `status` gives each binding's status for `severity()` and `connected()`; a
+ * binding without one, or not connected, reads as severity 3, not connected,
+ * and as a vector member has no number.
+ */
 export function evaluatePyExpr(
   expression: string,
-  bindings: ReadonlyMap<string, PyValue>
+  bindings: ReadonlyMap<string, PyValue>,
+  status?: ReadonlyMap<string, PyStatus>
 ): PyValue {
-  return new Parser(tokenize(expression), bindings).parse();
+  return new Parser(tokenize(expression), bindings, status).parse();
+}
+
+/** How an expression reads its bindings. */
+export interface PyExprInputs {
+  /** Each vector token with its members, ordered by key. */
+  readonly vectors: ReadonlyMap<string, readonly string[]>;
+  /** Every member of a vector token, once, in order of first use. */
+  readonly members: readonly string[];
+  /** Bindings read as a plain value: the formula has no result without them. */
+  readonly strict: ReadonlySet<string>;
+  /** Whether the expression has a vector token or a status function. */
+  readonly status: boolean;
+}
+
+/**
+ * Which of `keys` the expression reads as a plain value, and which only as a
+ * member of a vector token or through a status function. Throws PyExprError
+ * for a token with nothing bound and a status function without exactly one token.
+ */
+export function analyzePyExpr(expression: string, keys: readonly string[]): PyExprInputs {
+  const tokens = tokenize(expression);
+  const has = (key: string) => keys.includes(key);
+  const vectors = new Map<string, readonly string[]>();
+  const strict = new Set<string>();
+  let status = false;
+  tokens.forEach((t, i) => {
+    if (t.type === 'name' && STATUS_FUNCTIONS.has(t.text) && tokens[i + 1]?.text === '(') {
+      status = true;
+      const arg = tokens[i + 2];
+      const close = tokens[i + 3];
+      if (arg?.type !== 'binding' || close?.type !== 'op' || close.text !== ')') {
+        throw new PyExprError(`${t.text}() takes exactly one {token}`);
+      }
+    }
+    if (t.type !== 'binding') return;
+    const prefix = vectorPrefix(t.text, has);
+    if (prefix !== null) {
+      const members = membersOf(prefix, keys);
+      if (members.length === 0) throw new PyExprError(`{${t.text}} matches no binding`);
+      vectors.set(t.text, members);
+      return;
+    }
+    if (!has(t.text)) throw new PyExprError(`unbound token {${t.text}}`);
+    const before = tokens[i - 2];
+    const inStatus =
+      before?.type === 'name' &&
+      STATUS_FUNCTIONS.has(before.text) &&
+      tokens[i - 1]?.text === '(' &&
+      tokens[i + 1]?.text === ')';
+    if (!inStatus) strict.add(t.text);
+  });
+  const members = [...new Set([...vectors.values()].flat())];
+  return { vectors, members, strict, status: status || vectors.size > 0 };
 }
