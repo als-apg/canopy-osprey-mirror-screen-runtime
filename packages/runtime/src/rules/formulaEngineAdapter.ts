@@ -66,6 +66,11 @@ interface FormulaEngineErrorLike {
 }
 
 export interface FormulaEngineServiceLike {
+  /**
+   * The state of the service's connection, when it states one (the SDK:
+   * `idle`, `connecting`, `connected`, `disconnected`).
+   */
+  readonly status?: string;
   subscribe(
     spec: FormulaSpec,
     options: {
@@ -83,14 +88,26 @@ export interface FormulaEngineServiceLike {
  * scalar result whose value is null feeds `onNoValue` with the metadata;
  * non-scalar results are ignored (rules and widget channels are scalar);
  * error frames map onto FormulaErrors that keep the frame's `code` and
- * `retryable` (a frame without the flag reads as not retryable).
+ * `retryable` (a frame without the flag reads as not retryable). A
+ * subscription made while the service says its connection is down gets
+ * `ws_disconnected` at once.
  */
 export function createFormulaEngineSubscriber(
   service: FormulaEngineServiceLike
 ): FormulaSubscriber {
   return {
     subscribe(spec: FormulaSpec, { intervalMs, onResult, onNoValue, onError }) {
-      return service.subscribe(spec, {
+      // The service tells a lost connection only to the subscriptions it held
+      // then. One made while the connection is down is told here, so that it
+      // does not wait out the start timeout as "pending".
+      let ended = false;
+      if (onError && service.status === 'disconnected') {
+        queueMicrotask(() => {
+          if (ended || service.status !== 'disconnected') return;
+          onError(new FormulaError('ws_disconnected', 'Formula connection lost.', true));
+        });
+      }
+      const unsubscribe = service.subscribe(spec, {
         ...(intervalMs !== undefined ? { intervalMs } : {}),
         onResult: (data) => {
           if (data.kind !== 'scalar' || !data.scalar) return;
@@ -103,6 +120,10 @@ export function createFormulaEngineSubscriber(
               onError(new FormulaError(error.code, error.message, error.retryable === true))
           : undefined,
       });
+      return () => {
+        ended = true;
+        unsubscribe();
+      };
     },
   };
 }

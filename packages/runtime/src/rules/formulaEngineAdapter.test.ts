@@ -130,4 +130,46 @@ describe('createFormulaEngineSubscriber', () => {
     expect(invalid!.retryable).toBe(false);
     expect(noFlag!.retryable).toBe(false);
   });
+
+  describe('a subscription made while the connection is down', () => {
+    const down = (status: string | undefined) => {
+      const unsubscribe = vi.fn();
+      const service: FormulaEngineServiceLike = {
+        ...(status !== undefined ? { status } : {}),
+        subscribe: () => unsubscribe,
+      };
+      const onError = vi.fn();
+      const stop = createFormulaEngineSubscriber(service).subscribe(SPEC, {
+        onResult: vi.fn(),
+        onError,
+      });
+      return { onError, stop, unsubscribe };
+    };
+
+    it('is told at once, after subscribe() has returned', async () => {
+      const { onError } = down('disconnected');
+      expect(onError).not.toHaveBeenCalled();
+      await Promise.resolve();
+      expect(onError).toHaveBeenCalledTimes(1);
+      const error = onError.mock.calls[0]![0] as FormulaError;
+      expect(error).toBeInstanceOf(FormulaError);
+      expect([error.code, error.retryable]).toEqual(['ws_disconnected', true]);
+    });
+
+    it('is not told when it ended before', async () => {
+      const { onError, stop, unsubscribe } = down('disconnected');
+      stop();
+      await Promise.resolve();
+      expect(onError).not.toHaveBeenCalled();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    for (const status of ['idle', 'connecting', 'connected', undefined]) {
+      it(`waits while the service is ${status ?? 'of a kind that states nothing'}`, async () => {
+        const { onError } = down(status);
+        await Promise.resolve();
+        expect(onError).not.toHaveBeenCalled();
+      });
+    }
+  });
 });
