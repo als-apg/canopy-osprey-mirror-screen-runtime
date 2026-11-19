@@ -31,6 +31,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -61,8 +62,13 @@ import {
   useWriteGate,
   widgetRegistry,
 } from '@slaclab/canopy-screen-widgets';
-import type { RenderMode, ResolveAsset, WriteGateService } from '@slaclab/canopy-screen-widgets';
-import { readNodeActions } from '../actions/staged.js';
+import type {
+  RenderMode,
+  ResolveAsset,
+  StagingStore,
+  WriteGateService,
+} from '@slaclab/canopy-screen-widgets';
+import { isStagingAction, readNodeActions } from '../actions/staged.js';
 import type { RuntimeAction } from '../actions/staged.js';
 import { isGateBypass } from '../channels.js';
 import { childMacros, resolveScreenMacros, substituteMacros, substituteProps } from '../macros.js';
@@ -333,6 +339,44 @@ function hasMachineWrite(actions: readonly RuntimeAction[], macros: MacroValues)
   );
 }
 
+/** The hover of a node whose staging actions have nothing to act on. */
+const NOTHING_STAGED = 'nothing staged';
+
+/** The count badge of a node with staging actions: its top right corner. */
+const STAGED_COUNT_STYLE: CSSProperties = {
+  position: 'absolute',
+  top: 2,
+  right: 2,
+  minWidth: 16,
+  height: 16,
+  padding: '0 4px',
+  boxSizing: 'border-box',
+  borderRadius: 8,
+  font: '600 11px/16px var(--canopy-font-mono, monospace)',
+  textAlign: 'center',
+  color: 'var(--cds-text-inverse)',
+  background: 'var(--cds-background-inverse)',
+  pointerEvents: 'none',
+};
+
+/**
+ * How many values are staged in the scopes of `actions`' staging actions
+ * (each scope once), or null when the list has no staging action.
+ */
+function countStaged(
+  actions: readonly RuntimeAction[],
+  macros: MacroValues,
+  staging: StagingStore | null
+): number | null {
+  const scopes = new Set(
+    actions.filter(isStagingAction).map((a) => substituteMacros(a.scope, macros))
+  );
+  if (scopes.size === 0) return null;
+  let count = 0;
+  for (const scope of scopes) count += staging?.list(scope).length ?? 0;
+  return count;
+}
+
 const NO_SUBSCRIPTION = () => {};
 
 /**
@@ -439,6 +483,17 @@ function MountedNodeView({
   const gate = useWriteGate();
   // The screen's staged values, for `apply_staged` / `clear_staged`.
   const staging = useContext(Staging);
+  // A node carrying a staging action follows the store: it is inert while
+  // its scopes hold nothing and shows how many values they hold.
+  const followsStaging = useMemo(
+    () => readNodeActions(baseProps).some(isStagingAction),
+    [baseProps]
+  );
+  const [, stagingChanged] = useReducer((n: number) => n + 1, 0);
+  useEffect(
+    () => (followsStaging && staging !== null ? staging.subscribe(stagingChanged) : undefined),
+    [followsStaging, staging]
+  );
   const writesInert = useWritesInertReason(gate);
   const [hovered, setHovered] = useState(false);
   // The open menu of a click whose actions are alternatives (actionMenu.tsx).
@@ -499,7 +554,18 @@ function MountedNodeView({
   // writes: no click handler, so nothing in it runs (no navigation, no
   // toast); the reason is its hover and reaches the widget for its button.
   const actions = readNodeActions(effective.props);
-  const inertReason = writesInert !== null && hasMachineWrite(actions, macros) ? writesInert : null;
+  // The values staged in the scopes of the node's staging actions, or null
+  // on a node with none. A node whose every action is a staging action can do
+  // nothing while that is zero: it is inert, as under a gate that refuses.
+  const stagedCount = countStaged(actions, macros, staging);
+  if (stagedCount !== null) attrs['data-staged-count'] = String(stagedCount);
+  const nothingStaged = stagedCount === 0 && actions.every(isStagingAction);
+  const inertReason =
+    writesInert !== null && hasMachineWrite(actions, macros)
+      ? writesInert
+      : nothingStaged
+        ? NOTHING_STAGED
+        : null;
   if (inertReason !== null) {
     attrs['aria-disabled'] = 'true';
     attrs.title = inertReason;
@@ -584,6 +650,11 @@ function MountedNodeView({
           placement={hoverLabelPlacement(effective.props)}
           flat={flat}
         />
+      )}
+      {stagedCount !== null && stagedCount > 0 && (
+        <span data-testid="canopy-staged-count" style={STAGED_COUNT_STYLE}>
+          {stagedCount}
+        </span>
       )}
       {menuAt !== null && asMenu && (
         <PopupMenu

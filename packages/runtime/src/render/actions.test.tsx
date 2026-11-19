@@ -349,6 +349,70 @@ describe('widget actions', () => {
       expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(0);
     });
 
+    describe('while nothing is staged', () => {
+      const resetButton: WidgetNode = {
+        ...button('reset', 'Reset', [{ type: 'clear_staged', scope: 'set' }]),
+        geometry: { x: 150, y: 10, width: 100, height: 30 },
+      };
+      const node = (id: string) => document.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
+      const badge = (id: string) =>
+        node(id).querySelector('[data-testid="canopy-staged-count"]')?.textContent ?? null;
+
+      it('Apply and Reset are disabled and say why; a click runs nothing', async () => {
+        const { runs } = setup([entry('e1', 'sim://sine', 50, 'set'), applyButton, resetButton]);
+        for (const id of ['apply', 'reset']) {
+          expect(node(id).getAttribute('aria-disabled')).toBe('true');
+          expect(node(id).getAttribute('title')).toBe('nothing staged');
+          expect(node(id).querySelector('button')?.getAttribute('aria-disabled')).toBe('true');
+          expect(badge(id)).toBeNull();
+          expect(node(id).getAttribute('data-staged-count')).toBe('0');
+        }
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(runs).toEqual([]);
+      });
+
+      it('they come alive with the count of staged values, and go back after the write', async () => {
+        const { runs } = setup([
+          entry('e1', 'sim://sine', 50, 'set'),
+          entry('e2', 'sim://ramp', 90, 'set'),
+          entry('e3', 'sim://noise', 130, 'other'),
+          applyButton,
+          resetButton,
+        ]);
+        await type('e1', '2.5');
+        await waitFor(() => expect(badge('apply')).toBe('1'));
+        await type('e2', '4');
+        await type('e3', '7');
+        await waitFor(() => expect(badge('apply')).toBe('2'));
+        expect(badge('reset')).toBe('2');
+        expect(node('apply').getAttribute('data-staged-count')).toBe('2');
+        expect(node('apply').getAttribute('aria-disabled')).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        await waitFor(() => expect(runs).toHaveLength(1));
+        await waitFor(() => expect(node('apply').getAttribute('aria-disabled')).toBe('true'));
+        expect(badge('apply')).toBeNull();
+      });
+
+      it('a node that also carries another action stays live', async () => {
+        const mixed = button('mixed', 'Apply and close', [
+          { type: 'apply_staged', scope: 'set' },
+          { type: 'close_display' },
+        ]);
+        const host = makeHost();
+        render(wrap(<ScreenRenderer screen={doc('top', [mixed])} />, host));
+        expect(node('mixed').getAttribute('aria-disabled')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Apply and close' }));
+        await waitFor(() => expect(host.close).toHaveBeenCalled());
+      });
+
+      it('a node with no staging action carries no count', () => {
+        setup([button('w', 'Go', [{ type: 'write_pv', pvName: 'X:A', value: 1 }])]);
+        expect(node('w').getAttribute('data-staged-count')).toBeNull();
+        expect(node('w').getAttribute('aria-disabled')).toBeNull();
+      });
+    });
+
     it('an Apply button is inert while the gate refuses machine writes', async () => {
       const reason = 'writes are off';
       const inert = { disabled: true, reason };
