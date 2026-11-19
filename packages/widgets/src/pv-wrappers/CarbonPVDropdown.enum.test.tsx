@@ -64,6 +64,8 @@ const options = () => {
 };
 
 beforeEach(() => {
+  // jsdom has no layout; the open list scrolls its selected item into view.
+  Element.prototype.scrollIntoView = () => {};
   runs = [];
   pvState = { connected: true, value: 1, enumChoices: ['Off', 'Standby', 'On'] };
 });
@@ -108,10 +110,73 @@ describe('dropdown of an enum channel', () => {
     expect(screen.getByRole('combobox').textContent).toContain('7');
   });
 
-  it('keeps the placeholder items of a channel without enum strings', () => {
-    pvState = { connected: true, value: 2 };
+  it('shows the live value after a choice, not the choice', async () => {
+    const view = show({});
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'On' }));
+    await act(async () => {});
+    expect(runs).toHaveLength(1);
+    expect(screen.getByRole('combobox').textContent).toContain('Standby');
+    pvState.value = 2;
+    view.rerender(<></>);
+    cleanup();
     show({});
-    expect(screen.getByRole('combobox').textContent).toContain('2');
-    expect(options()).toEqual(['Option 1', 'Option 2', 'Option 3']);
+    expect(screen.getByRole('combobox').textContent).toContain('On');
+  });
+
+  it('does not offer an empty string', () => {
+    pvState.enumChoices = ['Off', '', 'On', ''];
+    pvState.value = 0;
+    show({});
+    expect(options()).toEqual(['Off', 'On']);
+  });
+
+  it('writes the index of a string the channel has twice', async () => {
+    pvState.enumChoices = ['Off', 'On', 'Fault', 'On'];
+    pvState.value = 0;
+    show({});
+    fireEvent.click(screen.getByRole('combobox'));
+    const twice = screen.getAllByRole('option').filter((o) => o.textContent?.startsWith('On'));
+    expect(twice.map((o) => o.textContent)).toEqual(['On (1)', 'On (3)']);
+    fireEvent.click(twice[1]!);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Fault' }));
+    await act(async () => {});
+    expect(runs).toEqual([[{ pv: 'SIM:MODE', value: 3 }], [{ pv: 'SIM:MODE', value: 'Fault' }]]);
+  });
+});
+
+describe('dropdown with nothing to offer', () => {
+  for (const [name, props] of [
+    ['no items stated', {}],
+    ['an empty list stated', { customItems: [] }],
+  ] as const) {
+    it(`${name}, channel without enum strings: offers nothing and is inert with a reason`, () => {
+      pvState = { connected: true, value: 2 };
+      const view = show(props);
+      const box = screen.getByRole('combobox');
+      expect(box.getAttribute('aria-disabled')).toBe('true');
+      expect(box.getAttribute('title')).toBe('The channel states no choices');
+      fireEvent.click(box);
+      expect(screen.queryAllByRole('option')).toEqual([]);
+      expect(view.container.textContent).not.toContain('Option');
+      expect(runs).toEqual([]);
+    });
+  }
+
+  it('is inert too when every enum string of the channel is empty', () => {
+    pvState = { connected: true, value: 0, enumChoices: ['', ''] };
+    show({});
+    expect(screen.getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('dropdown with stated items', () => {
+  it('shows the value as it is, also on a channel with enum strings', () => {
+    show({ customItems: ['A', 'B'] });
+    expect(screen.getByRole('combobox').textContent).toContain('1');
+    expect(screen.getByRole('combobox').textContent).not.toContain('Standby');
+    expect(options()).toEqual(['A', 'B']);
   });
 });

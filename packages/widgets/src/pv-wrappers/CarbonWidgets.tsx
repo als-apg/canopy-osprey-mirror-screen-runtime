@@ -910,23 +910,52 @@ export function CarbonPVLed({ layout, props, isEditing }: WidgetRendererProps) {
   );
 }
 
+/** One item of a dropdown whose list comes from the channel. */
+interface EnumItem {
+  /** What the list shows. */
+  text: string;
+  /** What is written: the string, or the index when the channel has the string twice. */
+  write: string | number;
+  index: number;
+}
+
 /**
- * PVDropdown — Carbon Dropdown bound to PV. Its items are the ones the
- * screen states (`customItems`); with none stated, the channel's own enum
- * strings. The string chosen is what is written.
+ * The items a channel's enum strings give: empty strings are not offered,
+ * and a string the channel has more than once is shown with its index and
+ * written as that index (the string alone would not say which one).
  */
-export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
+function enumItems(choices: readonly string[] | undefined): EnumItem[] {
+  const all = choices ?? [];
+  return all.flatMap((text, index) => {
+    if (text === '') return [];
+    const twice = all.indexOf(text) !== all.lastIndexOf(text);
+    return [{ text: twice ? `${text} (${index})` : text, write: twice ? index : text, index }];
+  });
+}
+
+/** Why a dropdown with no stated items and no enum strings from its channel is inert. */
+const NO_CHOICES = 'The channel states no choices';
+
+/**
+ * PVDropdown — Carbon Dropdown bound to PV. With items stated by the screen
+ * (`customItems`) it offers those and writes the one chosen. With none
+ * stated it offers the channel's own enum strings, shows the live value, and
+ * writes the string chosen; a channel that states no strings leaves it with
+ * nothing to offer, and it is inert. It never offers a made-up item.
+ */
+export function CarbonPVDropdown(rendererProps: WidgetRendererProps) {
+  const stated = rendererProps.props.customItems as string[] | undefined;
+  return stated !== undefined && stated.length > 0 ? (
+    <StatedDropdown {...rendererProps} />
+  ) : (
+    <EnumDropdown {...rendererProps} />
+  );
+}
+
+/** A dropdown over the items the screen states. */
+function StatedDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
-  const stated = props.customItems as string[] | undefined;
-  const items =
-    stated !== undefined && stated.length > 0
-      ? stated
-      : (pv.enumChoices ?? ['Option 1', 'Option 2', 'Option 3']);
-  // The live value as the item it is: an enum index reads as its string.
-  const current =
-    typeof pv.value === 'number'
-      ? (pv.enumChoices?.[pv.value] ?? String(pv.value))
-      : String(pv.value);
+  const items = props.customItems as string[];
   const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   // Carbon's Dropdown keeps its own description and title on its field button.
@@ -939,7 +968,7 @@ export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendere
         key={gated.resetKey}
         id={`pv-dropdown-${id}`}
         titleText=""
-        label={pv.connected ? current : 'Select...'}
+        label={pv.connected ? String(pv.value) : 'Select...'}
         items={items}
         itemToString={(item: string) => item}
         size="sm"
@@ -947,6 +976,46 @@ export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendere
         readOnly={inert.inert}
         onChange={({ selectedItem }: { selectedItem: string | null }) => {
           if (!isEditing && !inert.inert && selectedItem) void gated.write(selectedItem);
+        }}
+      />
+      {inert.note}
+    </div>
+  );
+}
+
+/** A dropdown over its channel's enum strings; it shows the live value, never a choice not yet written. */
+function EnumDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
+  const pv = usePV(props.pvName as string | undefined);
+  const items = enumItems(pv.enumChoices);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const inert = useInert(
+    ownInertReason(gated, pv.address) ?? (items.length === 0 ? NO_CHOICES : null)
+  );
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useInertOnInner(boxRef, 'button', inert);
+
+  // The item of the live value: by index, or by its string.
+  const selected =
+    (pv.connected &&
+      items.find((item) =>
+        typeof pv.value === 'number' ? item.index === pv.value : item.write === pv.value
+      )) ||
+    null;
+
+  return (
+    <div ref={boxRef} style={{ width: layout.width, height: layout.height }} {...inert.hover}>
+      <Dropdown
+        id={`pv-dropdown-${id}`}
+        titleText=""
+        label={pv.connected ? String(pv.value) : 'Select...'}
+        items={items}
+        selectedItem={selected}
+        itemToString={(item: EnumItem | null) => item?.text ?? ''}
+        size="sm"
+        disabled={!pv.connected && !!props.pvName}
+        readOnly={inert.inert}
+        onChange={({ selectedItem }: { selectedItem: EnumItem | null }) => {
+          if (!isEditing && !inert.inert && selectedItem) void gated.write(selectedItem.write);
         }}
       />
       {inert.note}
