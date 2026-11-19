@@ -1,6 +1,8 @@
 {
   "absolute-canvas": {
-    "consumes": ["backgroundColor"],
+    "consumes": [
+      "backgroundColor"
+    ],
     "verbatim": false,
     "displayName": "Canvas",
     "description": "Top-level canvas that positions its children absolutely.",
@@ -24,7 +26,10 @@
     "supportsChildren": false
   },
   "embedded-display": {
-    "consumes": ["file", "macros"],
+    "consumes": [
+      "file",
+      "macros"
+    ],
     "verbatim": false,
     "displayName": "Embedded Display",
     "description": "Embeds another screen file, with optional macros.",
@@ -48,7 +53,10 @@
     "supportsChildren": true
   },
   "group-box": {
-    "consumes": ["title", "foregroundColor"],
+    "consumes": [
+      "title",
+      "foregroundColor"
+    ],
     "verbatim": false,
     "displayName": "Group Box",
     "description": "Titled box grouping its children.",
@@ -56,7 +64,10 @@
     "supportsChildren": true
   },
   "image-view": {
-    "consumes": ["src", "stretchMode"],
+    "consumes": [
+      "src",
+      "stretchMode"
+    ],
     "verbatim": false,
     "displayName": "Image",
     "description": "Static image from a file.",
@@ -80,7 +91,14 @@
     "supportsChildren": false
   },
   "pv-array-plot": {
-    "consumes": ["title", "curves", "yAxes", "xLabels", "mode", "scale"],
+    "consumes": [
+      "title",
+      "curves",
+      "yAxes",
+      "xLabels",
+      "mode",
+      "scale"
+    ],
     "verbatim": false,
     "displayName": "PV Array Plot",
     "description": "Plot of an array PV against its index.",
@@ -108,7 +126,14 @@
     "supportsChildren": false
   },
   "pv-byte-led": {
-    "consumes": ["pv", "numBits", "shift", "bigEndian", "onColor", "offColor"],
+    "consumes": [
+      "pv",
+      "numBits",
+      "shift",
+      "bigEndian",
+      "onColor",
+      "offColor"
+    ],
     "verbatim": false,
     "displayName": "Byte Indicator",
     "description": "Row of LEDs showing the bits of an integer PV.",
@@ -116,7 +141,10 @@
     "supportsChildren": false
   },
   "pv-checkbox": {
-    "consumes": ["pv", "label"],
+    "consumes": [
+      "pv",
+      "label"
+    ],
     "verbatim": false,
     "displayName": "Checkbox",
     "description": "Checkbox bound to a PV.",
@@ -124,7 +152,9 @@
     "supportsChildren": false
   },
   "pv-enum-combobox": {
-    "consumes": ["pv"],
+    "consumes": [
+      "pv"
+    ],
     "verbatim": false,
     "displayName": "Dropdown",
     "description": "Drop-down selecting a value of an enum PV.",
@@ -160,7 +190,12 @@
     "supportsChildren": false
   },
   "pv-led": {
-    "consumes": ["pv", "bit", "onColor", "offColor"],
+    "consumes": [
+      "pv",
+      "bit",
+      "onColor",
+      "offColor"
+    ],
     "verbatim": false,
     "displayName": "LED",
     "description": "LED indicator showing a PV state.",
@@ -176,7 +211,12 @@
     "supportsChildren": false
   },
   "pv-progress-bar": {
-    "consumes": ["pv", "min", "max", "orientation"],
+    "consumes": [
+      "pv",
+      "min",
+      "max",
+      "orientation"
+    ],
     "verbatim": false,
     "displayName": "Progress Bar",
     "description": "Bar showing a PV value within its range.",
@@ -285,7 +325,12 @@
     "supportsChildren": false
   },
   "regular-button": {
-    "consumes": ["label", "pressValue", "releaseValue", "transparent"],
+    "consumes": [
+      "label",
+      "pressValue",
+      "releaseValue",
+      "transparent"
+    ],
     "verbatim": false,
     "displayName": "Push Button",
     "description": "Push button without a PV.",
@@ -293,7 +338,11 @@
     "supportsChildren": false
   },
   "related-display-button": {
-    "consumes": ["label", "file", "macros"],
+    "consumes": [
+      "label",
+      "file",
+      "macros"
+    ],
     "verbatim": false,
     "displayName": "Related Display Button",
     "description": "Button that opens a related display.",
@@ -309,7 +358,11 @@
     "supportsChildren": true
   },
   "shell-command-button": {
-    "consumes": ["label", "command", "showIcon"],
+    "consumes": [
+      "label",
+      "command",
+      "showIcon"
+    ],
     "verbatim": false,
     "displayName": "Shell Command Button",
     "description": "Button that runs a shell command.",
@@ -341,7 +394,12 @@
     "supportsChildren": false
   },
   "waveform-plot": {
-    "consumes": ["title", "curves", "yAxes", "xLabels"],
+    "consumes": [
+      "title",
+      "curves",
+      "yAxes",
+      "xLabels"
+    ],
     "verbatim": false,
     "displayName": "Waveform Plot",
     "description": "Time or waveform plot of one or more PVs.",
@@ -349,7 +407,13 @@
     "supportsChildren": false
   },
   "xy-plot": {
-    "consumes": ["title", "curves", "xAxis", "yAxes", "showLegend"],
+    "consumes": [
+      "title",
+      "curves",
+      "xAxis",
+      "yAxes",
+      "showLegend"
+    ],
     "verbatim": false,
     "displayName": "XY Plot",
     "description": "Scatter plot of one PV against another.",
