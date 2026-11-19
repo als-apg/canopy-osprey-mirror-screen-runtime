@@ -267,6 +267,45 @@ describe('the colour of a node without a state', () => {
   });
 });
 
+describe('text on a ruled background, both without a state', () => {
+  it('stays readable: the background is the no-state colour, the text the theme text colour', () => {
+    const rule = BUTTON.rules![0]!;
+    const label = {
+      id: 'label',
+      type: 'text-label',
+      props: { text: 'Rack A', foregroundColor: OK, backgroundColor: OK },
+      geometry: { x: 10, y: 10, width: 80, height: 20 },
+      rules: [
+        { ...rule, id: 'fg', targetProperty: 'foregroundColor' },
+        { ...rule, id: 'bg', targetProperty: 'backgroundColor' },
+      ],
+    } as WidgetNode;
+    const node = show([label]);
+    stub.error('formula_type_error', 'no', false, 0);
+    stub.error('formula_type_error', 'no', false, 1);
+    const html = node('label').innerHTML;
+    const text = html.match(/(?<![-\w])color: ([^;"]+)/)?.[1];
+    const background = html.match(/background(?:-color)?: ([^;"]+)/)?.[1];
+    expect(background).toBe(NO_STATE);
+    expect(text).toMatch(/^(var\(--cr-\d+, #161616\)|light-dark\(#161616)/);
+    expect(text).not.toBe(background);
+  });
+
+  it('a node with only its text colour ruled keeps the cue of the disconnected look', () => {
+    const rule = BUTTON.rules![0]!;
+    const label = {
+      id: 'label',
+      type: 'text-label',
+      props: { text: 'Rack A', foregroundColor: OK },
+      geometry: { x: 10, y: 10, width: 80, height: 20 },
+      rules: [{ ...rule, id: 'fg', targetProperty: 'foregroundColor' }],
+    } as WidgetNode;
+    const node = show([label]);
+    stub.error('formula_type_error', 'no', false);
+    expect(node('label').style.outline).toMatch(/dashed .*#da1e28/);
+  });
+});
+
 describe('a widget bound to a formula that fails', () => {
   it('a result that comes after the start timeout is shown', () => {
     vi.useFakeTimers();

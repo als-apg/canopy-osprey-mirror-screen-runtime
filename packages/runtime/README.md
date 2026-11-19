@@ -50,16 +50,22 @@ What the renderer does:
   behaviour), without the server's pacing: it evaluates on every change. A
   result carries a summary of the members (`vectorInputs`: how many, which
   have no value); the node the formula feeds shows it on hover when it takes
-  the pointer. A node never shows a better state than its formula stands
-  behind: before the first result it draws its authored props; after any
+  the pointer. A `nanmax` / `nansum` roll-up whose members are all
+  without a number reads as the quiet state (nothing was left to count), so a
+  roll-up light is written with `severity()` and `connected()`, which count a
+  missing member as INVALID and not connected. A node never shows a better
+  state than its formula stands behind: before the first result it draws its authored props; after any
   error, or with no answer within `formulaStartTimeoutMs()` (3 s), a rule
   gives no output, the node draws the disconnected cue, and the hover says
   what failed. A colour such a rule drives (a property named `...Color`,
   `color` or `background`) is then drawn in the viewer's own no-state colour,
   the token of the disconnected look (`--pydm-alarm-disconnected`, the
   scheme's `DISCONNECTED` role), whatever the screen authored: the authored
-  colour shows only while the node waits for its first result. On that fill
-  the cue is drawn in the theme's `Text` role, so that it stands out. A result
+  colour shows only while the node waits for its first result. A colour
+  drawn on top of another (the property `color`, or one with `foreground`,
+  `text` or `font` in its name) takes the theme's `Text` role instead, so that
+  text on a no-state background stays readable. On a no-state fill the cue is
+  drawn in the `Text` role too, so that it stands out. A result
   whose value is null gives no output either, and a colour its rule drives is
   the no-state colour too.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a

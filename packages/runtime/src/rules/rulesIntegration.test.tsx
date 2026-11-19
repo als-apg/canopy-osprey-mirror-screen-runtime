@@ -248,6 +248,8 @@ function probeProps(): Record<string, unknown> {
 const OK = { $role: 'OK', fallback: '#00ff00' } as const;
 const MAJOR = { $role: 'MAJOR', fallback: '#ff0000' } as const;
 const okIndex = canopyDefaultFlat.roles.indexOf('OK');
+/** The colour of a text or foreground without a state: the theme's text colour. */
+const NO_STATE_TEXT = `var(--cr-${canopyDefaultFlat.roles.indexOf('Text')}, #161616)`;
 const majorIndex = canopyDefaultFlat.roles.indexOf('MAJOR');
 const ONE_ARM = '0 if ({0} == 1) else (-1)';
 
@@ -589,7 +591,7 @@ describe('useWidgetRulesState', () => {
 
     stub.fail('{0} == 1', outage());
     expect(result.current).toMatchObject({
-      outputs: [NO_STATE_COLOR],
+      outputs: [NO_STATE_TEXT],
       stale: true,
       settled: true,
       delivered: false,
@@ -609,7 +611,7 @@ describe('useWidgetRulesState', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', outage());
     expect(result.current).toMatchObject({
-      outputs: [NO_STATE_COLOR],
+      outputs: [NO_STATE_TEXT],
       stale: true,
       settled: true,
       delivered: false,
@@ -620,7 +622,7 @@ describe('useWidgetRulesState', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', terminal());
     expect(result.current).toMatchObject({
-      outputs: [NO_STATE_COLOR],
+      outputs: [NO_STATE_TEXT],
       stale: true,
       settled: true,
       delivered: false,
@@ -634,7 +636,7 @@ describe('useWidgetRulesState', () => {
     });
     stub.fail('{0} == 1', terminal());
     expect(result.current).toMatchObject({
-      outputs: [NO_STATE_COLOR],
+      outputs: [NO_STATE_TEXT],
       stale: true,
       settled: true,
       delivered: false,
@@ -645,7 +647,7 @@ describe('useWidgetRulesState', () => {
     stub.push('{0} == 1', 0);
     stub.fail('{0} == 1', new Error('mixed locals'));
     expect(result.current).toMatchObject({
-      outputs: [NO_STATE_COLOR],
+      outputs: [NO_STATE_TEXT],
       stale: true,
       problem: 'mixed locals',
     });
@@ -711,7 +713,7 @@ describe('useWidgetRulesState', () => {
     stub.fail('{0} == 1', outage());
     // Stale resets the live rule's output only; the static output stays.
     expect(mixed.result.current).toMatchObject({
-      outputs: ['#123456', NO_STATE_COLOR],
+      outputs: ['#123456', NO_STATE_TEXT],
       stale: true,
       settled: true,
       delivered: false,
@@ -772,15 +774,15 @@ describe('useWidgetRulesState', () => {
     stub.push('{0} == 1', 0);
     expect(result.current).toEqual(['#ff0000']);
     stub.fail('{0} == 1', outage());
-    expect(result.current).toEqual([NO_STATE_COLOR]);
+    expect(result.current).toEqual([NO_STATE_TEXT]);
   });
 
-  it('end to end: a stale rule draws a colour as the no-state colour until the next result', () => {
+  it('end to end: a stale rule draws a foreground as the theme text colour until the next result', () => {
     renderScreen(probeDoc(OK, [MAJOR], null));
     stub.push(ONE_ARM, 0);
     expect(probeProps().foregroundColor).toBe('var(--cr-' + majorIndex + ', #ff0000)');
     stub.fail(ONE_ARM, outage());
-    expect(probeProps().foregroundColor).toBe(NO_STATE_COLOR);
+    expect(probeProps().foregroundColor).toBe(NO_STATE_TEXT);
     stub.push(ONE_ARM, 0);
     expect(probeProps().foregroundColor).toBe('var(--cr-' + majorIndex + ', #ff0000)');
   });

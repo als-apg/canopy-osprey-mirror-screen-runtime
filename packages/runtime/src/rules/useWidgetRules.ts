@@ -14,6 +14,7 @@ import type {
 import type { FormulaScalarValue, FormulaVectorInputs, VectorSource } from '../formula.js';
 import { formulaStartTimeoutMs, NO_ANSWER, useFormulaSubscriber } from '../formula.js';
 import { vectorMembers } from './vectorMembers.js';
+import { TEXT_ROLE } from '../theme/defaultRoles.js';
 import { resolveRole } from '../theme/resolveRoles.js';
 import { useColorScheme } from '../theme/schemeContext.js';
 import type { CompiledRule, RuleScalar } from './compileRule.js';
@@ -42,7 +43,8 @@ export interface WidgetRulesState {
   /**
    * Latest output per rule, aligned by index with `rules`; `undefined` means
    * "no output" (the widget keeps its base prop). A stale rule has no output,
-   * but one that drives a colour gives `NO_STATE_COLOR`.
+   * but one that drives a colour gives `NO_STATE_COLOR`, or the theme's text
+   * colour when the colour is a foreground.
    */
   readonly outputs: readonly (RuleScalar | undefined)[];
   /** Some live rule had an error since its latest result, or never got an answer. */
@@ -84,6 +86,16 @@ function hasNoState(state: LiveState | undefined): boolean {
 /** Whether a rule drives a colour: `fillColor`, `color`, `background`, ... */
 function drivesColor(rule: CompiledRule): boolean {
   return /color$/i.test(rule.targetProperty) || rule.targetProperty === 'background';
+}
+
+/**
+ * Whether the colour a rule drives is one that is drawn on top of another
+ * (text, a foreground), told by the property's name: `color`, or a name with
+ * `foreground`, `text` or `font` in it. Every other colour (fill, background,
+ * line, border, an on/off colour) is a surface.
+ */
+function drivesForeground(rule: CompiledRule): boolean {
+  return rule.targetProperty === 'color' || /foreground|text|font/i.test(rule.targetProperty);
 }
 
 const MEMBERS = new WeakMap<CompiledRule, readonly string[]>();
@@ -268,7 +280,8 @@ export function useWidgetRulesState(
       arms.map((arm, index) => {
         const rule = compiled[index];
         if (isLive(rule) && drivesColor(rule) && hasNoState(live.get(rule))) {
-          return NO_STATE_COLOR;
+          // Text stays readable on a no-state surface: the theme's text colour.
+          return drivesForeground(rule) ? resolveRole(TEXT_ROLE, flat) : NO_STATE_COLOR;
         }
         return resolveArm(arm, flat);
       }),
