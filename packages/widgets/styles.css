@@ -105,6 +105,12 @@
   font-size: 0.8125rem;
 }
 
+/* A staged value (typed, not yet written): italic, with a bar on the field's left edge. */
+.carbon-pv-input--staged .cds--text-input {
+  font-style: italic;
+  box-shadow: inset 3px 0 0 var(--cds-support-warning);
+}
+
 /* An invalid field's message is drawn under the field, outside the widget's box: it paints above the widgets that follow, is never wider than its field, and sits on the display background. */
 .carbon-pv-input--invalid {
   position: relative;

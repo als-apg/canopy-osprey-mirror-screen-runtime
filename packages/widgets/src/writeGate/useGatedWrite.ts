@@ -69,6 +69,11 @@ export interface GatedWrite {
  */
 const LOCAL_SCHEME = /^(loc|formula):\/\//;
 
+/** Whether `address` is a channel that never reaches the gate (loc://, formula://). */
+export function isLocalChannel(address: string): boolean {
+  return LOCAL_SCHEME.test(address);
+}
+
 /** The gate a write to `address` goes through, or null to write straight through. */
 function gateFor(gate: WriteGateService | null, address: string): WriteGateService | null {
   return gate === null || LOCAL_SCHEME.test(address) ? null : gate;

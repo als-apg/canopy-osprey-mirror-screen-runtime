@@ -20,7 +20,8 @@ import type { RenderProfile } from '../renderMode.js';
 import type { WidgetProps } from '../types.js';
 import { useFitText } from '../shared/useFitText.js';
 import { useResolveAsset } from '../assets.js';
-import { gatedWriteOptions, useGatedWrite } from '../writeGate/useGatedWrite.js';
+import { gatedWriteOptions, isLocalChannel, useGatedWrite } from '../writeGate/useGatedWrite.js';
+import { stageScope, useStaged } from '../staging/staging.js';
 import { parseNumericEntry } from './numericEntry.js';
 import { hostInertReason, ownInertReason, useInert, useInertOnInner } from '../writeGate/inert.js';
 import { displayText, entryText } from './pvText.js';
@@ -255,6 +256,13 @@ export function CarbonPVTextInput({
   const draft = edit?.text ?? null;
   const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
+  // An entry with a `stage` scope writes nothing itself: Enter keeps the value
+  // in the screen's staging store, the field shows it (marked) in place of the
+  // live value, and an `apply_staged` action writes the scope through the gate.
+  // A local channel never stages; nor does an entry with no store provided.
+  const scope = isLocalChannel(pv.address) ? null : stageScope(props);
+  const { store: staging, staged } = useStaged(scope, pv.address);
+  const stagedText = staged === undefined ? null : (staged.entered ?? String(staged.value));
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
@@ -285,16 +293,28 @@ export function CarbonPVTextInput({
       setEdit(null);
       return;
     }
+    let value: number | string;
+    let entered: string | undefined;
     if (numeric) {
       const parsed = parseNumericEntry(draft);
       if (!parsed.ok) return; // The field keeps the draft and says why.
-      void gated.write(parsed.value, { entered: draft });
+      value = parsed.value;
+      entered = draft;
     } else {
       const numVal = parseFloat(draft);
-      void gated.write(isNaN(numVal) ? draft : numVal);
+      value = isNaN(numVal) ? draft : numVal;
     }
+    if (staging !== null && scope !== null) {
+      staging.set(
+        scope,
+        entered === undefined
+          ? { pv: pv.address, value, entered: draft }
+          : { pv: pv.address, value, entered }
+      );
+    } else if (entered === undefined) void gated.write(value);
+    else void gated.write(value, { entered });
     setEdit(null);
-  }, [draft, numeric, pv.connected, gated, inert.inert]);
+  }, [draft, numeric, pv.connected, pv.address, gated, inert.inert, staging, scope]);
 
   const handleBlur = useCallback(() => {
     // Leaving the field with a draft it cannot write drops the draft, as Escape
@@ -307,7 +327,7 @@ export function CarbonPVTextInput({
   // (Shift: ten units). Only the draft changes: Enter writes it.
   const nudge = useCallback(
     (direction: 1 | -1, coarse: boolean) => {
-      const shown = draft ?? entryText(pv, props);
+      const shown = draft ?? stagedText ?? entryText(pv, props);
       const parsed = parseNumericEntry(shown);
       if (!parsed.ok) return;
       const dot = shown.indexOf('.');
@@ -316,25 +336,30 @@ export function CarbonPVTextInput({
       const text = (parsed.value + direction * step).toFixed(decimals);
       setEdit((prev) => ({ text, typed: prev?.typed ?? false }));
     },
-    [draft, pv, props]
+    [draft, stagedText, pv, props]
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') commit();
-      if (e.key === 'Escape') setEdit(null);
+      if (e.key === 'Escape') {
+        // Escape drops the text being entered; with none, the staged value.
+        if (edit === null && staging !== null && scope !== null) staging.clear(scope, pv.address);
+        setEdit(null);
+      }
       if (numeric && !inert.inert && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
       }
     },
-    [commit, numeric, inert.inert, nudge]
+    [commit, numeric, inert.inert, nudge, edit, staging, scope, pv.address]
   );
 
   const className = [
     'carbon-pv-input',
     isSelected ? 'carbon-pv-input--selected' : '',
     rejected !== null ? 'carbon-pv-input--invalid' : '',
+    staged !== undefined ? 'carbon-pv-input--staged' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -343,6 +368,7 @@ export function CarbonPVTextInput({
     <div
       className={className}
       style={{ width: layout.width, height: layout.height, ...alarm.frame }}
+      data-staged={staged !== undefined ? 'true' : undefined}
       {...inert.hover}
     >
       <TextInput
@@ -353,7 +379,9 @@ export function CarbonPVTextInput({
         invalid={rejected !== null}
         invalidText={rejected ?? ''}
         size="sm"
-        value={draft ?? (pv.connected ? entryText(pv, props) : alarm.blank ? '' : '---')}
+        value={
+          draft ?? stagedText ?? (pv.connected ? entryText(pv, props) : alarm.blank ? '' : '---')
+        }
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           if (!inert.inert) setEdit({ text: e.target.value, typed: true });
         }}
