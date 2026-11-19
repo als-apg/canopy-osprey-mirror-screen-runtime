@@ -254,3 +254,51 @@ describe('compileRule with status functions in a condition', () => {
     }
   });
 });
+
+describe('text in quotes is literal', () => {
+  it('a brace token in quotes is no token of a condition', () => {
+    expect(
+      ladder(rule(['VALVE:7:STATE'], [['label({0}) == \'{x}\' or label({0}) == "{1}"', 'a']]))
+    ).toEqual({
+      kind: 'scalar',
+      expression: '0 if (label({0}) == \'{x}\' or label({0}) == "{1}") else (-1)',
+      bindings: { '0': 'VALVE:7:STATE' },
+    });
+  });
+
+  it('a status call in quotes is not a call', () => {
+    expect(
+      ladder(rule(['formula://worst'], [["{0} >= 2 or 'severity({0})' == ''", 'a']]), [WORST])
+        .expression
+    ).toBe("0 if ((max(severity({worst.*}))) >= 2 or 'severity({0})' == '') else (-1)");
+  });
+
+  it('a formula keeps quoted braces and needs no binding for them', () => {
+    const decl: FormulaDeclaration = {
+      name: 'open',
+      expression: "label({v}) == '{v}' or label({v}) == '{*}'",
+      bindings: { v: 'VALVE:7:STATE' },
+    };
+    expect(compileFormulaSpec(decl, {})).toEqual({
+      kind: 'scalar',
+      expression: decl.expression,
+      bindings: { v: 'VALVE:7:STATE' },
+    });
+    expect(ladder(rule(['formula://open'], [['{0}', 'a']]), [decl]).expression).toBe(
+      "0 if ((label({open.v}) == '{v}' or label({open.v}) == '{*}')) else (-1)"
+    );
+  });
+
+  it('a bare binding name in quotes is not wrapped', () => {
+    expect(
+      compileFormulaSpec({ name: 'n', expression: "A == 'A'", bindings: { A: 'X' } }, {}).expression
+    ).toBe("{A} == 'A'");
+  });
+
+  it('a constant condition folds without rewriting the text in quotes', () => {
+    const folded = compileRule(rule(['A:B'], [["'${M}' == 'a&&b' && '!x' == '!x'", 'yes']]), [], {
+      M: 'a&&b',
+    });
+    expect(folded).toEqual({ kind: 'static', targetProperty: 'fillColor', value: 'yes' });
+  });
+});

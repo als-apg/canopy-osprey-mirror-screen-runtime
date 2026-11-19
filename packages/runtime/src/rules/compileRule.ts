@@ -35,6 +35,8 @@
 //    starts with `g.`) uses each binding it covers, and must cover one;
 //  - `severity({x})`, `connected({x})` and `label({x})` take exactly one
 //    token, so they cannot be applied to an inlined formula;
+//  - the text of a string literal is never read as a token, a call or an
+//    operator, and is passed on as written;
 //  - an expression must contain at least one `{token}`, so a rule with no
 //    conditions compiles to its default, and a ladder with no live input
 //    left after macro substitution is constant-folded here (evaluated once
@@ -94,6 +96,25 @@ export class RuleCompileError extends Error {
 const TOKEN_RE = /\{([^{}]+)\}/g;
 const HAS_TOKEN_RE = /\{[^{}]+\}/;
 
+/** A string literal of the expression language, in either kind of quotes. */
+const QUOTED_RE = /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g;
+
+/** `text` with `rewrite` applied to everything outside its string literals; those stay as written. */
+function outsideQuotes(text: string, rewrite: (code: string) => string): string {
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(QUOTED_RE)) {
+    out += rewrite(text.slice(last, m.index)) + m[0];
+    last = m.index + m[0].length;
+  }
+  return out + rewrite(text.slice(last));
+}
+
+/** `text` with its string literals emptied: what is left is code. */
+function code(text: string): string {
+  return text.replace(QUOTED_RE, "''");
+}
+
 /**
  * A `{N}` placeholder in a rule condition. The `$` lookbehind keeps an
  * unresolved `${NAME}` macro from reading as a token: it stays verbatim.
@@ -130,10 +151,12 @@ function foldLadder(
   fallback: RuleValue
 ): RuleValue {
   const normalized = conditions.map((c) =>
-    c
-      .replace(/&&/g, ' and ')
-      .replace(/\|\|/g, ' or ')
-      .replace(/!(?!=)/g, ' not ')
+    outsideQuotes(c, (part) =>
+      part
+        .replace(/&&/g, ' and ')
+        .replace(/\|\|/g, ' or ')
+        .replace(/!(?!=)/g, ' not ')
+    )
   );
   try {
     const arm = evaluatePyExpr(ladderExpression(normalized), new Map());
@@ -160,14 +183,14 @@ function escapeRegExp(s: string): string {
  * function names, matching the Formula Engine's own namespace behavior.
  */
 export function toWireExpression(expression: string, bindingKeys: readonly string[]): string {
-  if (HAS_TOKEN_RE.test(expression)) return expression;
+  if (HAS_TOKEN_RE.test(code(expression))) return expression;
 
   let wire = expression;
   // Longest-first so a key that prefixes another (`A` vs `AB`) cannot split it.
   const keys = [...bindingKeys].sort((a, b) => b.length - a.length);
   for (const key of keys) {
     const re = new RegExp(`(?<![A-Za-z0-9_{])${escapeRegExp(key)}(?![A-Za-z0-9_}])`, 'g');
-    wire = wire.replace(re, `{${key}}`);
+    wire = outsideQuotes(wire, (part) => part.replace(re, `{${key}}`));
   }
   return wire;
 }
@@ -175,7 +198,7 @@ export function toWireExpression(expression: string, bindingKeys: readonly strin
 /** The set of `{token}` texts appearing in a wire expression. */
 function tokensIn(expression: string): Set<string> {
   const tokens = new Set<string>();
-  for (const m of expression.matchAll(TOKEN_RE)) tokens.add(m[1] as string);
+  for (const m of code(expression).matchAll(TOKEN_RE)) tokens.add(m[1] as string);
   return tokens;
 }
 
@@ -249,8 +272,10 @@ function inlineFormula(decl: FormulaDeclaration, macros: MacroValues): InlinedFo
     );
   }
   if (use.vector) {
-    wire = wire.replace(TOKEN_RE, (whole, token: string) =>
-      vectorPrefix(token, keys) === null ? whole : `{${decl.name}.${token}}`
+    wire = outsideQuotes(wire, (part) =>
+      part.replace(TOKEN_RE, (whole, token: string) =>
+        vectorPrefix(token, keys) === null ? whole : `{${decl.name}.${token}}`
+      )
     );
   }
 
@@ -258,7 +283,7 @@ function inlineFormula(decl: FormulaDeclaration, macros: MacroValues): InlinedFo
   for (const [key, channel] of Object.entries(sourceBindings)) {
     const namespaced = `${decl.name}.${key}`;
     const re = new RegExp(`\\{${escapeRegExp(key)}\\}`, 'g');
-    wire = wire.replace(re, `{${namespaced}}`);
+    wire = outsideQuotes(wire, (part) => part.replace(re, `{${namespaced}}`));
     bindings[namespaced] = substituteMacros(channel, macros);
   }
   return { name: decl.name, vector: use.vector, expression: wire, bindings };
@@ -369,7 +394,7 @@ export function compileRule(
     const text = substituteMacros(expression, macros);
     // A status function takes exactly one token; an inlined formula would put
     // an expression there, which the Formula Engine refuses.
-    for (const m of text.matchAll(STATUS_CALL_RE)) {
+    for (const m of code(text).matchAll(STATUS_CALL_RE)) {
       const pv = rule.pvs[Number(m[2])];
       if (pv !== undefined && isFormulaRef(pv.name)) {
         throw new RuleCompileError(
@@ -378,24 +403,28 @@ export function compileRule(
         );
       }
     }
-    return text.replace(CONDITION_TOKEN_RE, (whole, token: string) => {
-      if (!/^\d+$/.test(token)) {
-        throw new RuleCompileError(`condition token {${token}} is not a {N} pv-index placeholder`);
-      }
-      const index = Number(token);
-      if (rule.pvs[index] === undefined) {
-        throw new RuleCompileError(
-          `condition references {${token}} but the rule only binds ${rule.pvs.length} pv(s)`
-        );
-      }
-      const sub = inlined.get(index);
-      if (sub) {
-        for (const t of tokensIn(sub.expression)) usedTokens.add(t);
-        return `(${sub.expression})`;
-      }
-      usedTokens.add(token);
-      return whole;
-    });
+    const tokens = (part: string) =>
+      part.replace(CONDITION_TOKEN_RE, (whole, token: string) => {
+        if (!/^\d+$/.test(token)) {
+          throw new RuleCompileError(
+            `condition token {${token}} is not a {N} pv-index placeholder`
+          );
+        }
+        const index = Number(token);
+        if (rule.pvs[index] === undefined) {
+          throw new RuleCompileError(
+            `condition references {${token}} but the rule only binds ${rule.pvs.length} pv(s)`
+          );
+        }
+        const sub = inlined.get(index);
+        if (sub) {
+          for (const t of tokensIn(sub.expression)) usedTokens.add(t);
+          return `(${sub.expression})`;
+        }
+        usedTokens.add(token);
+        return whole;
+      });
+    return outsideQuotes(text, tokens);
   };
 
   const rewritten = rule.conditions.map((c) => rewriteCondition(c.expression));
