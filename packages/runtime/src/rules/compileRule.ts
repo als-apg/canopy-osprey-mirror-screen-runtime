@@ -31,6 +31,10 @@
 //    binding of `formula://<name>` is INLINED: the referenced screen formula's
 //    expression is substituted (parenthesized) for `{N}`, with its own
 //    bindings merged in under namespaced `<name>.<key>` tokens;
+//  - a vector token (`{*}`: every binding; `{g.*}`: the bindings whose key
+//    starts with `g.`) uses each binding it covers, and must cover one;
+//  - `severity({x})` and `connected({x})` take exactly one token, so they
+//    cannot be applied to an inlined formula;
 //  - an expression must contain at least one `{token}`, so a rule with no
 //    conditions compiles to its default, and a ladder with no live input
 //    left after macro substitution is constant-folded here (evaluated once
@@ -95,6 +99,9 @@ const HAS_TOKEN_RE = /\{[^{}]+\}/;
  * unresolved `${NAME}` macro from reading as a token: it stays verbatim.
  */
 const CONDITION_TOKEN_RE = /(?<!\$)\{([^{}]+)\}/g;
+
+/** `severity({N})` or `connected({N})` in a rule condition. */
+const STATUS_CALL_RE = /(?<![A-Za-z0-9_.])(severity|connected)\s*\(\s*\{(\d+)\}\s*\)/g;
 
 /**
  * The index ladder over `conditions`: `0 if (c0) else (1 if (c1) else (-1))`.
@@ -172,7 +179,49 @@ function tokensIn(expression: string): Set<string> {
   return tokens;
 }
 
+/**
+ * The key prefix a vector token covers, or null for a plain token. `{*}` is
+ * every binding (prefix ''), `{g.*}` the bindings whose key starts with `g.`.
+ * A token that is itself a binding key is always plain.
+ */
+function vectorPrefix(token: string, keys: ReadonlySet<string>): string | null {
+  if (keys.has(token)) return null;
+  if (token === '*') return '';
+  return token.endsWith('.*') ? token.slice(0, -1) : null;
+}
+
+/**
+ * Which binding `keys` the `tokens` of an expression use (a plain token names
+ * one, a vector token every key under its prefix), and which tokens have
+ * nothing bound: a plain token with no binding, a vector token with no member.
+ */
+function tokenUse(
+  tokens: ReadonlySet<string>,
+  keys: ReadonlySet<string>
+): { used: Set<string>; unbound: string[]; vector: boolean } {
+  const used = new Set<string>();
+  const unbound: string[] = [];
+  let vector = false;
+  for (const token of tokens) {
+    const prefix = vectorPrefix(token, keys);
+    if (prefix === null) {
+      if (keys.has(token)) used.add(token);
+      else unbound.push(token);
+      continue;
+    }
+    vector = true;
+    const members = [...keys].filter((key) => key.startsWith(prefix));
+    if (members.length === 0) unbound.push(token);
+    for (const key of members) used.add(key);
+  }
+  return { used, unbound, vector };
+}
+
 interface InlinedFormula {
+  /** The formula's name: the namespace of its tokens. */
+  readonly name: string;
+  /** Whether the expression holds a vector token (`{<name>.*}`, `{<name>.g.*}`). */
+  readonly vector: boolean;
   /** Wire expression with this formula's tokens renamed to `<name>.<key>`. */
   readonly expression: string;
   /** Channel bindings under the namespaced keys, macro-resolved. */
@@ -183,11 +232,27 @@ interface InlinedFormula {
  * Prepare a screen formula for inlining into a rule expression: tokenize the
  * authored expression, namespace its tokens as `<name>.<key>` so multiple
  * inlined formulas (or rule `{N}` tokens) can never collide, and resolve
- * macros in its channel bindings.
+ * macros in its channel bindings. A vector token is namespaced the same way
+ * (`{*}` to `{<name>.*}`, `{g.*}` to `{<name>.g.*}`), so it keeps meaning the
+ * bindings of this formula and not every binding of the rule.
  */
 function inlineFormula(decl: FormulaDeclaration, macros: MacroValues): InlinedFormula {
   const sourceBindings = decl.bindings ?? {};
   let wire = toWireExpression(decl.expression, Object.keys(sourceBindings));
+
+  const keys = new Set(Object.keys(sourceBindings));
+  const use = tokenUse(tokensIn(wire), keys);
+  const memberless = use.unbound.filter((token) => vectorPrefix(token, keys) !== null);
+  if (memberless.length > 0) {
+    throw new RuleCompileError(
+      `formula '${decl.name}' has vector token(s) with no binding: ${memberless.join(', ')}`
+    );
+  }
+  if (use.vector) {
+    wire = wire.replace(TOKEN_RE, (whole, token: string) =>
+      vectorPrefix(token, keys) === null ? whole : `{${decl.name}.${token}}`
+    );
+  }
 
   const bindings: Record<string, string> = {};
   for (const [key, channel] of Object.entries(sourceBindings)) {
@@ -196,13 +261,14 @@ function inlineFormula(decl: FormulaDeclaration, macros: MacroValues): InlinedFo
     wire = wire.replace(re, `{${namespaced}}`);
     bindings[namespaced] = substituteMacros(channel, macros);
   }
-  return { expression: wire, bindings };
+  return { name: decl.name, vector: use.vector, expression: wire, bindings };
 }
 
 /**
  * Compile a screen-level FormulaDeclaration to a standalone FormulaSpec:
  * authored expression tokenized to wire form, macros resolved in channel
- * bindings, unused bindings dropped (the Formula Engine rejects them).
+ * bindings, unused bindings dropped (the Formula Engine rejects them). A
+ * binding is used when a plain token names it or a vector token covers it.
  */
 export function compileFormulaSpec(decl: FormulaDeclaration, macros: MacroValues): FormulaSpec {
   const sourceBindings = decl.bindings ?? {};
@@ -214,14 +280,21 @@ export function compileFormulaSpec(decl: FormulaDeclaration, macros: MacroValues
     );
   }
 
+  const use = tokenUse(used, new Set(Object.keys(sourceBindings)));
   const bindings: Record<string, string> = {};
   for (const [key, channel] of Object.entries(sourceBindings)) {
-    if (used.has(key)) bindings[key] = substituteMacros(channel, macros);
+    if (use.used.has(key)) bindings[key] = substituteMacros(channel, macros);
   }
-  const unbound = [...used].filter((t) => !(t in bindings));
+  const unbound = use.unbound;
   if (unbound.length > 0) {
     throw new RuleCompileError(
       `formula '${decl.name}' references unbound token(s): ${unbound.join(', ')}`
+    );
+  }
+
+  if (use.vector && (decl.kind ?? 'scalar') !== 'scalar') {
+    throw new RuleCompileError(
+      `formula '${decl.name}' has a vector token; only a scalar formula can have one`
     );
   }
 
@@ -253,8 +326,13 @@ function findFormula(
  *   unresolved macro leaves the text verbatim and the fold falls to the
  *   default.
  *
+ * A condition may apply `severity()` or `connected()` to a `{N}` that is a
+ * plain channel; it passes through unchanged. A vector token is not accepted
+ * in a condition: a rule reaches a roll-up through `formula://<name>`.
+ *
  * Throws RuleCompileError on dangling `formula://` references, `{N}`
- * placeholders with no `pvs[N]`, and formulas with no usable inputs.
+ * placeholders with no `pvs[N]`, formulas with no usable inputs, a vector
+ * token with no member, and a status function applied to a formula.
  */
 export function compileRule(
   rule: Rule,
@@ -287,8 +365,20 @@ export function compileRule(
   // Rewrite each condition: `{N}` tokens that reference an inlined formula
   // become the (parenthesized) formula expression; the rest stay verbatim.
   const usedTokens = new Set<string>();
-  const rewriteCondition = (expression: string): string =>
-    substituteMacros(expression, macros).replace(CONDITION_TOKEN_RE, (whole, token: string) => {
+  const rewriteCondition = (expression: string): string => {
+    const text = substituteMacros(expression, macros);
+    // A status function takes exactly one token; an inlined formula would put
+    // an expression there, which the Formula Engine refuses.
+    for (const m of text.matchAll(STATUS_CALL_RE)) {
+      const pv = rule.pvs[Number(m[2])];
+      if (pv !== undefined && isFormulaRef(pv.name)) {
+        throw new RuleCompileError(
+          `condition applies ${m[1]!}({${m[2]!}}) to ${pv.name}; ` +
+            `${m[1]!}() reads one channel, not a formula`
+        );
+      }
+    }
+    return text.replace(CONDITION_TOKEN_RE, (whole, token: string) => {
       if (!/^\d+$/.test(token)) {
         throw new RuleCompileError(`condition token {${token}} is not a {N} pv-index placeholder`);
       }
@@ -306,6 +396,7 @@ export function compileRule(
       usedTokens.add(token);
       return whole;
     });
+  };
 
   const rewritten = rule.conditions.map((c) => rewriteCondition(c.expression));
   const values = rule.conditions.map((c) => c.value);
@@ -313,9 +404,23 @@ export function compileRule(
   // Merge inlined formula channel bindings, then drop anything unused
   // (trigger-only PVs; the Formula Engine rejects unused bindings).
   for (const sub of inlined.values()) Object.assign(bindings, sub.bindings);
+  for (const sub of inlined.values()) {
+    if (!sub.vector) continue;
+    // `{<name>.*}` covers every key under `<name>.`: no other formula's may be there.
+    const other = [...inlined.values()].find(
+      (o) => o.name !== sub.name && o.name.startsWith(`${sub.name}.`)
+    );
+    if (other) {
+      throw new RuleCompileError(
+        `formula '${sub.name}' has a vector token and cannot be used in one rule with ` +
+          `formula '${other.name}', whose name starts with it`
+      );
+    }
+  }
+  const use = tokenUse(usedTokens, new Set(Object.keys(bindings)));
   const finalBindings: Record<string, string> = {};
   for (const [key, channel] of Object.entries(bindings)) {
-    if (usedTokens.has(key)) finalBindings[key] = channel;
+    if (use.used.has(key)) finalBindings[key] = channel;
   }
 
   if (Object.keys(finalBindings).length === 0) {

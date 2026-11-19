@@ -36,6 +36,15 @@ What the renderer does:
   AND. The renderer stays service-agnostic: provide a `FormulaSubscriber` via
   `FormulaSubscriberContext` — the SDK's Formula Engine service fits through
   `createFormulaEngineSubscriber`.
+- **Formulas over many channels** — a scalar formula may hold a vector token:
+  `{*}` is every binding of the formula, `{g.*}` the bindings whose key starts
+  with `g.` (`max(severity({*}))`, `nanmax(abs({set.*} - {read.*}))`). Its
+  bindings all stay in the spec; inlined into a rule the token is namespaced
+  like the keys (`{worst.*}`). A rule condition may apply `severity({N})` or
+  `connected({N})` to a plain channel, not to a `formula://` reference, and
+  takes no vector token itself: a rule reaches a roll-up through
+  `formula://<name>`. The in-page evaluator (`loc://` formulas, fixture mode)
+  knows neither vector tokens nor the two functions.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a
   converted EDM `CALC\` / PyDM `calc://` channel) reads the rendering
   screen's `formulas[]` entry, its bindings macro-resolved with that screen's
