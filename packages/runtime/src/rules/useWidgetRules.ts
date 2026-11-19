@@ -66,6 +66,8 @@ export interface WidgetRulesState {
    * its vector tokens name; a stale rule has none.
    */
   readonly vectorSources: readonly VectorSource[];
+  /** Some rule draws `NO_STATE_COLOR` on the node: the cue must stand out from it. */
+  readonly noStateColor: boolean;
 }
 
 /**
@@ -73,6 +75,11 @@ export interface WidgetRulesState {
  * every widget uses, which the scheme's DISCONNECTED role sets.
  */
 export const NO_STATE_COLOR = 'var(--pydm-alarm-disconnected)';
+
+/** An error, no answer in time, or a result without a value: nothing to show. */
+function hasNoState(state: LiveState | undefined): boolean {
+  return state !== undefined && (state.stale || state.value === undefined);
+}
 
 /** Whether a rule drives a colour: `fillColor`, `color`, `background`, ... */
 function drivesColor(rule: CompiledRule): boolean {
@@ -157,8 +164,8 @@ function resolveArm(arm: RuleValue | undefined, flat: FlatScheme): RuleScalar | 
  *
  * A subscription error, retryable or not, marks the rule stale: its output
  * drops to the base prop until the next result (a colour: to
- * `NO_STATE_COLOR`, whatever the screen authored), and `problem` says what
- * failed. A light never keeps the colour of a result its formula no longer
+ * `NO_STATE_COLOR`, whatever the screen authored, as after a result without
+ * a value), and `problem` says what failed. A light never keeps the colour of a result its formula no longer
  * stands behind. A rule that got no result, null value or error within
  * `formulaStartTimeoutMs()` is stale in the same way.
  *
@@ -260,7 +267,7 @@ export function useWidgetRulesState(
     () =>
       arms.map((arm, index) => {
         const rule = compiled[index];
-        if (isLive(rule) && live.get(rule)?.stale === true && drivesColor(rule)) {
+        if (isLive(rule) && drivesColor(rule) && hasNoState(live.get(rule))) {
           return NO_STATE_COLOR;
         }
         return resolveArm(arm, flat);
@@ -293,9 +300,15 @@ export function useWidgetRulesState(
   const problems = [...new Set(liveRules.flatMap((rule) => live.get(rule)?.problem ?? []))];
   const problem = problems.length > 0 ? problems.join('; ') : undefined;
 
+  // The cue replaces a node's outline, so a no-state outline colour is not drawn.
+  const noStateColor = outputs.some(
+    (output, index) =>
+      output === NO_STATE_COLOR && compiled[index]?.targetProperty !== 'outlineColor'
+  );
+
   return useMemo(
-    () => ({ outputs, stale, settled, delivered, vectorSources, problem }),
-    [outputs, stale, settled, delivered, vectorSources, problem]
+    () => ({ outputs, stale, settled, delivered, vectorSources, problem, noStateColor }),
+    [outputs, stale, settled, delivered, vectorSources, problem, noStateColor]
   );
 }
 

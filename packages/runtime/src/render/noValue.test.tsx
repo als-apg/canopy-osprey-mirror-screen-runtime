@@ -151,12 +151,12 @@ describe('a roll-up light before its first result', () => {
 });
 
 describe('a result whose value is null', () => {
-  it('a ladder rule gives no output: the node draws its own colour again', () => {
+  it('a ladder rule gives no output: its colour is the no-state colour', () => {
     const node = show([LIGHT]);
     server.frame(0, { severity: 'INVALID' });
     expect(fill(node('light'))).toBe(rgb(BAD));
     server.frame(null, { severity: 'INVALID' });
-    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+    expect(fill(node('light'))).toBe('var(--pydm-alarm-disconnected)');
     server.frame(-1);
     expect(fill(node('light'))).toBe(rgb(OK));
   });

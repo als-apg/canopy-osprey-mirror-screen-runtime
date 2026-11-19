@@ -244,10 +244,26 @@ describe('the colour of a node without a state', () => {
     expect(shape.getAttribute('style')).toContain(`border: 2px solid ${NO_STATE}`);
   });
 
-  it('a result without a value keeps the authored colour: that is an answer', () => {
-    const node = show([LIGHT]);
+  it('a result without a value has no state to show either', () => {
+    const node = show([light('light', 10, { fillColor: OK })]);
+    stub.result(-1);
     act(() => stub.subscriptions[0]!.options.onNoValue?.({ severity: 'INVALID' }));
-    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+    expect(fill(node('light'))).toBe(NO_STATE);
+    expect(node('light').getAttribute('data-pv-state')).toBe('disconnected');
+    expect(node('light').style.outline).toContain('dashed');
+    stub.result(-1);
+    expect(fill(node('light'))).toBe(rgb(OK));
+  });
+
+  it('the cue stands out from the no-state fill: another theme colour', () => {
+    const node = show([LIGHT]);
+    stub.error('formula_type_error', 'no', false);
+    const cue = node('light').style.outline;
+    expect(cue).toContain('dashed');
+    expect(cue).not.toContain('--pydm-alarm-disconnected');
+    // The theme's text colour, in both modes.
+    expect(cue).toMatch(/var\(--cr-\d+|light-dark\(/);
+    expect(fill(node('light'))).toBe(NO_STATE);
   });
 });
 

@@ -58,8 +58,10 @@ What the renderer does:
   `color` or `background`) is then drawn in the viewer's own no-state colour,
   the token of the disconnected look (`--pydm-alarm-disconnected`, the
   scheme's `DISCONNECTED` role), whatever the screen authored: the authored
-  colour shows only while the node waits for its first result. A result whose
-  value is null gives no output and keeps the authored props.
+  colour shows only while the node waits for its first result. On that fill
+  the cue is drawn in the theme's `Text` role, so that it stands out. A result
+  whose value is null gives no output either, and a colour its rule drives is
+  the no-state colour too.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a
   converted EDM `CALC\` / PyDM `calc://` channel) reads the rendering
   screen's `formulas[]` entry, its bindings macro-resolved with that screen's

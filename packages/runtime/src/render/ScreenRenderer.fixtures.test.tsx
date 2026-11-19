@@ -388,7 +388,8 @@ describe('ScreenRenderer — fixture mode: disconnected widgets are marked, neve
     expect(ruled().dataset.pvState).toBe('connected');
     act(() => subs.at(-1)!.onError?.(new FormulaError('input_disconnected', 'gone', true)));
     expect(ruled().dataset.pvState).toBe('disconnected');
-    expect(ruled().style.outline).toMatch(CUE_OUTLINE);
+    // Its rule drives a colour, now the no-state colour: the cue is the text colour.
+    expect(ruled().style.outline).toMatch(/^1px dashed var\(--cr-\d+, #161616\)$/);
     act(() => subs.at(-1)!.onResult(1));
     expect(ruled().dataset.pvState).toBe('connected');
   });

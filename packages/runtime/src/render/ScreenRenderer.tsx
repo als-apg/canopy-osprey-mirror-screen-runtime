@@ -84,7 +84,7 @@ import { reportOf, useFormulaChannelReport, vectorInputsText } from './vectorInp
 import { mapIRWidget } from './irMap.js';
 import { ScreenPVScope } from './ScreenPVScope.js';
 import { resolveRole, resolveRoles } from '../theme/resolveRoles.js';
-import { withDefaultRoles } from '../theme/defaultRoles.js';
+import { TEXT_ROLE, withDefaultRoles } from '../theme/defaultRoles.js';
 import { SchemeContext } from '../theme/schemeContext.js';
 import { getMode, subscribe as subscribeMode } from '../theme/modeStore.js';
 import { useSchemeStyleSheet } from '../theme/schemeStyleSheet.js';
@@ -620,7 +620,10 @@ function MountedNodeView({
   const showHover = clickable && hovered;
   const resting = restingOutline(effective.props);
   if (drawsCue(pvState)) {
-    style.outline = `1px dashed ${resolveRole(CUE_COLOR, flat)}`;
+    // On a no-state fill the cue takes the theme's text colour: the
+    // DISCONNECTED role is the fill itself there.
+    const cue = rulesLink.noStateColor ? TEXT_ROLE : CUE_COLOR;
+    style.outline = `1px dashed ${resolveRole(cue, flat)}`;
     style.outlineOffset = -1;
   } else if (linked && !showHover) {
     Object.assign(style, linkedOutline(flat));
