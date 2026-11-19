@@ -1,12 +1,26 @@
 // Staged values: what an operator typed into an entry that stages instead of
 // writing (the entry's `stage` prop names a scope). A staged value is held
-// here, per screen, until an `apply_staged` action writes the scope through
-// the write gate or a `clear_staged` action (or Escape in the entry) drops it.
+// here until an `apply_staged` action writes the scope through the write gate
+// or a `clear_staged` action (or Escape in the entry) drops it. Staging writes
+// nothing.
 //
-// Staging writes nothing. The store holds one value per channel and scope, in
-// the order the channels were first staged; that is the order they are written.
+// One store per screen instance: the top screen has one, and each embedded
+// screen instance has its own, linked to the store of the screen embedding
+// it. A store answers for its own values and those of the instances below
+// it, never for a sibling's or an ancestor's: an Apply on a parent view
+// writes the rows it embeds, an Apply inside one embedded card only that card.
+//
+// A value exists only while an entry for its channel and scope is mounted
+// (`attach`): it is dropped when the last such entry goes (unmounted, hidden
+// by a rule, bound to another channel), so no value is ever written that is
+// not on screen. Values are listed in the order their channels were first
+// staged; that is the order they are written.
+//
+// While a run writes a scope (`begin`), the scope is busy in the store that
+// started it, in every store above it and in every store below it: a second
+// Apply or Clear there does nothing. Staging stays possible meanwhile.
 
-import { createContext, useCallback, useContext, useSyncExternalStore } from 'react';
+import { createContext, useCallback, useContext, useEffect, useSyncExternalStore } from 'react';
 import type { WriteValue } from '../writeGate/types.js';
 
 /** One staged value: the channel, the parsed value, and the text as typed. */
@@ -18,71 +32,185 @@ export interface StagedValue {
 }
 
 export interface StagingStore {
-  /** The value staged for `pv` in `scope`, or undefined. */
+  /** The value this instance holds for `pv` in `scope`, or undefined. */
   get(scope: string, pv: string): StagedValue | undefined;
-  /** Stage `staged` in `scope`, replacing what its channel held there. */
-  set(scope: string, staged: StagedValue): void;
   /**
-   * Drop what `pv` holds in `scope`. With `only`, drop it only while it is
-   * still that very value: one staged again since stays.
+   * A mounted entry for `pv` in `scope`. The returned function detaches it;
+   * when the last one detaches, the channel's value is dropped.
+   */
+  attach(scope: string, pv: string): () => void;
+  /**
+   * Stage `staged` in `scope`, replacing what its channel held there. False,
+   * and nothing staged, when no entry is attached for the channel.
+   */
+  set(scope: string, staged: StagedValue): boolean;
+  /**
+   * Drop what `pv` holds in `scope`, in this instance or one below it. With
+   * `only`, drop it only while it is still that very value: one staged again
+   * since stays.
    */
   clear(scope: string, pv: string, only?: StagedValue): void;
-  /** Drop every value of `scope`. */
+  /** Drop every value of `scope`, in this instance and those below it. */
   clearScope(scope: string): void;
-  /** The values of `scope`, in the order their channels were first staged. */
+  /** The values of `scope` in this instance and those below it, in staging order. */
   list(scope: string): readonly StagedValue[];
+  /** How many values `list(scope)` holds. */
+  count(scope: string): number;
+  /** Whether a run is writing `scope` here, in a store above or in one below. */
+  busy(scope: string): boolean;
+  /** A run starts writing `scope`; the returned function ends it. */
+  begin(scope: string): () => void;
+  /** Make this store reachable from its parent; the returned function undoes it. */
+  link(): () => void;
+  /** Changes on every change in the tree of linked stores. */
+  version(): number;
   subscribe(listener: () => void): () => void;
 }
 
-const NOTHING: readonly StagedValue[] = Object.freeze([]);
+interface Held {
+  staged: StagedValue;
+  order: number;
+}
 
-export function createStagingStore(): StagingStore {
-  const scopes = new Map<string, Map<string, StagedValue>>();
-  const lists = new Map<string, readonly StagedValue[]>();
-  const listeners = new Set<() => void>();
-  const changed = (scope: string) => {
-    lists.delete(scope);
-    if (scopes.get(scope)?.size === 0) scopes.delete(scope);
-    for (const l of [...listeners]) l();
+interface Node {
+  parent: Node | null;
+  children: Set<Node>;
+  /** scope → channel → value */
+  values: Map<string, Map<string, Held>>;
+  /** scope → channel → mounted entries */
+  entries: Map<string, Map<string, number>>;
+  /** scope → runs writing it, started here */
+  runs: Map<string, number>;
+}
+
+/** What the stores of one tree share. */
+interface Shared {
+  order: number;
+  version: number;
+  listeners: Set<() => void>;
+}
+
+function below(node: Node): Node[] {
+  const all = [node];
+  for (const child of node.children) all.push(...below(child));
+  return all;
+}
+
+function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; shared: Shared } {
+  const changed = () => {
+    shared.version += 1;
+    for (const l of [...shared.listeners]) l();
+  };
+  const collect = (scope: string): Held[] =>
+    below(node)
+      .flatMap((n) => [...(n.values.get(scope)?.values() ?? [])])
+      .sort((a, b) => a.order - b.order);
+  const drop = (n: Node, scope: string, pv: string, only?: StagedValue): boolean => {
+    const values = n.values.get(scope);
+    const held = values?.get(pv);
+    if (values === undefined || held === undefined) return false;
+    if (only !== undefined && held.staged !== only) return false;
+    values.delete(pv);
+    if (values.size === 0) n.values.delete(scope);
+    return true;
   };
   return {
-    get: (scope, pv) => scopes.get(scope)?.get(pv),
+    node,
+    shared,
+    get: (scope, pv) => node.values.get(scope)?.get(pv)?.staged,
+    attach(scope, pv) {
+      let channels = node.entries.get(scope);
+      if (channels === undefined) node.entries.set(scope, (channels = new Map()));
+      channels.set(pv, (channels.get(pv) ?? 0) + 1);
+      let attached = true;
+      return () => {
+        if (!attached) return;
+        attached = false;
+        const left = (channels.get(pv) ?? 1) - 1;
+        if (left > 0) {
+          channels.set(pv, left);
+          return;
+        }
+        channels.delete(pv);
+        if (channels.size === 0 && node.entries.get(scope) === channels) node.entries.delete(scope);
+        if (drop(node, scope, pv)) changed();
+      };
+    },
     set(scope, staged) {
-      let values = scopes.get(scope);
-      if (values === undefined) scopes.set(scope, (values = new Map()));
-      values.set(staged.pv, staged);
-      changed(scope);
+      if ((node.entries.get(scope)?.get(staged.pv) ?? 0) === 0) return false;
+      let values = node.values.get(scope);
+      if (values === undefined) node.values.set(scope, (values = new Map()));
+      const order = values.get(staged.pv)?.order ?? (shared.order += 1);
+      values.set(staged.pv, { staged, order });
+      changed();
+      return true;
     },
     clear(scope, pv, only) {
-      const values = scopes.get(scope);
-      const held = values?.get(pv);
-      if (values === undefined || held === undefined) return;
-      if (only !== undefined && held !== only) return;
-      values.delete(pv);
-      changed(scope);
+      let any = false;
+      for (const n of below(node)) any = drop(n, scope, pv, only) || any;
+      if (any) changed();
     },
     clearScope(scope) {
-      if (!scopes.has(scope)) return;
-      scopes.get(scope)!.clear();
-      changed(scope);
+      let any = false;
+      for (const n of below(node)) any = n.values.delete(scope) || any;
+      if (any) changed();
     },
-    list(scope) {
-      let list = lists.get(scope);
-      if (list === undefined) {
-        const values = scopes.get(scope);
-        list = values === undefined ? NOTHING : Object.freeze([...values.values()]);
-        lists.set(scope, list);
+    list: (scope) => collect(scope).map((h) => h.staged),
+    count: (scope) => below(node).reduce((sum, n) => sum + (n.values.get(scope)?.size ?? 0), 0),
+    busy(scope) {
+      for (let n: Node | null = node.parent; n !== null; n = n.parent) {
+        if ((n.runs.get(scope) ?? 0) > 0) return true;
       }
-      return list;
+      return below(node).some((n) => (n.runs.get(scope) ?? 0) > 0);
     },
+    begin(scope) {
+      node.runs.set(scope, (node.runs.get(scope) ?? 0) + 1);
+      changed();
+      let running = true;
+      return () => {
+        if (!running) return;
+        running = false;
+        const left = (node.runs.get(scope) ?? 1) - 1;
+        if (left > 0) node.runs.set(scope, left);
+        else node.runs.delete(scope);
+        changed();
+      };
+    },
+    link() {
+      const parent = node.parent;
+      if (parent === null) return () => {};
+      parent.children.add(node);
+      changed();
+      return () => {
+        parent.children.delete(node);
+        changed();
+      };
+    },
+    version: () => shared.version,
     subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      shared.listeners.add(listener);
+      return () => shared.listeners.delete(listener);
     },
   };
 }
 
-/** The staging store of the screen, or null where nothing provides one. */
+/**
+ * The store of one screen instance. With `parent` (the store of the screen
+ * embedding it) it answers to that store once linked (`link()`).
+ */
+export function createStagingStore(parent?: StagingStore | null): StagingStore {
+  const above = (parent ?? null) as ReturnType<typeof storeOf> | null;
+  const node: Node = {
+    parent: above?.node ?? null,
+    children: new Set(),
+    values: new Map(),
+    entries: new Map(),
+    runs: new Map(),
+  };
+  return storeOf(node, above?.shared ?? { order: 0, version: 0, listeners: new Set() });
+}
+
+/** The staging store of the screen instance, or null where nothing provides one. */
 export const Staging = createContext<StagingStore | null>(null);
 
 /** The reserved prop that makes an entry stage: the scope's name, a non-empty string. */
@@ -97,9 +225,10 @@ export function stageScope(props: Readonly<Record<string, unknown>>): string | n
 const NO_SUBSCRIPTION = () => {};
 
 /**
- * The staging of one entry: the store and the value its channel holds in
- * `scope` now. `store` is null when the entry does not stage (no scope, no
- * store provided, or no channel).
+ * The staging of one mounted entry: the store, and the value its channel
+ * holds in `scope` now. `store` is null when the entry has no scope or no
+ * channel, and when no store is provided. The entry is attached to the store
+ * while mounted with this scope and channel.
  */
 export function useStaged(
   scope: string | null,
@@ -107,6 +236,10 @@ export function useStaged(
 ): { store: StagingStore | null; staged: StagedValue | undefined } {
   const provided = useContext(Staging);
   const store = scope !== null && pv !== '' ? provided : null;
+  useEffect(
+    () => (store !== null && scope !== null ? store.attach(scope, pv) : undefined),
+    [store, scope, pv]
+  );
   const subscribe = useCallback(
     (listener: () => void) => store?.subscribe(listener) ?? NO_SUBSCRIPTION,
     [store]

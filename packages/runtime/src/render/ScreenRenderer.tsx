@@ -31,7 +31,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -54,6 +53,7 @@ import type { FormulaDeclaration } from '@slaclab/canopy-screen-ir';
 import {
   AssetResolverContext,
   CONFIRM_WRITES_PROP,
+  asksToConfirm,
   PVServiceContext,
   RenderModeContext,
   Staging,
@@ -341,6 +341,8 @@ function hasMachineWrite(actions: readonly RuntimeAction[], macros: MacroValues)
 
 /** The hover of a node whose staging actions have nothing to act on. */
 const NOTHING_STAGED = 'nothing staged';
+/** The hover of a node whose staging scope a run is writing now. */
+const STAGED_BEING_WRITTEN = 'the staged values are being written';
 
 /** The count badge of a node with staging actions: its top right corner. */
 const STAGED_COUNT_STYLE: CSSProperties = {
@@ -359,22 +361,44 @@ const STAGED_COUNT_STYLE: CSSProperties = {
   pointerEvents: 'none',
 };
 
-/**
- * How many values are staged in the scopes of `actions`' staging actions
- * (each scope once), or null when the list has no staging action.
- */
-function countStaged(
-  actions: readonly RuntimeAction[],
-  macros: MacroValues,
-  staging: StagingStore | null
-): number | null {
-  const scopes = new Set(
-    actions.filter(isStagingAction).map((a) => substituteMacros(a.scope, macros))
+/** Re-renders the caller on every change of `store` (never, when null). */
+function useStagingChanges(store: StagingStore | null): void {
+  const subscribe = useCallback(
+    (listener: () => void) => store?.subscribe(listener) ?? NO_SUBSCRIPTION,
+    [store]
   );
-  if (scopes.size === 0) return null;
-  let count = 0;
-  for (const scope of scopes) count += staging?.list(scope).length ?? 0;
-  return count;
+  const version = useCallback(() => store?.version() ?? 0, [store]);
+  useSyncExternalStore(subscribe, version, version);
+}
+
+/** The scopes of `actions`' staging actions, each once, macros substituted. */
+function stagingScopes(actions: readonly RuntimeAction[], macros: MacroValues): string[] {
+  return [
+    ...new Set(actions.filter(isStagingAction).map((a) => substituteMacros(a.scope, macros))),
+  ];
+}
+
+/**
+ * The staging store of one screen instance: a new one for each screen
+ * document and each set of macro values, answering to the store of the screen
+ * embedding it (the one in context) while mounted. Values staged on a screen
+ * go when the screen is reloaded, replaced or re-targeted.
+ */
+function useStagingInstance(screen: ScreenJSON, macros: MacroValues): StagingStore {
+  const parent = useContext(Staging);
+  const key = JSON.stringify(macros);
+  const [held, setHeld] = useState(() => ({
+    screen,
+    key,
+    parent,
+    store: createStagingStore(parent),
+  }));
+  if (held.screen !== screen || held.key !== key || held.parent !== parent) {
+    setHeld({ screen, key, parent, store: createStagingStore(parent) });
+  }
+  const store = held.store;
+  useEffect(() => store.link(), [store]);
+  return store;
 }
 
 const NO_SUBSCRIPTION = () => {};
@@ -483,17 +507,6 @@ function MountedNodeView({
   const gate = useWriteGate();
   // The screen's staged values, for `apply_staged` / `clear_staged`.
   const staging = useContext(Staging);
-  // A node carrying a staging action follows the store: it is inert while
-  // its scopes hold nothing and shows how many values they hold.
-  const followsStaging = useMemo(
-    () => readNodeActions(baseProps).some(isStagingAction),
-    [baseProps]
-  );
-  const [, stagingChanged] = useReducer((n: number) => n + 1, 0);
-  useEffect(
-    () => (followsStaging && staging !== null ? staging.subscribe(stagingChanged) : undefined),
-    [followsStaging, staging]
-  );
   const writesInert = useWritesInertReason(gate);
   const [hovered, setHovered] = useState(false);
   // The open menu of a click whose actions are alternatives (actionMenu.tsx).
@@ -532,6 +545,14 @@ function MountedNodeView({
   useRegisterDeviceChannels(ownDevice ?? inherited, deviceRuleChannels, 'rule');
   const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
   const deviceHover = useDeviceHover(ownDevice, effective.visible);
+  // A node carrying a staging action (in its rule-patched props, as its
+  // click reads them) follows the store: it is inert while its scopes hold
+  // nothing or are being written, and shows how many values they hold.
+  const followsStaging =
+    staging !== null &&
+    Array.isArray(effective.props.actions) &&
+    readNodeActions(effective.props).some(isStagingAction);
+  useStagingChanges(followsStaging ? staging : null);
 
   if (idChain.includes(node.id)) {
     console.warn(`widget '${node.id}' appears in its own ancestor chain; skipping (cycle)`);
@@ -557,15 +578,21 @@ function MountedNodeView({
   // The values staged in the scopes of the node's staging actions, or null
   // on a node with none. A node whose every action is a staging action can do
   // nothing while that is zero: it is inert, as under a gate that refuses.
-  const stagedCount = countStaged(actions, macros, staging);
+  const scopes = stagingScopes(actions, macros);
+  const stagedCount =
+    scopes.length === 0 ? null : scopes.reduce((n, s) => n + (staging?.count(s) ?? 0), 0);
   if (stagedCount !== null) attrs['data-staged-count'] = String(stagedCount);
   const nothingStaged = stagedCount === 0 && actions.every(isStagingAction);
+  // A scope a run is writing takes no second Apply and no Clear.
+  const beingWritten = staging !== null && scopes.some((s) => staging.busy(s));
   const inertReason =
     writesInert !== null && hasMachineWrite(actions, macros)
       ? writesInert
-      : nothingStaged
-        ? NOTHING_STAGED
-        : null;
+      : beingWritten
+        ? STAGED_BEING_WRITTEN
+        : nothingStaged
+          ? NOTHING_STAGED
+          : null;
   if (inertReason !== null) {
     attrs['aria-disabled'] = 'true';
     attrs.title = inertReason;
@@ -629,7 +656,7 @@ function MountedNodeView({
         host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
       gate,
       // The node asks for the dialog before its click's machine writes.
-      confirm: effective.props[CONFIRM_WRITES_PROP] === true,
+      confirm: asksToConfirm(effective.props[CONFIRM_WRITES_PROP]),
       staging,
     }).catch((err: unknown) => {
       host.showError(err instanceof Error ? err.message : String(err));
@@ -909,23 +936,28 @@ function EmbeddedScreenView({
     [parentResolve, authoredRef]
   );
 
+  // This instance's own staged values, answering to the embedding screen's.
+  const stagingStore = useStagingInstance(screen, macros);
+
   return (
     <AssetResolverContext.Provider value={resolveAsset}>
       <EmbedContext.Provider value={childEmbed}>
-        <div
-          data-testid="embedded-screen"
-          data-screen-id={screen.id}
-          style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
-        >
-          <ScreenPVScope formulas={screen.formulas} macros={macros}>
-            <WidgetNodeView
-              node={screen.root}
-              macros={macros}
-              formulas={screen.formulas}
-              idChain={[]}
-            />
-          </ScreenPVScope>
-        </div>
+        <Staging.Provider value={stagingStore}>
+          <div
+            data-testid="embedded-screen"
+            data-screen-id={screen.id}
+            style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
+          >
+            <ScreenPVScope formulas={screen.formulas} macros={macros}>
+              <WidgetNodeView
+                node={screen.root}
+                macros={macros}
+                formulas={screen.formulas}
+                idChain={[]}
+              />
+            </ScreenPVScope>
+          </div>
+        </Staging.Provider>
       </EmbedContext.Provider>
     </AssetResolverContext.Provider>
   );
@@ -977,12 +1009,7 @@ export function ScreenRenderer({
   const [devices, setDevices] = useState(() => ({ screen, store: new DeviceStore() }));
   if (devices.screen !== screen) setDevices({ screen, store: new DeviceStore() });
   const deviceStore = devices.store;
-  // One staging store per screen document, shared with the screens it embeds:
-  // values staged on a screen go when another screen opens in its place.
-  const outerStaging = useContext(Staging);
-  const [staged, setStaged] = useState(() => ({ screen, store: createStagingStore() }));
-  if (staged.screen !== screen) setStaged({ screen, store: createStagingStore() });
-  const stagingStore = outerStaging ?? staged.store;
+  const stagingStore = useStagingInstance(screen, effectiveMacros);
   const host = useContext(ActionHostContext);
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {

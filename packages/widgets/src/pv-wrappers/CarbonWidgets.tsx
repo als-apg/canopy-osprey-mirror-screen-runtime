@@ -241,6 +241,9 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
 }
 
 /** PVTextInput — Carbon TextInput bound to PV */
+/** Why an entry with a `stage` scope and no staging store is inert. */
+const STAGING_UNAVAILABLE = 'this entry stages its value, and staging is not available here';
+
 export function CarbonPVTextInput({
   id,
   layout,
@@ -255,14 +258,19 @@ export function CarbonPVTextInput({
   const [edit, setEdit] = useState<{ text: string; typed: boolean } | null>(null);
   const draft = edit?.text ?? null;
   const gated = useGatedWrite(pv, gatedWriteOptions(props));
-  const inert = useInert(ownInertReason(gated, pv.address));
   // An entry with a `stage` scope writes nothing itself: Enter keeps the value
-  // in the screen's staging store, the field shows it (marked) in place of the
-  // live value, and an `apply_staged` action writes the scope through the gate.
-  // A local channel never stages; nor does an entry with no store provided.
+  // in the screen's staging store, the field shows the value that will be
+  // sent (marked) in place of the live one, and an `apply_staged` action
+  // writes the scope through the gate. Where nothing provides a store the
+  // entry is inert: it never falls back to writing. A local channel is not a
+  // machine write and ignores `stage`.
   const scope = isLocalChannel(pv.address) ? null : stageScope(props);
   const { store: staging, staged } = useStaged(scope, pv.address);
-  const stagedText = staged === undefined ? null : (staged.entered ?? String(staged.value));
+  const cannotStage = scope !== null && staging === null && pv.address !== '';
+  const inert = useInert(
+    ownInertReason(gated, pv.address) ?? (cannotStage ? STAGING_UNAVAILABLE : null)
+  );
+  const stagedText = staged === undefined ? null : String(staged.value);
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
@@ -304,13 +312,9 @@ export function CarbonPVTextInput({
       const numVal = parseFloat(draft);
       value = isNaN(numVal) ? draft : numVal;
     }
-    if (staging !== null && scope !== null) {
-      staging.set(
-        scope,
-        entered === undefined
-          ? { pv: pv.address, value, entered: draft }
-          : { pv: pv.address, value, entered }
-      );
+    if (scope !== null) {
+      // Staged or nothing: an entry that stages never writes.
+      staging?.set(scope, { pv: pv.address, value, entered: draft });
     } else if (entered === undefined) void gated.write(value);
     else void gated.write(value, { entered });
     setEdit(null);

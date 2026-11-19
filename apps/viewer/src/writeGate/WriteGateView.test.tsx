@@ -777,7 +777,7 @@ describe('a widget that asks to confirm (props.confirmWrites)', () => {
     ]);
   });
 
-  for (const value of [false, 'true', 1, undefined]) {
+  for (const value of [false, 'false', undefined]) {
     it(`confirmWrites ${JSON.stringify(value)} asks nothing: written directly, as before`, async () => {
       confirm = false;
       renderWidget(W.CarbonPVButton, {
@@ -790,6 +790,21 @@ describe('a widget that asks to confirm (props.confirmWrites)', () => {
       expect(dialogs()).toHaveLength(0);
       expect(sent).toEqual([['SIM:CMD', 2]]);
       expect(sentConfirmed).toEqual([false]);
+    });
+  }
+
+  for (const value of ['true', 1, '$(ASK)']) {
+    it(`confirmWrites ${JSON.stringify(value)} asks: any value but a plain no does`, async () => {
+      confirm = false;
+      renderWidget(W.CarbonPVButton, {
+        controlPV: 'SIM:CMD',
+        pressValue: '2',
+        confirmWrites: value,
+      });
+      fireEvent.click(document.querySelector('button') as HTMLButtonElement);
+      await flush();
+      expect(dialogs()).toHaveLength(1);
+      expect(sent).toEqual([]);
     });
   }
 });

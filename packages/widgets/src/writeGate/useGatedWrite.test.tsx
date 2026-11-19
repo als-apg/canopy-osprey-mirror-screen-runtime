@@ -5,7 +5,7 @@ import type React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { WriteGate, useWritesState } from './WriteGate.js';
-import { useGatedWrite } from './useGatedWrite.js';
+import { asksToConfirm, gatedWriteOptions, useGatedWrite } from './useGatedWrite.js';
 import type { WritableHandle } from './useGatedWrite.js';
 import type {
   WriteGateService,
@@ -370,6 +370,20 @@ describe('useGatedWrite — a widget that asks to confirm', () => {
     expect(local.puts).toEqual([1]);
     expect(bare.puts).toEqual([1]);
     expect(runs).toEqual([]);
+  });
+});
+
+describe('asksToConfirm / gatedWriteOptions', () => {
+  it('asks for every value except an absent one, false and the string "false"', () => {
+    for (const value of [true, 'true', 1, 0, '', 'yes', '$(ASK)', {}, 'no']) {
+      expect(asksToConfirm(value)).toBe(true);
+      expect(gatedWriteOptions({ confirmWrites: value })).toEqual({ confirm: true });
+    }
+    for (const value of [undefined, null, false, 'false', ' False ']) {
+      expect(asksToConfirm(value)).toBe(false);
+      expect(gatedWriteOptions({ confirmWrites: value })).toEqual({});
+    }
+    expect(gatedWriteOptions({})).toEqual({});
   });
 });
 

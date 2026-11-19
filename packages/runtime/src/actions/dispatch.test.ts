@@ -476,6 +476,8 @@ describe('apply_staged and clear_staged', () => {
 
   function stagedView() {
     const staging = createStagingStore();
+    for (const pv of ['A', 'B', 'C']) staging.attach('view', pv);
+    staging.attach('other', 'Z');
     staging.set('view', { pv: 'A', value: 1, entered: '1.0' });
     staging.set('view', { pv: 'B', value: 2 });
     staging.set('view', { pv: 'C', value: 'on' });
@@ -500,7 +502,7 @@ describe('apply_staged and clear_staged', () => {
         { pv: 'C', value: 'on' },
       ],
     ]);
-    expect(options).toEqual([{ nameStopped: true }]);
+    expect(options).toEqual([{ nameStopped: true, stopUnlessConfirmed: true }]);
     expect(staging.list('view')).toEqual([]);
     expect(staging.list('other')).toEqual([{ pv: 'Z', value: 9 }]);
     expect(ctx.calls).toEqual(['run A=1,B=2,C=on', 'close']);
@@ -511,15 +513,17 @@ describe('apply_staged and clear_staged', () => {
     const ctx = makeCtx();
     const { gate, options } = fakeGate(ctx.calls, [outcome('confirmed')]);
     const staging = createStagingStore();
+    staging.attach('view', 'A');
     staging.set('view', { pv: 'A', value: 1 });
     await dispatchActions([apply], { ...ctx, gate, staging, confirm: true });
-    expect(options).toEqual([{ confirm: true, nameStopped: true }]);
+    expect(options).toEqual([{ nameStopped: true, stopUnlessConfirmed: true, confirm: true }]);
   });
 
   it('substitutes macros in the scope', async () => {
     const ctx = makeCtx();
     const { gate, runs } = fakeGate(ctx.calls, [outcome('confirmed')]);
     const staging = createStagingStore();
+    staging.attach('LI21/set', 'A');
     staging.set('LI21/set', { pv: 'A', value: 1 });
     await dispatchActions([{ type: 'apply_staged', scope: '${P}/set' }], {
       ...ctx,
@@ -550,22 +554,147 @@ describe('apply_staged and clear_staged', () => {
     expect(ctx.calls).toEqual(['run A=1,B=2,C=on']);
   });
 
-  it('keeps a value whose write was sent but not confirmed, and goes on', async () => {
+  it('a run that stopped at a readback mismatch keeps that value and the unsent, and skips the rest', async () => {
+    const ctx = makeCtx();
+    const staging = stagedView();
+    // The gate stops a strict run at the mismatch: two outcomes for three writes.
+    const { gate } = fakeGate(ctx.calls, [outcome('confirmed'), outcome('mismatch')]);
+    await dispatchActions([apply, { type: 'close_display' }], { ...ctx, gate, staging });
+    expect(staging.list('view')).toEqual([
+      { pv: 'B', value: 2 },
+      { pv: 'C', value: 'on' },
+    ]);
+    expect(ctx.calls).toEqual(['run A=1,B=2,C=on']);
+  });
+
+  it('skips the rest of the list when the last value was sent but not confirmed', async () => {
     const ctx = makeCtx();
     const staging = stagedView();
     const { gate } = fakeGate(ctx.calls, [
       outcome('confirmed'),
-      outcome('mismatch'),
       outcome('confirmed'),
+      outcome('unconfirmed'),
     ]);
     await dispatchActions([apply, { type: 'close_display' }], { ...ctx, gate, staging });
-    expect(staging.list('view')).toEqual([{ pv: 'B', value: 2 }]);
-    expect(ctx.calls).toEqual(['run A=1,B=2,C=on', 'close']);
+    expect(staging.list('view')).toEqual([{ pv: 'C', value: 'on' }]);
+    expect(ctx.calls).toEqual(['run A=1,B=2,C=on']);
+  });
+
+  it('a run that lost its backend mid-way drops the confirmed values and keeps the rest', async () => {
+    const ctx = makeCtx();
+    const staging = stagedView();
+    const { gate } = fakeGate(ctx.calls, [outcome('confirmed'), outcome('unknown')]);
+    await dispatchActions([apply], { ...ctx, gate, staging });
+    expect(staging.list('view').map((v) => v.pv)).toEqual(['B', 'C']);
+  });
+
+  describe('while a run writes the scope', () => {
+    function held() {
+      const ctx = makeCtx();
+      const staging = stagedView();
+      let finish: (o: WriteOutcome[]) => void = () => {};
+      const runs: WriteRequest[][] = [];
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: (writes) =>
+          new Promise((resolve) => {
+            runs.push([...writes]);
+            finish = resolve;
+          }),
+      };
+      const first = dispatchActions([apply], { ...ctx, gate, staging });
+      return { ctx, staging, gate, runs, first, finish: (o: WriteOutcome[]) => finish(o) };
+    }
+    const allConfirmed = [outcome('confirmed'), outcome('confirmed'), outcome('confirmed')];
+
+    it('a second apply does nothing and skips the rest of its list', async () => {
+      const h = held();
+      await Promise.resolve();
+      expect(h.staging.busy('view')).toBe(true);
+      await dispatchActions([apply, { type: 'close_display' }], {
+        ...h.ctx,
+        gate: h.gate,
+        staging: h.staging,
+      });
+      expect(h.runs).toHaveLength(1);
+      expect(h.ctx.calls).toEqual([]);
+      h.finish(allConfirmed);
+      await h.first;
+      expect(h.staging.busy('view')).toBe(false);
+      expect(h.staging.list('view')).toEqual([]);
+    });
+
+    it('a clear does nothing', async () => {
+      const h = held();
+      await Promise.resolve();
+      await dispatchActions([{ type: 'clear_staged', scope: 'view' }, { type: 'close_display' }], {
+        ...h.ctx,
+        gate: h.gate,
+        staging: h.staging,
+      });
+      expect(h.staging.count('view')).toBe(3);
+      expect(h.ctx.calls).toEqual([]);
+      h.finish(allConfirmed);
+      await h.first;
+    });
+
+    it('a value staged meanwhile is not part of the run and stays staged', async () => {
+      const h = held();
+      await Promise.resolve();
+      h.staging.attach('view', 'D');
+      h.staging.set('view', { pv: 'D', value: 4 });
+      h.staging.set('view', { pv: 'A', value: 11 });
+      h.finish(allConfirmed);
+      await h.first;
+      expect(h.runs[0].map((x) => x.pv)).toEqual(['A', 'B', 'C']);
+      expect(h.staging.list('view')).toEqual([
+        { pv: 'A', value: 11 },
+        { pv: 'D', value: 4 },
+      ]);
+    });
+
+    it('the scope is free again after a rejecting gate', async () => {
+      const ctx = makeCtx();
+      const staging = stagedView();
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: () => Promise.reject(new Error('boom')),
+      };
+      await dispatchActions([apply], { ...ctx, gate, staging });
+      expect(staging.busy('view')).toBe(false);
+    });
+  });
+
+  it('writes only the values of its own instance and those embedded below it', async () => {
+    const ctx = makeCtx();
+    const top = createStagingStore();
+    const card = createStagingStore(top);
+    const other = createStagingStore(top);
+    card.link();
+    other.link();
+    top.attach('view', 'T');
+    card.attach('view', 'C');
+    other.attach('view', 'O');
+    top.set('view', { pv: 'T', value: 1 });
+    card.set('view', { pv: 'C', value: 2 });
+    other.set('view', { pv: 'O', value: 3 });
+    const { gate, runs } = fakeGate(ctx.calls, [
+      outcome('confirmed'),
+      outcome('confirmed'),
+      outcome('confirmed'),
+    ]);
+    await dispatchActions([apply], { ...ctx, gate, staging: card });
+    expect(runs).toEqual([[{ pv: 'C', value: 2 }]]);
+    expect(top.list('view').map((v) => v.pv)).toEqual(['T', 'O']);
+    await dispatchActions([apply], { ...ctx, gate, staging: top });
+    expect(runs[1].map((x) => x.pv)).toEqual(['T', 'O']);
+    expect(top.count('view')).toBe(0);
   });
 
   it('keeps a value staged again while its write was on the way', async () => {
     const ctx = makeCtx();
     const staging = createStagingStore();
+    staging.attach('view', 'A');
     staging.set('view', { pv: 'A', value: 1 });
     const gate: WriteGateService = {
       confirmWrites: () => false,

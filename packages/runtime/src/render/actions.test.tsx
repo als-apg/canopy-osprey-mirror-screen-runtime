@@ -236,12 +236,21 @@ describe('widget actions', () => {
       await waitFor(() => expect(options).toEqual([{ confirm: true }]));
     });
 
-    it('gives the gate no options on a node without it, or with a value that is not true', async () => {
-      for (const value of [undefined, false, 'true']) {
+    it('gives the gate no options on a node without it, or with a plain no', async () => {
+      for (const value of [undefined, false, 'false']) {
         const node = button('b1', 'Go', write);
         const props = value === undefined ? node.props : { ...node.props, confirmWrites: value };
         const options = gated({ ...node, props });
         await waitFor(() => expect(options).toEqual([undefined]));
+        cleanup();
+      }
+    });
+
+    it('asks for any other value: "true", 1, a macro result', async () => {
+      for (const value of ['true', 1, 'yes']) {
+        const node = button('b1', 'Go', write);
+        const options = gated({ ...node, props: { ...node.props, confirmWrites: value } });
+        await waitFor(() => expect(options).toEqual([{ confirm: true }]));
         cleanup();
       }
     });

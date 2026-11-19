@@ -99,12 +99,27 @@ export interface GatedWriteOptions {
   confirm?: boolean;
 }
 
-/** The reserved prop a screen sets on a node to ask for the dialog: exactly `true`. */
+/**
+ * The reserved prop a screen sets on the node that triggers a write (the
+ * writing widget itself, or the node whose click carries the actions) to ask
+ * for the dialog.
+ */
 export const CONFIRM_WRITES_PROP = 'confirmWrites';
+
+/**
+ * Whether a `confirmWrites` value asks for the dialog: every value does,
+ * except an absent one, `false` and the string "false" (in any case, spaces
+ * trimmed). A value this cannot read as a plain "no" asks: `"true"`, `1`, the
+ * result of a macro.
+ */
+export function asksToConfirm(value: unknown): boolean {
+  if (value === undefined || value === null || value === false) return false;
+  return !(typeof value === 'string' && value.trim().toLowerCase() === 'false');
+}
 
 /** The gated-write options a widget's props ask for. */
 export function gatedWriteOptions(props: Readonly<Record<string, unknown>>): GatedWriteOptions {
-  return props[CONFIRM_WRITES_PROP] === true ? ASKS : ASKS_NOTHING;
+  return asksToConfirm(props[CONFIRM_WRITES_PROP]) ? ASKS : ASKS_NOTHING;
 }
 
 const ASKS: GatedWriteOptions = Object.freeze({ confirm: true });

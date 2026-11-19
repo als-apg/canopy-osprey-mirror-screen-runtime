@@ -11,13 +11,17 @@
 // go through the gate (a local channel, or any write with no gate) goes
 // through one call, `dispatchLocalWrite`: it is the only put in this module.
 //
-// `apply_staged` writes the values staged in its scope as one gate run of its
-// own, at its place in the list, in the order they were staged. The run stops
-// at the first write that is refused or unknown, as every run does: what was
-// sent stays sent, and the summary names the channel it stopped at. A value
-// leaves the staging store only when its write was confirmed; a declined
-// dialog, a stopped run and an unconfirmed write keep theirs. `clear_staged`
-// drops a scope unwritten.
+// `apply_staged` writes the values staged in its scope, in the node's screen
+// instance and the instances embedded below it, as one gate run of its own, at
+// its place in the list, in the order they were staged. The run stops at the
+// first write that is not confirmed, a readback mismatch and an unconfirmed
+// write included: what was sent stays sent, the values after it are not sent,
+// and the summary names the channel it stopped at and says whether its value
+// was sent. A value leaves the staging store only when its write was
+// confirmed; a declined dialog and a stopped run keep theirs. `clear_staged`
+// drops a scope unwritten. While a run writes a scope, a second
+// `apply_staged` or `clear_staged` on it does nothing and skips the rest of
+// its list.
 //
 // `open_webpage` and `open_display` only open http(s) or relative URLs; any
 // other scheme (`javascript:`, `data:`, ...) and protocol-relative `//host`
@@ -174,40 +178,57 @@ function completed(result: WriteRunResult, n: number): boolean {
   );
 }
 
+/** The gate run of an `apply_staged`: strict, and naming where it stopped. */
+function applyOptions(ctx: ActionContext): WriteRunOptions {
+  const options: WriteRunOptions = { nameStopped: true, stopUnlessConfirmed: true };
+  return ctx.confirm === true ? { ...options, confirm: true } : options;
+}
+
 /**
  * Write the values staged in `scope`. False when the rest of the action list
- * must not run: the dialog was declined, or the run stopped.
+ * must not run: the scope is being written already, the dialog was declined,
+ * or the run stopped before every value was confirmed.
  */
 async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> {
   const staging = ctx.staging ?? null;
-  const staged = staging?.list(scope) ?? [];
-  if (staging === null || staged.length === 0) return true;
+  if (staging === null) return true;
+  if (staging.busy(scope)) return false;
+  const staged = staging.list(scope);
+  if (staged.length === 0) return true;
   const gate = ctx.gate ?? null;
-  if (gate === null) {
-    for (const s of staged) {
-      await dispatchLocalWrite(ctx, s.pv, typeof s.value === 'boolean' ? Number(s.value) : s.value);
-      staging.clear(scope, s.pv, s);
+  const end = staging.begin(scope);
+  try {
+    if (gate === null) {
+      for (const s of staged) {
+        await dispatchLocalWrite(
+          ctx,
+          s.pv,
+          typeof s.value === 'boolean' ? Number(s.value) : s.value
+        );
+        staging.clear(scope, s.pv, s);
+      }
+      return true;
     }
-    return true;
+    const result = await gate
+      .run(
+        staged.map((s) =>
+          s.entered === undefined
+            ? { pv: s.pv, value: s.value }
+            : { pv: s.pv, value: s.value, entered: s.entered }
+        ),
+        applyOptions(ctx)
+      )
+      .catch((): WriteRunResult => []);
+    if (result === 'declined') return false;
+    const confirmed = (o: WriteOutcome | undefined) =>
+      o !== undefined && !o.coalesced && o.outcome === 'confirmed';
+    staged.forEach((s, i) => {
+      if (confirmed(result[i])) staging.clear(scope, s.pv, s);
+    });
+    return result.length === staged.length && result.every(confirmed);
+  } finally {
+    end();
   }
-  const options: WriteRunOptions =
-    ctx.confirm === true ? { confirm: true, nameStopped: true } : { nameStopped: true };
-  const result = await gate
-    .run(
-      staged.map((s) =>
-        s.entered === undefined
-          ? { pv: s.pv, value: s.value }
-          : { pv: s.pv, value: s.value, entered: s.entered }
-      ),
-      options
-    )
-    .catch((): WriteRunResult => []);
-  if (result === 'declined') return false;
-  staged.forEach((s, i) => {
-    const o = result[i];
-    if (o !== undefined && !o.coalesced && o.outcome === 'confirmed') staging.clear(scope, s.pv, s);
-  });
-  return completed(result, staged.length);
 }
 
 /**
@@ -251,9 +272,12 @@ export async function dispatchActions(
         if (!(await applyStaged(substituteMacros(action.scope, ctx.macros), ctx))) return;
         break;
       }
-      case 'clear_staged':
-        ctx.staging?.clearScope(substituteMacros(action.scope, ctx.macros));
+      case 'clear_staged': {
+        const scope = substituteMacros(action.scope, ctx.macros);
+        if (ctx.staging?.busy(scope)) return;
+        ctx.staging?.clearScope(scope);
         break;
+      }
       case 'open_display':
         await openDisplay(action, ctx);
         break;

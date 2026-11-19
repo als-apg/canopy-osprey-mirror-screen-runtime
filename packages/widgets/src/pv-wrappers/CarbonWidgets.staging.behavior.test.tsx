@@ -99,7 +99,8 @@ describe('a staging text entry', () => {
     expect(input().value).toBe('1');
     expect(box().getAttribute('data-staged')).toBeNull();
     await enter('2.50');
-    expect(input().value).toBe('2.50');
+    // The value that will be sent, not the text as typed.
+    expect(input().value).toBe('2.5');
     expect(box().getAttribute('data-staged')).toBe('true');
     expect(box().classList.contains('carbon-pv-input--staged')).toBe(true);
   });
@@ -117,7 +118,7 @@ describe('a staging text entry', () => {
     await enter('2.50');
     fireEvent.change(input(), { target: { value: '9' } });
     fireEvent.keyDown(input(), { key: 'Escape' });
-    expect(input().value).toBe('2.50');
+    expect(input().value).toBe('2.5');
     expect(store.list('view')).toHaveLength(1);
     fireEvent.keyDown(input(), { key: 'Escape' });
     expect(store.list('view')).toEqual([]);
@@ -147,12 +148,52 @@ describe('a staging text entry', () => {
     expect(runs).toEqual([]);
   });
 
-  it('a second entry of the channel in the scope shows the same staged value', async () => {
+  it('shows what a text channel will be sent when the text starts with a number', async () => {
+    renderEntry({ pvName: 'SIM:TXT', stage: 'view' });
+    await enter('12abc');
+    expect(store.list('view')).toEqual([{ pv: 'SIM:TXT', value: 12, entered: '12abc' }]);
+    expect(input().value).toBe('12');
+  });
+
+  it('drops its staged value when it unmounts', async () => {
     renderEntry({ pvName: 'SIM:SP', stage: 'view' });
     await enter('4');
+    expect(store.count('view')).toBe(1);
     cleanup();
-    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
-    expect(input().value).toBe('4');
+    expect(store.count('view')).toBe(0);
+  });
+
+  it('drops its staged value when its channel changes', async () => {
+    pvState['SIM:OTHER'] = { connected: true, value: 7 };
+    const view = renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('4');
+    const Comp = W.CarbonPVTextInput as React.FC<WidgetRendererProps>;
+    view.rerender(
+      <WriteGate.Provider value={gate}>
+        <Staging.Provider value={store}>
+          <Comp {...base} props={{ pvName: 'SIM:OTHER', stage: 'view' }} />
+        </Staging.Provider>
+      </WriteGate.Provider>
+    );
+    await flush();
+    expect(store.list('view')).toEqual([]);
+    expect(input().value).toBe('7');
+  });
+
+  it('drops its staged value when its scope changes', async () => {
+    const view = renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('4');
+    const Comp = W.CarbonPVTextInput as React.FC<WidgetRendererProps>;
+    view.rerender(
+      <WriteGate.Provider value={gate}>
+        <Staging.Provider value={store}>
+          <Comp {...base} props={{ pvName: 'SIM:SP', stage: 'other' }} />
+        </Staging.Provider>
+      </WriteGate.Provider>
+    );
+    await flush();
+    expect(store.count('view')).toBe(0);
+    expect(store.count('other')).toBe(0);
   });
 });
 
@@ -161,7 +202,6 @@ describe('an entry that does not stage writes as before', () => {
     ['no stage prop', { pvName: 'SIM:SP' }, undefined],
     ['an empty stage', { pvName: 'SIM:SP', stage: '' }, undefined],
     ['a stage that is not a string', { pvName: 'SIM:SP', stage: true }, undefined],
-    ['no staging store provided', { pvName: 'SIM:SP', stage: 'view' }, null],
   ] as const) {
     it(`${name}: Enter is one gate run`, async () => {
       renderEntry(props, staging === null ? null : store);
@@ -171,6 +211,19 @@ describe('an entry that does not stage writes as before', () => {
       expect(box().getAttribute('data-staged')).toBeNull();
     });
   }
+
+  it('with a stage and no staging store it writes nothing and says why', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' }, null);
+    expect(input().getAttribute('aria-disabled')).toBe('true');
+    expect(input().getAttribute('title')).toContain('staging is not available');
+    expect(input().readOnly).toBe(true);
+    await enter('2.5');
+    fireEvent.blur(input());
+    await flush();
+    expect(runs).toEqual([]);
+    expect(puts).toEqual([]);
+    expect(input().value).toBe('1');
+  });
 
   it('a local channel never stages: it is written straight through', async () => {
     pvState['loc://x'] = { connected: true, value: 1 };
