@@ -9,7 +9,8 @@
 // `g.`, ordered by key) is a vector of numbers, arithmetic and comparisons
 // work member by member, a reduction (`max`, `sum`, `count_nonzero`, the
 // `nan*` forms, ...) gives one value, and `severity({x})` / `connected({x})`
-// read a channel's status. The caller passes the status of each binding.
+// read a channel's status, `label({x})` the enum string of its value. The
+// caller passes the status and the enum strings of each binding.
 //
 // This is NOT a general Python evaluator — anything outside the subset
 // throws PyExprError and the caller downgrades to a warning (same contract
@@ -24,12 +25,14 @@ export class PyExprError extends Error {
 
 export type PyValue = number | string | boolean | null;
 
-/** A binding's status, for `severity()` and `connected()`. */
+/** A binding's status, for `severity()`, `connected()` and `label()`. */
 export interface PyStatus {
   /** 0 NO_ALARM, 1 MINOR, 2 MAJOR, 3 INVALID. */
   readonly severity: number;
   /** Whether the channel is connected and has a sample. */
   readonly connected: boolean;
+  /** The channel's enum strings, by value; absent when it has none. */
+  readonly labels?: readonly string[] | undefined;
 }
 
 /** A vector token's value, or a member-by-member result. `bool`: of a comparison. */
@@ -44,7 +47,7 @@ class Vec {
 
 type Val = PyValue | Vec;
 
-const STATUS_FUNCTIONS = new Set(['severity', 'connected']);
+const STATUS_FUNCTIONS = new Set(['severity', 'connected', 'label']);
 const NO_STATUS: PyStatus = { severity: 3, connected: false };
 
 /**
@@ -286,6 +289,7 @@ class Parser {
       throw new PyExprError(`${name}() takes exactly one {token}`);
     }
     this.pos += 2;
+    if (name === 'label') return this.label(t.text);
     const one = (key: string): number => {
       const s = this.status?.get(key) ?? NO_STATUS;
       if (name === 'connected') return s.connected ? 1 : 0;
@@ -296,6 +300,22 @@ class Parser {
     const members = prefix === null ? [] : membersOf(prefix, this.bindings.keys());
     if (members.length === 0) throw new PyExprError(`unbound token {${t.text}}`);
     return new Vec(members.map(one));
+  }
+
+  /**
+   * `label({token})`: the enum string of the channel's value. A value that
+   * is text already is its own label; a value the channel has no enum string
+   * for, and any value of a channel without enum strings, has the empty one.
+   */
+  private label(token: string): string {
+    if (!this.bindings.has(token)) {
+      throw new PyExprError('label() takes exactly one {token} of one channel, not a vector token');
+    }
+    const value = this.bindings.get(token)!;
+    if (typeof value === 'string') return value;
+    const index = typeof value === 'boolean' ? Number(value) : value;
+    if (index === null || !Number.isInteger(index)) return '';
+    return this.status?.get(token)?.labels?.[index] ?? '';
   }
 
   /** A call of a function of the namespace, after the name and `(`. */
@@ -549,13 +569,14 @@ export interface PyExprInputs {
   readonly members: readonly string[];
   /** Bindings read as a plain value: the formula has no result without them. */
   readonly strict: ReadonlySet<string>;
-  /** Whether the expression has a vector token or a status function. */
+  /** Whether the expression has a vector token, a status function or `label()`. */
   readonly status: boolean;
 }
 
 /**
  * Which of `keys` the expression reads as a plain value, and which only as a
- * member of a vector token or through a status function. Throws PyExprError
+ * member of a vector token or through `severity()` / `connected()`. `label()`
+ * reads the value. Throws PyExprError
  * for a token with nothing bound and a status function without exactly one token.
  */
 export function analyzePyExpr(expression: string, keys: readonly string[]): PyExprInputs {
@@ -575,20 +596,25 @@ export function analyzePyExpr(expression: string, keys: readonly string[]): PyEx
     }
     if (t.type !== 'binding') return;
     const prefix = vectorPrefix(t.text, has);
+    const before = tokens[i - 2];
+    const inCall =
+      before?.type === 'name' &&
+      STATUS_FUNCTIONS.has(before.text) &&
+      tokens[i - 1]?.text === '(' &&
+      tokens[i + 1]?.text === ')';
     if (prefix !== null) {
+      if (inCall && before.text === 'label') {
+        throw new PyExprError(
+          'label() takes exactly one {token} of one channel, not a vector token'
+        );
+      }
       const members = membersOf(prefix, keys);
       if (members.length === 0) throw new PyExprError(`{${t.text}} matches no binding`);
       vectors.set(t.text, members);
       return;
     }
     if (!has(t.text)) throw new PyExprError(`unbound token {${t.text}}`);
-    const before = tokens[i - 2];
-    const inStatus =
-      before?.type === 'name' &&
-      STATUS_FUNCTIONS.has(before.text) &&
-      tokens[i - 1]?.text === '(' &&
-      tokens[i + 1]?.text === ')';
-    if (!inStatus) strict.add(t.text);
+    if (!inCall || before.text === 'label') strict.add(t.text);
   });
   const members = [...new Set([...vectors.values()].flat())];
   return { vectors, members, strict, status: status || vectors.size > 0 };

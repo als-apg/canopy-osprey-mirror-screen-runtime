@@ -33,8 +33,8 @@
 //    bindings merged in under namespaced `<name>.<key>` tokens;
 //  - a vector token (`{*}`: every binding; `{g.*}`: the bindings whose key
 //    starts with `g.`) uses each binding it covers, and must cover one;
-//  - `severity({x})` and `connected({x})` take exactly one token, so they
-//    cannot be applied to an inlined formula;
+//  - `severity({x})`, `connected({x})` and `label({x})` take exactly one
+//    token, so they cannot be applied to an inlined formula;
 //  - an expression must contain at least one `{token}`, so a rule with no
 //    conditions compiles to its default, and a ladder with no live input
 //    left after macro substitution is constant-folded here (evaluated once
@@ -100,8 +100,8 @@ const HAS_TOKEN_RE = /\{[^{}]+\}/;
  */
 const CONDITION_TOKEN_RE = /(?<!\$)\{([^{}]+)\}/g;
 
-/** `severity({N})` or `connected({N})` in a rule condition. */
-const STATUS_CALL_RE = /(?<![A-Za-z0-9_.])(severity|connected)\s*\(\s*\{(\d+)\}\s*\)/g;
+/** `severity({N})`, `connected({N})` or `label({N})` in a rule condition. */
+const STATUS_CALL_RE = /(?<![A-Za-z0-9_.])(severity|connected|label)\s*\(\s*\{(\d+)\}\s*\)/g;
 
 /**
  * The index ladder over `conditions`: `0 if (c0) else (1 if (c1) else (-1))`.
@@ -326,8 +326,8 @@ function findFormula(
  *   unresolved macro leaves the text verbatim and the fold falls to the
  *   default.
  *
- * A condition may apply `severity()` or `connected()` to a `{N}` that is a
- * plain channel; it passes through unchanged. A vector token is not accepted
+ * A condition may apply `severity()`, `connected()` or `label()` (the enum
+ * string of the value) to a `{N}` that is a plain channel; it passes through unchanged. A vector token is not accepted
  * in a condition: a rule reaches a roll-up through `formula://<name>`.
  *
  * Throws RuleCompileError on dangling `formula://` references, `{N}`

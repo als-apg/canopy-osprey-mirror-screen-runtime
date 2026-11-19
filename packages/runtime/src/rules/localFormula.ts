@@ -26,7 +26,12 @@ import {
 export interface LocalPVLike {
   subscribe(
     pvName: string,
-    listener: (data: { value: unknown; connected: boolean; severity?: unknown }) => void
+    listener: (data: {
+      value: unknown;
+      connected: boolean;
+      severity?: unknown;
+      enumChoices?: unknown;
+    }) => void
   ): () => void;
 }
 
@@ -70,6 +75,7 @@ function subscribeStatus(
         value: scalar(data.value),
         connected: data.connected,
         severity: severityNumber(data.severity),
+        labels: enumStrings(data.enumChoices),
       });
       evaluate();
     })
@@ -99,11 +105,20 @@ function severityNumber(severity: unknown): number {
   return Math.min(3, Math.floor(severity));
 }
 
+/** A channel's enum strings, or undefined when it reports none. */
+function enumStrings(choices: unknown): readonly string[] | undefined {
+  return Array.isArray(choices) && choices.every((c) => typeof c === 'string')
+    ? (choices as string[])
+    : undefined;
+}
+
 /** What one input of a formula over many channels last reported. */
 interface InputState {
   value: PyValue;
   connected: boolean;
   severity: number;
+  /** The channel's enum strings, when it has them. */
+  labels?: readonly string[] | undefined;
 }
 
 /** Channel names as the server writes them in a message: `['A', 'B'] and 3 more`. */
@@ -157,7 +172,11 @@ export function evaluateStatusFormula(
   for (const key of Object.keys(spec.bindings)) {
     const s = state.get(key);
     values.set(key, has(key) ? s!.value : null);
-    status.set(key, { connected: has(key), severity: has(key) ? s!.severity : 3 });
+    status.set(key, {
+      connected: has(key),
+      severity: has(key) ? s!.severity : 3,
+      labels: s?.labels,
+    });
   }
   const value = evaluatePyExpr(spec.expression, values, status);
 
@@ -197,7 +216,7 @@ export function evaluateStatusFormula(
  * may be null (mock mode): loc-only formulas still work there — they need no
  * backend at all.
  *
- * A formula with a vector token or a status function is answered as the
+ * A formula with a vector token, a status function or `label()` is answered as the
  * server answers it (`evaluateStatusFormula`), except for the pacing: the
  * server takes the changes of an interval together, the page evaluates on
  * every change of an input.

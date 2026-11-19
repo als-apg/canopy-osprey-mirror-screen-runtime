@@ -13,6 +13,7 @@ interface Channel {
   severity?: number;
   down?: boolean;
   nonFinite?: 'nan' | 'inf';
+  labels?: string[];
 }
 interface Case {
   name: string;
@@ -46,7 +47,12 @@ function service(channels: Record<string, Channel>): LocalPVLike {
             : channel.nonFinite === 'inf'
               ? Infinity
               : channel.value;
-        listener({ value, connected: true, severity: channel.severity });
+        listener({
+          value,
+          connected: true,
+          severity: channel.severity,
+          enumChoices: channel.labels,
+        });
       }
       return () => {};
     },
@@ -81,7 +87,7 @@ describe('formulas over many channels: the shared cases, in the page', () => {
     it(c.name, () => {
       const outcome = run(c);
       const plain =
-        !/severity\(|connected\(/.test(c.expression) &&
+        !/severity\(|connected\(|label\(/.test(c.expression) &&
         [...c.expression.matchAll(/\{([^{}]+)\}/g)].every((m) => m[1]! in c.bindings);
       if (c.error === undefined) {
         if (!('value' in outcome)) throw new Error(`no result: ${JSON.stringify(outcome)}`);

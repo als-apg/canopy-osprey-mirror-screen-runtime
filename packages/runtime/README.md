@@ -43,8 +43,13 @@ What the renderer does:
   like the keys (`{worst.*}`). A rule condition may apply `severity({N})` or
   `connected({N})` to a plain channel, not to a `formula://` reference, and
   takes no vector token itself: a rule reaches a roll-up through
-  `formula://<name>`. The in-page evaluator (`loc://` formulas, fixture mode)
-  knows neither vector tokens nor the two functions.
+  `formula://<name>`. `label({N})` is the enum string of a channel's value,
+  under the same rule. The in-page evaluator (`loc://` formulas, fixture mode)
+  answers such a formula as the server does (the cases in
+  `src/rules/__fixtures__/formula-vector-cases.json` hold both to one
+  behaviour), without the server's pacing: it evaluates on every change. A
+  result carries a summary of the members (`vectorInputs`: how many, which
+  have no value); the node the formula feeds shows it on hover.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a
   converted EDM `CALC\` / PyDM `calc://` channel) reads the rendering
   screen's `formulas[]` entry, its bindings macro-resolved with that screen's

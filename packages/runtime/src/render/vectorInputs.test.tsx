@@ -16,6 +16,8 @@ import type {
 } from '../formula.js';
 import { FormulaSubscriberContext } from '../formula.js';
 import { createFormulaEngineSubscriber } from '../rules/formulaEngineAdapter.js';
+import { FixturePVService } from '../pv/FixturePVService.js';
+import { createFixtureFormulaSubscriber } from '../rules/fixtureFormulas.js';
 import { ScreenRenderer } from './ScreenRenderer.js';
 import { vectorInputsText } from './vectorInputs.js';
 
@@ -58,7 +60,7 @@ function doc(children: WidgetNode[]): ScreenJSON {
 const LIGHT: WidgetNode = {
   id: 'light',
   type: 'rectangle',
-  props: { fillColor: '#888888' },
+  props: { fill: true, fillColor: '#888888' },
   geometry: { x: 10, y: 10, width: 20, height: 20 },
   rules: [
     {
@@ -168,6 +170,34 @@ describe('a widget bound to a roll-up formula', () => {
   it('a widget on a plain channel has no such text', () => {
     const node = show([{ ...READOUT, props: { pv: 'SOME:PV' } }]);
     expect(node('readout').getAttribute('title')).toBeNull();
+  });
+});
+
+describe('a roll-up light in fixture mode', () => {
+  function inFixture(pvs: ConstructorParameters<typeof FixturePVService>[0]['pvs']) {
+    const fixture = new FixturePVService({ pvs });
+    fixture.connect();
+    const view = render(
+      <PVServiceProvider service={fixture}>
+        <FormulaSubscriberContext.Provider value={createFixtureFormulaSubscriber(pv, fixture)}>
+          <ScreenRenderer screen={doc([LIGHT])} />
+        </FormulaSubscriberContext.Provider>
+      </PVServiceProvider>
+    );
+    return view.container.querySelector<HTMLElement>('[data-node-id="light"]')!;
+  }
+  const colours = (node: HTMLElement) => node.innerHTML.replace(/\s/g, '').toLowerCase();
+
+  it('renders the colour of its state and says that every member has a value', () => {
+    const node = inFixture({ 'RACK:A:PS1': 1, 'RACK:A:PS2': 1, 'RACK:A:FAN': 1 });
+    expect(node.getAttribute('title')).toBe('3 channels, all with a value');
+    expect(colours(node)).toMatch(/#24a148|rgb\(36,161,72\)/);
+  });
+
+  it('renders the worst colour and names the member that is not recorded', () => {
+    const node = inFixture({ 'RACK:A:PS1': 1, 'RACK:A:PS2': 1 });
+    expect(node.getAttribute('title')).toBe('3 channels, 1 without a value: RACK:A:FAN');
+    expect(colours(node)).toMatch(/#da1e28|rgb\(218,30,40\)/);
   });
 });
 

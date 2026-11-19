@@ -1,5 +1,5 @@
 {
-  "about": "Formulas over many channels: vector tokens, severity() and connected(). One table for every evaluator of the formula language. A channel is {value, severity 0-3}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error. missingListed sets the cap on listed members (default 20).",
+  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error. missingListed sets the cap on listed members (default 20).",
   "cases": [
     {
       "name": "reduction: max({*})",
@@ -2172,6 +2172,215 @@
       "value": 2.0,
       "severity": "NO_ALARM",
       "vectorInputs": null
+    },
+    {
+      "name": "label(): the enum string of the value",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): another string is not it",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1,
+          "severity": 1,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": false,
+      "severity": "MINOR",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a ladder on the enum string",
+      "expression": "0 if (label({v}) == 'Open') else (1 if (label({v}) == 'Moving') else (-1))",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 1,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": 1,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a value that is text already is its own label",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": "Open",
+          "severity": 0
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a value without an enum string has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 7,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): a channel without enum strings has the empty label",
+      "expression": "label({v}) == ''",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0
+        }
+      },
+      "value": true,
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "label(): reads the value, so a channel that is down fails the formula",
+      "expression": "label({v}) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "down": true,
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "input_missing"
+    },
+    {
+      "name": "label(): beside a roll-up",
+      "expression": "max(severity({g.*})) * 10 + (1 if label({v}) == 'Open' else 0)",
+      "bindings": {
+        "g.0": "DEV:A",
+        "g.1": "DEV:B",
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 1.0,
+          "severity": 2
+        },
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "value": 21,
+      "severity": "MAJOR",
+      "vectorInputs": {
+        "count": 2,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "label(): takes exactly one token",
+      "expression": "label({v} + 1) == 'Open'",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "parse_error"
+    },
+    {
+      "name": "label(): not of a vector token",
+      "expression": "count_nonzero(label({*}) == 'Open')",
+      "bindings": {
+        "v": "DEV:V"
+      },
+      "channels": {
+        "DEV:V": {
+          "value": 2,
+          "severity": 0,
+          "labels": [
+            "Closed",
+            "Moving",
+            "Open"
+          ]
+        }
+      },
+      "error": "parse_error"
     }
   ]
 }

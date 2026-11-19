@@ -222,7 +222,15 @@ describe('compileRule with status functions in a condition', () => {
     });
   });
 
-  for (const fn of ['severity', 'connected']) {
+  it('passes label() on a plain channel unchanged', () => {
+    expect(ladder(rule(['VALVE:7:STATE'], [["label({0}) == 'Open'", '#24a148']]))).toEqual({
+      kind: 'scalar',
+      expression: "0 if (label({0}) == 'Open') else (-1)",
+      bindings: { '0': 'VALVE:7:STATE' },
+    });
+  });
+
+  for (const fn of ['severity', 'connected', 'label']) {
     it(`rejects ${fn}() of a formula reference`, () => {
       for (const text of [`${fn}({0}) >= 2`, `${fn} ( {0} ) >= 2`]) {
         expect(() =>
