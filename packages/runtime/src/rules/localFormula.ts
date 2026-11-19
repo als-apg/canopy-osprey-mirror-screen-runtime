@@ -98,6 +98,10 @@ function subscribeStatus(
       state.set(key, {
         value: scalar(data.value),
         sampled: data.value !== null && data.value !== undefined,
+        empty:
+          (data.value === null || data.value === undefined) &&
+          data.connected &&
+          data.severity !== undefined,
         connected: data.connected,
         severity: severityNumber(data.severity),
         labels: enumStrings(data.enumChoices),
@@ -151,6 +155,8 @@ interface InputState {
   value: PyValue;
   /** Whether the channel has a sample at all (an array is one, without a number). */
   sampled: boolean;
+  /** A sample came (it has an alarm state) but holds no value. */
+  empty?: boolean;
   connected: boolean;
   severity: number;
   /** The channel's enum strings, when it has them. */
@@ -202,22 +208,26 @@ export function evaluateStatusFormula(
       false
     );
   }
-  const notAvailable = (keys: readonly string[]) =>
-    new FormulaError(
+  // An input that is there (connected, with a sample) but has no number is
+  // worded apart from one that is not available.
+  const there = (key: string) => {
+    const s = state.get(key);
+    return s !== undefined && s.connected && (s.sampled || s.empty === true);
+  };
+  const unusableInputs = (keys: readonly string[]) => {
+    const absent = keys.filter((key) => !there(key));
+    const [what, named] =
+      absent.length > 0 ? ['PVs not available', absent] : ['PVs without a number', keys];
+    return new FormulaError(
       'formula_input_missing',
-      `PVs not available: ${namedChannels([...new Set(keys.map(name))], listed)}`,
+      `${what}: ${namedChannels([...new Set(named.map(name))], listed)}`,
       true
     );
+  };
   const read = [...new Set([...inputs.strict, ...inputs.members, ...Object.keys(spec.bindings)])];
 
   const strictMissing = [...inputs.strict].filter((key) => !has(key));
-  if (strictMissing.length > 0) {
-    throw new FormulaError(
-      'formula_input_missing',
-      `PVs not available: ${namedChannels([...new Set(strictMissing.map(name))], listed)}`,
-      true
-    );
-  }
+  if (strictMissing.length > 0) throw unusableInputs(strictMissing);
 
   const values = new Map<string, PyValue>();
   const status = new Map<string, PyStatus>();
@@ -238,7 +248,7 @@ export function evaluateStatusFormula(
   const numberless = inputs.unguarded.flatMap((token) =>
     (inputs.vectors.get(token) ?? []).filter((key) => Number.isNaN(number(key)))
   );
-  if (numberless.length > 0) throw notAvailable(numberless);
+  if (numberless.length > 0) throw unusableInputs(numberless);
   const value = evaluatePyExpr(spec.expression, values, status);
 
   if (typeof value === 'number' && !Number.isFinite(value)) {
@@ -250,7 +260,7 @@ export function evaluateStatusFormula(
       const own = values.get(key);
       return typeof own === 'number' && !Number.isFinite(own);
     });
-    if (culprits.length > 0) throw notAvailable(culprits);
+    if (culprits.length > 0) throw unusableInputs(culprits);
     throw new FormulaError(
       'formula_type_error',
       `The result is not a finite number (${value})`,

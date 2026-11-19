@@ -184,13 +184,13 @@ describe('a live formula over many loc:// inputs', () => {
     ]);
   });
 
-  it('reports a value reduction with a member missing as a retryable error, then recovers', () => {
+  it('reports a value reduction with a member without a number as a retryable error, then recovers', () => {
     const { results, errors, send } = live('max({*})', ['a', 'b']);
     send('a', 1);
     send('b', null);
     expect(results).toEqual([]);
     expect(errors.at(-1)).toMatchObject({ code: 'formula_input_missing', retryable: true });
-    expect(errors.at(-1)!.message).toContain("PVs not available: ['loc://b']");
+    expect(errors.at(-1)!.message).toContain("PVs without a number: ['loc://b']");
     send('b', 5);
     expect(results.map(([v]) => v)).toEqual([5]);
   });

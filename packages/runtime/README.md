@@ -50,7 +50,9 @@ What the renderer does:
   behaviour), without the server's pacing: it evaluates on every change. A
   result carries a summary of the members (`vectorInputs`: how many, which
   have no value); the node the formula feeds shows it on hover when it takes
-  the pointer. A `nanmax` / `nansum` roll-up whose members are all
+  the pointer. An error names the inputs it failed on: `PVs not available` for
+  inputs with no sample or a lost connection, `PVs without a number` for
+  connected inputs whose sample is no number (NaN, text, an array, empty). A `nanmax` / `nansum` roll-up whose members are all
   without a number reads as the quiet state (nothing was left to count), so a
   roll-up light is written with `severity()` and `connected()`, which count a
   missing member as INVALID and not connected. A node never shows a better
