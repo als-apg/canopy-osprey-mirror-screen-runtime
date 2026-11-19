@@ -245,7 +245,8 @@ function whetherSent(o: WriteOutcome): string {
 export function summarize(
   outcomes: readonly WriteOutcome[],
   n: number,
-  writes?: readonly WriteRequest[]
+  writes?: readonly WriteRequest[],
+  at?: number
 ): Omit<WriteToastState, 'id'> | null {
   if (n === 1 && outcomes.length === 1 && outcomes[0].coalesced) return null;
   const first = outcomes.find((o) => o.coalesced || o.outcome !== 'confirmed');
@@ -258,7 +259,9 @@ export function summarize(
   const said: Omit<WriteToastState, 'id'> = stop.coalesced
     ? { outcome: 'coalesced', text: WRITE_OUTCOME_COALESCED_TOAST }
     : { outcome: stop.outcome, text: stop.detail };
-  const channel = first === undefined ? undefined : writes?.[outcomes.indexOf(first)]?.pv;
+  // `at`: the index in `writes` of the stopping write, when it is not its
+  // index in `outcomes` (a run refused before anything was sent).
+  const channel = first === undefined ? undefined : writes?.[at ?? outcomes.indexOf(first)]?.pv;
   const base =
     channel === undefined
       ? said
@@ -586,18 +589,47 @@ export function createWriteGate(
     scheduleToast(next);
   }
 
+  /** The local refusal of a write its run's `check` no longer lets through, or null. */
+  function unsendable(
+    check: WriteRunOptions['check'],
+    w: WriteRequest,
+    index: number
+  ): WriteOutcome | null {
+    if (check === undefined) return null;
+    let reason: string | null;
+    try {
+      reason = check(w, index);
+    } catch {
+      reason = 'could not be checked';
+    }
+    return reason === null
+      ? null
+      : { outcome: 'refused', code: null, status: null, detail: reason, coalesced: false };
+  }
+
   async function send(
     listed: readonly WriteRequest[],
     tail: Promise<readonly WriteRequest[]> | undefined,
     binding: string | null,
     confirmed: boolean,
-    strict: boolean
+    strict: boolean,
+    check: WriteRunOptions['check']
   ): Promise<{ outcomes: WriteOutcome[]; n: number }> {
     const outcomes: WriteOutcome[] = [];
     let n = listed.length;
     let prev: WriteOutcome | null = null;
-    const sendOne = async (w: WriteRequest): Promise<boolean> => {
+    // A backend fault ends the run: nothing follows it, a release included.
+    let faulted = false;
+    const sendOne = async (w: WriteRequest, index?: number): Promise<boolean> => {
+      if (faulted) return false;
       if (prev !== null && !continuesAfter(prev, w, strict)) return false;
+      const gone = index === undefined ? null : unsendable(check, w, index);
+      if (gone !== null) {
+        outcomes.push(gone);
+        prev = gone;
+        faulted = true;
+        return false;
+      }
       const options: SubmitOptions = { origin: { ...origin }, binding };
       if (confirmed) options.confirmed = true;
       // A backend that throws is one write of unknown outcome: the outcomes
@@ -607,18 +639,22 @@ export function createWriteGate(
         o = localOutcome(await backend.submit(w.pv, w.value, options));
       } catch {
         o = localOutcome(clientOutcome('client-unknown'));
+        faulted = true;
       }
       outcomes.push(o);
       prev = o;
       return true;
     };
-    for (const w of listed) {
-      if (!(await sendOne(w))) return { outcomes, n };
+    for (const [i, w] of listed.entries()) {
+      if (!(await sendOne(w, i))) return { outcomes, n };
     }
     if (tail !== undefined) {
       // Wait for the tail only when a release could still follow.
       const last: WriteOutcome | null = prev;
-      if (last !== null && !continuesAfter(last, { pv: '', value: 0, release: true }, strict)) {
+      if (
+        faulted ||
+        (last !== null && !continuesAfter(last, { pv: '', value: 0, release: true }, strict))
+      ) {
         return { outcomes, n };
       }
       let more: readonly WriteRequest[];
@@ -670,6 +706,20 @@ export function createWriteGate(
         }
         if (answer.kind === 'closed') return [localOutcome(clientOutcome('target-changed'))];
         binding = answer.binding;
+        // What the operator confirmed must still be what would be sent.
+        for (const [i, w] of listed.entries()) {
+          const gone = unsendable(options?.check, w, i);
+          if (gone === null) continue;
+          toast(
+            summarize(
+              [gone],
+              Math.max(listed.length, 1),
+              options?.nameStopped === true ? listed : undefined,
+              i
+            )
+          );
+          return [gone];
+        }
       } else {
         const hb = ready();
         if (hb === null)
@@ -691,7 +741,8 @@ export function createWriteGate(
           tail,
           binding,
           dialog,
-          options?.stopUnlessConfirmed === true
+          options?.stopUnlessConfirmed === true,
+          options?.check
         );
         toast(summarize(outcomes, n, options?.nameStopped === true ? listed : undefined));
         return outcomes;

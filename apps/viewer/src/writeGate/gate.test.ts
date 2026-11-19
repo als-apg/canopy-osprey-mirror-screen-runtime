@@ -407,6 +407,98 @@ describe('gate.run — a backend that throws', () => {
   });
 });
 
+describe('gate.run — a run with a check', () => {
+  const opts = (gone: Set<string>) => ({
+    nameStopped: true,
+    stopUnlessConfirmed: true,
+    check: (write: WriteRequest) => (gone.has(write.pv) ? 'no longer on screen' : null),
+  });
+
+  it('asks before each write: a write that became unsendable stops the run there', async () => {
+    const f = fakeBackend({ confirm: false });
+    const gone = new Set<string>();
+    const submit = f.backend.submit;
+    f.backend.submit = (pv, value, options) => {
+      if (pv === 'A') gone.add('C');
+      return submit(pv, value, options);
+    };
+    f.st.answers = [outcome('confirmed'), outcome('confirmed'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = (await gate.run(
+      [w('A', 1), w('B', 2), w('C', 3), w('D', 4)],
+      opts(gone)
+    )) as WriteOutcome[];
+    expect(f.sent.map((s) => s.pv)).toEqual(['A', 'B']);
+    expect(result.map((o) => o.outcome)).toEqual(['confirmed', 'confirmed', 'refused']);
+    expect(gate.getSnapshot().toasts.map((t) => t.text)).toEqual([
+      'C: not sent; no longer on screen (2 of 4 written)',
+    ]);
+  });
+
+  it('asks for every write when the dialog is confirmed: nothing is sent, the channel is named', async () => {
+    const f = fakeBackend({ confirm: true });
+    const gone = new Set<string>();
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('A', 1), w('B', 2), w('C', 3)], opts(gone));
+    await tick();
+    gone.add('B');
+    gate.confirm(gate.getSnapshot().dialog!.id);
+    const result = (await p) as WriteOutcome[];
+    expect(f.sent).toEqual([]);
+    expect(result.map((o) => o.outcome)).toEqual(['refused']);
+    expect(gate.getSnapshot().toasts.map((t) => t.text)).toEqual([
+      'B: not sent; no longer on screen (0 of 3 written)',
+    ]);
+  });
+
+  it('a check that throws refuses the write', async () => {
+    const f = fakeBackend({ confirm: false });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('A', 1)], {
+      check: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(f.sent).toEqual([]);
+  });
+});
+
+describe('gate.run — a backend fault and existing runs', () => {
+  it('a throw on a single write now shows a toast; the result is one unknown, as before', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.backend.submit = () => Promise.reject(new Error('boom'));
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = (await gate.run([w('A', 1)])) as WriteOutcome[];
+    expect(result.map((o) => o.outcome)).toEqual(['unknown']);
+    expect(gate.getSnapshot().toasts.map((t) => t.outcome)).toEqual(['unknown']);
+  });
+
+  it('after a throw on a momentary press no release is sent, as before', async () => {
+    for (const tailed of [false, true]) {
+      const f = fakeBackend({ confirm: false });
+      const pvs: string[] = [];
+      f.backend.submit = (pv) => {
+        pvs.push(pv);
+        return Promise.reject(new Error('boom'));
+      };
+      const gate = createWriteGate(f.backend, ORIGIN);
+      const result = tailed
+        ? await gate.run([w('P', 1)], { tail: Promise.resolve([w('P', 0, true)]) })
+        : await gate.run([w('P', 1), w('P', 0, true)]);
+      expect(pvs).toEqual(['P']);
+      expect((result as WriteOutcome[]).map((o) => o.outcome)).toEqual(['unknown']);
+    }
+  });
+
+  it('a release is still sent after a press the backend answered unknown', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('unknown'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('P', 1), w('P', 0, true)]);
+    expect(f.sent.map((s) => s.value)).toEqual([1, 0]);
+  });
+});
+
 describe('gate.run — one dialog slot', () => {
   it('queues further runs FIFO and never stacks dialogs', async () => {
     const f = fakeBackend();

@@ -58,6 +58,13 @@ export interface WriteRunOptions {
    * after those two, as a click's writes always have.
    */
   stopUnlessConfirmed?: boolean;
+  /**
+   * Asked for each listed write just before it is sent, and for all of them
+   * when the dialog is confirmed: why the write must not be sent any more
+   * (text for the summary), or null. A reason stops the run there; that
+   * write and those after it are not sent.
+   */
+  check?: (write: WriteRequest, index: number) => string | null;
 }
 
 /** `'declined'`, or the outcome of each write that was sent, in order. */
