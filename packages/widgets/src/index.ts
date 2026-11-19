@@ -64,6 +64,7 @@ export {
   STAGE_PROP,
   Staging,
   createStagingStore,
+  exactNumberText,
   hasStage,
   stageScope,
   stagedText,

@@ -21,7 +21,13 @@ import type { WidgetProps } from '../types.js';
 import { useFitText } from '../shared/useFitText.js';
 import { useResolveAsset } from '../assets.js';
 import { gatedWriteOptions, isLocalChannel, useGatedWrite } from '../writeGate/useGatedWrite.js';
-import { hasStage, stageScope, stagedText as textOfStaged, useStaged } from '../staging/staging.js';
+import {
+  exactNumberText,
+  hasStage,
+  stageScope,
+  stagedText as textOfStaged,
+  useStaged,
+} from '../staging/staging.js';
 import { parseNumericEntry } from './numericEntry.js';
 import { hostInertReason, ownInertReason, useInert, useInertOnInner } from '../writeGate/inert.js';
 import { displayText, entryText, widgetPrecision } from './pvText.js';
@@ -243,6 +249,8 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
 /** PVTextInput — Carbon TextInput bound to PV */
 /** Why an entry whose `stage` names no scope is inert. */
 const STAGE_UNUSABLE = 'this entry stages its value, and its stage names no scope';
+/** The hover of an entry whose staged value disagrees with another for its channel. */
+const STAGED_CONFLICT = 'another entry stages a different value for this channel';
 /** Why an entry is locked while a run writes its staged value. */
 const STAGED_BEING_WRITTEN = 'its staged value is being written';
 /** Why an entry with a `stage` scope and no staging store is inert. */
@@ -273,7 +281,7 @@ export function CarbonPVTextInput({
   // holding a staged value is locked: no edit, no Escape.
   const stages = pv.address !== '' && !isLocalChannel(pv.address) && hasStage(props);
   const scope = stages ? stageScope(props) : null;
-  const { store: staging, staged, locked } = useStaged(scope, pv.address);
+  const { store: staging, staged, locked, conflict } = useStaged(scope, pv.address);
   const inert = useInert(
     ownInertReason(gated, pv.address) ??
       (stages && scope === null
@@ -284,13 +292,8 @@ export function CarbonPVTextInput({
             ? STAGED_BEING_WRITTEN
             : null)
   );
-  const stagedText =
-    staged === undefined
-      ? null
-      : textOfStaged(
-          staged,
-          widgetPrecision(props) ?? (pv.precision > 0 ? pv.precision : undefined)
-        );
+  const precision = widgetPrecision(props) ?? (pv.precision > 0 ? pv.precision : undefined);
+  const stagedText = staged === undefined ? null : textOfStaged(staged, precision);
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
   // the .cds--text-input rules); absent props keep Carbon's field.
@@ -354,13 +357,22 @@ export function CarbonPVTextInput({
       const shown = draft ?? stagedText ?? entryText(pv, props);
       const parsed = parseNumericEntry(shown);
       if (!parsed.ok) return;
+      // A staged value too long for plain decimals is shown with an exponent:
+      // it steps by the widget's or the channel's precision, and the result
+      // is shown exactly, as every staged value is.
+      if (draft === null && stagedText !== null && /e/i.test(shown)) {
+        const step = 10 ** -(precision ?? 0) * (coarse ? 10 : 1);
+        const text = exactNumberText(parsed.value + direction * step, precision ?? 0);
+        setEdit((prev) => ({ text, typed: prev?.typed ?? false }));
+        return;
+      }
       const dot = shown.indexOf('.');
       const decimals = dot === -1 ? 0 : shown.length - dot - 1;
       const step = 10 ** -decimals * (coarse ? 10 : 1);
       const text = (parsed.value + direction * step).toFixed(decimals);
       setEdit((prev) => ({ text, typed: prev?.typed ?? false }));
     },
-    [draft, stagedText, pv, props]
+    [draft, stagedText, precision, pv, props]
   );
 
   const handleKeyDown = useCallback(
@@ -387,6 +399,7 @@ export function CarbonPVTextInput({
     isSelected ? 'carbon-pv-input--selected' : '',
     rejected !== null ? 'carbon-pv-input--invalid' : '',
     staged !== undefined ? 'carbon-pv-input--staged' : '',
+    conflict ? 'carbon-pv-input--conflict' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -397,6 +410,8 @@ export function CarbonPVTextInput({
       style={{ width: layout.width, height: layout.height, ...alarm.frame }}
       data-staged={staged !== undefined ? 'true' : undefined}
       aria-busy={locked ? 'true' : undefined}
+      data-staged-conflict={conflict ? 'true' : undefined}
+      {...(conflict && !inert.inert ? { title: STAGED_CONFLICT } : {})}
       {...inert.hover}
     >
       <TextInput

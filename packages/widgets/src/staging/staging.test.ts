@@ -234,7 +234,7 @@ describe('stagedText', () => {
     expect(text(16, '0x10', 2)).toBe('16.00');
   });
 
-  it('never drops digits of the value and never shows an exponent', () => {
+  it('shows a value typed with an exponent in plain decimals while that is exact and short', () => {
     expect(text(0.001, '1e-3', 2)).toBe('0.001');
     expect(text(1e-7, '1e-7')).toBe('0.0000001');
     expect(text(1.5e-9, '1.5e-9')).toBe('0.0000000015');
@@ -242,8 +242,64 @@ describe('stagedText', () => {
     expect(text(1e3, '1e3')).toBe('1000');
   });
 
+  it('is always exactly the value sent: an exponent only where plain decimals are too long', () => {
+    for (const [value, typed, shown] of [
+      [1.2345678901234566e-7, '1.2345678901234567e-7', '1.2345678901234566e-7'],
+      [1e-101, '1e-101', '1e-101'],
+      [5e-324, '5e-324', '5e-324'],
+      [1.5e300, '1.5e300', '1.5e+300'],
+      [0.1 + 0.2, '0.30000000000000004', '0.30000000000000004'],
+    ] as const) {
+      for (const decimals of [undefined, 0, 3]) {
+        const got = text(value, typed, decimals);
+        expect(got).toBe(shown);
+        expect(Number(got)).toBe(value);
+        expect(got).not.toBe('0');
+      }
+    }
+  });
+
+  it('never rounds: a typed plain decimal longer than a field shows falls back, exactly', () => {
+    const typed = '0.1234567890123456789012345';
+    const got = text(Number(typed), typed);
+    expect(Number(got)).toBe(Number(typed));
+    expect(got.length).toBeLessThanOrEqual(24);
+  });
+
   it('shows what a text channel will be sent', () => {
     expect(text('on', 'on')).toBe('on');
     expect(text(12, '12abc')).toBe('12');
+  });
+});
+
+describe('conflict marks', () => {
+  it('a mark goes with its value: restaging or dropping the channel removes it', () => {
+    const store = createStagingStore();
+    store.attach('set', 'A');
+    store.attach('set', 'B');
+    const a = { pv: 'A', value: 1 };
+    const b = { pv: 'B', value: 2 };
+    store.set('set', a);
+    store.set('set', b);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.mark([a, b]);
+    expect([store.marked(a), store.marked(b)]).toEqual([true, true]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    const again = { pv: 'A', value: 3 };
+    store.set('set', again);
+    expect([store.marked(a), store.marked(again)]).toEqual([false, false]);
+    store.clearScope('set');
+    expect(store.marked(b)).toBe(false);
+  });
+
+  it('mark replaces the marks it is told to', () => {
+    const store = createStagingStore();
+    store.attach('set', 'A');
+    const a = { pv: 'A', value: 1 };
+    store.set('set', a);
+    store.mark([a]);
+    store.mark([], [a]);
+    expect(store.marked(a)).toBe(false);
   });
 });

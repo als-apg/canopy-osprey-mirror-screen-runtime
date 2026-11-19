@@ -58,6 +58,14 @@ export interface StagingStore {
    * replaced or dropped the value.
    */
   holds(scope: string, staged: StagedValue): boolean;
+  /**
+   * Mark `values` as in conflict (one channel staged with different values
+   * under one apply), replacing the marks `unmark` holds. A mark goes with
+   * its value: staging the channel again, or dropping it, removes it.
+   */
+  mark(values: readonly StagedValue[], unmark?: readonly StagedValue[]): void;
+  /** Whether `staged` is marked as in conflict. */
+  marked(staged: StagedValue): boolean;
   /** Drop every value of `scope`, in this instance and those below it. */
   clearScope(scope: string): void;
   /** The values of `scope` in this instance and those below it, in staging order. */
@@ -101,6 +109,8 @@ interface Shared {
   order: number;
   version: number;
   listeners: Set<() => void>;
+  /** Values marked as in conflict. */
+  conflicts: Set<StagedValue>;
 }
 
 function below(node: Node): Node[] {
@@ -123,6 +133,7 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
     const held = values?.get(pv);
     if (values === undefined || held === undefined) return false;
     if (only !== undefined && held.staged !== only) return false;
+    shared.conflicts.delete(held.staged);
     values.delete(pv);
     if (values.size === 0) n.values.delete(scope);
     return true;
@@ -153,7 +164,9 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
       if ((node.entries.get(scope)?.get(staged.pv) ?? 0) === 0) return false;
       let values = node.values.get(scope);
       if (values === undefined) node.values.set(scope, (values = new Map()));
-      const order = values.get(staged.pv)?.order ?? (shared.order += 1);
+      const before = values.get(staged.pv);
+      if (before !== undefined) shared.conflicts.delete(before.staged);
+      const order = before?.order ?? (shared.order += 1);
       values.set(staged.pv, { staged, order });
       changed();
       return true;
@@ -170,9 +183,21 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
       below(node).some((n) => n.values.get(scope)?.get(staged.pv)?.staged === staged),
     clearScope(scope) {
       let any = false;
-      for (const n of below(node)) any = n.values.delete(scope) || any;
+      for (const n of below(node)) {
+        for (const held of n.values.get(scope)?.values() ?? [])
+          shared.conflicts.delete(held.staged);
+        any = n.values.delete(scope) || any;
+      }
       if (any) changed();
     },
+    mark(values, unmark = []) {
+      const before = shared.conflicts.size;
+      let removed = false;
+      for (const v of unmark) removed = shared.conflicts.delete(v) || removed;
+      for (const v of values) shared.conflicts.add(v);
+      if (removed || shared.conflicts.size !== before) changed();
+    },
+    marked: (staged) => shared.conflicts.has(staged),
     list: (scope) => collect(scope).map((h) => h.staged),
     count: (scope) => below(node).reduce((sum, n) => sum + (n.values.get(scope)?.size ?? 0), 0),
     busy(scope) {
@@ -231,7 +256,10 @@ export function createStagingStore(parent?: StagingStore | null): StagingStore {
     entries: new Map(),
     runs: new Map(),
   };
-  return storeOf(node, above?.shared ?? { order: 0, version: 0, listeners: new Set() });
+  return storeOf(
+    node,
+    above?.shared ?? { order: 0, version: 0, listeners: new Set(), conflicts: new Set() }
+  );
 }
 
 /** The staging store of the screen instance, or null where nothing provides one. */
@@ -255,24 +283,49 @@ export function hasStage(props: Readonly<Record<string, unknown>>): boolean {
   return props[STAGE_PROP] !== undefined && props[STAGE_PROP] !== null;
 }
 
-/** A number written out with no exponent, to about 15 significant digits. */
+/** The longest plain-decimal text a field shows before it falls back to an exponent. */
+const MAX_PLAIN_LENGTH = 24;
+
+/**
+ * The shortest text that reads back as exactly `value`, written without an
+ * exponent (the digits of `String(value)`, the point moved).
+ */
 function plainNumber(value: number): string {
   const text = String(value);
-  if (!/e/i.test(text)) return text;
-  if (Math.abs(value) >= 1e21) return BigInt(Math.round(value)).toString();
-  const exponent = Math.floor(Math.log10(Math.abs(value)));
-  const fixed = value.toFixed(Math.min(100, Math.max(0, 14 - exponent)));
-  return fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed;
+  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(text);
+  if (match === null) return text;
+  const [, sign, whole, fraction = '', exponent] = match;
+  const digits = whole! + fraction;
+  const point = whole!.length + Number(exponent);
+  if (point <= 0) return `${sign}0.${'0'.repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${sign}${digits}${'0'.repeat(point - digits.length)}`;
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+/**
+ * `value` as a field shows it: always text that reads back as exactly
+ * `value`, never a rounded one and never `0` for a value that is not zero.
+ * With `places` decimals when that is exact and short; else the shortest
+ * exact plain decimal; else, when that is longer than a field can sensibly
+ * show, the shortest round-trip form, which may carry an exponent.
+ */
+export function exactNumberText(value: number, places?: number): string {
+  if (places !== undefined && Math.abs(value) < 1e21) {
+    const text = value.toFixed(Math.min(Math.max(places, 0), 100));
+    if (text.length <= MAX_PLAIN_LENGTH && Number(text) === value) return text;
+  }
+  const plain = plainNumber(value);
+  return plain.length <= MAX_PLAIN_LENGTH ? plain : String(value);
 }
 
 const PLAIN_DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)$/;
 
 /**
- * The text a field shows for a staged value: the value that will be sent,
- * never the raw text. A number keeps the decimals the operator typed (`2.50`
- * stays `2.50`); typed another way (`1e-3`, `0x10`) it takes `decimals` (the
- * widget's or the channel's precision) when that prints the value exactly.
- * Never exponent notation, so the last shown digit is always the nudge step.
+ * The text a field shows for a staged value: exactly the value that will be
+ * sent, never the raw text. A number keeps the decimals the operator typed
+ * (`2.50` stays `2.50`); typed another way (`1e-3`, `0x10`) it takes
+ * `decimals` (the widget's or the channel's precision) when that prints the
+ * value exactly. See {@link exactNumberText}.
  */
 export function stagedText(staged: StagedValue, decimals?: number): string {
   if (typeof staged.value !== 'number') return String(staged.value);
@@ -282,11 +335,7 @@ export function stagedText(staged: StagedValue, decimals?: number): string {
     const dot = typed.indexOf('.');
     places = dot === -1 ? 0 : typed.length - dot - 1;
   }
-  if (places !== undefined && Math.abs(staged.value) < 1e21) {
-    const text = staged.value.toFixed(Math.min(places, 100));
-    if (Number(text) === staged.value) return text;
-  }
-  return plainNumber(staged.value);
+  return exactNumberText(staged.value, places);
 }
 
 const NO_SUBSCRIPTION = () => {};
@@ -305,6 +354,8 @@ export function useStaged(
   staged: StagedValue | undefined;
   /** A run is writing the entry's staged value, or may: the entry is locked. */
   locked: boolean;
+  /** The staged value disagrees with another staged for the same channel. */
+  conflict: boolean;
 } {
   const provided = useContext(Staging);
   const store = scope !== null && pv !== '' ? provided : null;
@@ -326,5 +377,10 @@ export function useStaged(
   );
   const staged = useSyncExternalStore(subscribe, snapshot, snapshot);
   const isWriting = useSyncExternalStore(subscribe, writing, writing);
-  return { store, staged, locked: isWriting && staged !== undefined };
+  const marked = useCallback(() => {
+    const held = store !== null && scope !== null ? store.get(scope, pv) : undefined;
+    return held !== undefined && store !== null && store.marked(held);
+  }, [store, scope, pv]);
+  const conflict = useSyncExternalStore(subscribe, marked, marked);
+  return { store, staged, locked: isWriting && staged !== undefined, conflict };
 }

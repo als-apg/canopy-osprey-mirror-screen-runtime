@@ -195,4 +195,25 @@ describe('apply_staged through the write gate', () => {
     ]);
     expect(t.staged()).toEqual(['DEMO:A', 'DEMO:C']);
   });
+
+  it('one channel staged with two values: nothing sent, the toast names channel and values', async () => {
+    const t = setup([]);
+    const card = createStagingStore(t.staging);
+    card.link();
+    card.attach('set', 'DEMO:B');
+    card.set('set', { pv: 'DEMO:B', value: 2.5, entered: '2.5' });
+    await t.press(true);
+    expect(t.gate.getSnapshot().dialog).toBeNull();
+    expect(t.sent).toEqual([]);
+    expect(t.toasts()).toEqual([
+      ['refused', 'DEMO:B: staged with different values (2 and 2.5); nothing written'],
+    ]);
+    expect(t.calls).toEqual([]);
+    expect(
+      t.staging
+        .list('set')
+        .filter((v) => t.staging.marked(v))
+        .map((v) => v.value)
+    ).toEqual([2, 2.5]);
+  });
 });

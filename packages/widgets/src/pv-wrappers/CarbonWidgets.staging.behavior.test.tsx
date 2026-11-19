@@ -323,3 +323,35 @@ describe('Escape in an entry of a screen that embeds others', () => {
     expect(store.list('view')).toEqual([{ pv: 'SIM:SP', value: 8 }]);
   });
 });
+
+describe('a staged value shown with an exponent', () => {
+  it('is the exact value, and steps by the precision of the widget', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view', precision: 2, precisionFromPV: false });
+    await enter('1e-101');
+    expect(input().value).toBe('1e-101');
+    fireEvent.keyDown(input(), { key: 'ArrowUp' });
+    expect(input().value).toBe('0.01');
+  });
+
+  it('with no precision steps by one', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('1.5e300');
+    expect(input().value).toBe('1.5e+300');
+    expect(Number(input().value)).toBe(1.5e300);
+    fireEvent.keyDown(input(), { key: 'ArrowDown' });
+    expect(Number(input().value)).toBe(1.5e300 - 1);
+  });
+});
+
+describe('a staged value marked as in conflict', () => {
+  it('is drawn as such until the channel is staged again', async () => {
+    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
+    await enter('2');
+    act(() => store.mark([store.get('view', 'SIM:SP')!]));
+    expect(box().getAttribute('data-staged-conflict')).toBe('true');
+    expect(box().classList.contains('carbon-pv-input--conflict')).toBe(true);
+    expect(box().getAttribute('title')).toContain('different value');
+    await enter('3');
+    expect(box().getAttribute('data-staged-conflict')).toBeNull();
+  });
+});

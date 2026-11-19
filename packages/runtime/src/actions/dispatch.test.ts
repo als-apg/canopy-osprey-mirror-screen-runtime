@@ -799,9 +799,39 @@ describe('apply_staged and clear_staged', () => {
       const { gate, runs } = fakeGate(ctx.calls, []);
       await dispatchActions([apply, { type: 'close_display' }], { ...ctx, gate, staging: top });
       expect(runs).toEqual([]);
-      expect(ctx.calls).toEqual(['error X: staged twice with different values; nothing written']);
+      expect(ctx.calls).toEqual([
+        'error X: staged with different values (1 and 2); nothing written',
+      ]);
+      // Both conflicting entries are marked, the other value is not.
+      expect(top.list('view').map((v) => [v.pv, top.marked(v)])).toEqual([
+        ['Y', false],
+        ['X', true],
+        ['X', true],
+      ]);
       expect(top.count('view')).toBe(3);
       expect(top.busy('view')).toBe(false);
+    });
+
+    it('says so where write results are shown when the gate can, not through the host', async () => {
+      const ctx = makeCtx();
+      const top = two(1, 2);
+      const said: string[] = [];
+      const { gate } = fakeGate(ctx.calls, []);
+      gate.refused = (text) => void said.push(text);
+      await dispatchActions([apply], { ...ctx, gate, staging: top });
+      expect(said).toEqual(['X: staged with different values (1 and 2); nothing written']);
+      expect(ctx.calls).toEqual([]);
+    });
+
+    it('a later apply after the values agree clears the marks', async () => {
+      const ctx = makeCtx();
+      const top = two(1, 2);
+      const { gate } = fakeGate(ctx.calls, 'declined');
+      await dispatchActions([apply], { ...ctx, gate, staging: top });
+      const kept = top.list('view').filter((v) => v.pv === 'X');
+      top.clear('view', 'X', kept[1]);
+      await dispatchActions([apply], { ...ctx, gate, staging: top });
+      expect(top.list('view').some((v) => top.marked(v))).toBe(false);
     });
 
     it('the same value: the channel is written once, both leave staging', async () => {

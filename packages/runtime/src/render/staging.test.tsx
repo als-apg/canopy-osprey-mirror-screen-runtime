@@ -498,4 +498,74 @@ describe('a value that leaves the screen while its run is under way', () => {
       ['sim://sine', 'no longer on screen'],
     ]);
   });
+
+  it('a run started inside an embedded instance that is retargeted mid-run sends nothing of it', async () => {
+    const g = checkingGate();
+    const resolveScreen = vi.fn(async (ref: string) =>
+      ref.includes('other') ? doc('other', []) : card()
+    );
+    show(
+      g.held,
+      doc('top', [
+        embed('row', 'card.screen.json', 'sine', 0, [
+          rule('file', 'card.screen.json', 'other.screen.json'),
+        ]),
+        apply(),
+      ]),
+      resolveScreen as never
+    );
+    await waitFor(() => expect(node('c-entry')).not.toBeNull());
+    await type(node('c-entry'), '1');
+    await waitFor(() => expect(count('c-apply')).toBe('1'));
+    click(node('c-apply'));
+    await waitFor(() => expect(runs).toHaveLength(1));
+    stub.push(ARM);
+    await waitFor(() => expect(node('c-entry')).toBeNull());
+    await g.go();
+    await waitFor(() => expect(g.verdicts).toHaveLength(1));
+    expect(g.verdicts).toEqual([['sim://sine', 'no longer on screen']]);
+    // The parent is free again and holds nothing of the card that is gone.
+    await waitFor(() => expect(node('apply').getAttribute('title')).toBe('nothing staged'));
+    expect(count('apply')).toBe('0');
+  });
+});
+
+describe('one channel staged with different values in two embedded instances', () => {
+  it('marks both entries on screen and writes nothing, also with no host to say so', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      wrap(
+        <ScreenRenderer
+          screen={doc('top', [
+            embed('row1', 'card.screen.json', 'sine', 0),
+            embed('row2', 'card.screen.json', 'sine', 90),
+            apply(),
+          ])}
+          resolveScreen={async () => card()}
+        />
+      )
+    );
+    const cards = await waitFor(() => {
+      const found = [...document.querySelectorAll<HTMLElement>('[data-testid="embedded-screen"]')];
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    await type(node('c-entry', cards[0]), '1');
+    await type(node('c-entry', cards[1]), '2');
+    await waitFor(() => expect(count('apply')).toBe('2'));
+    click(node('apply'));
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-staged-conflict="true"]')).toHaveLength(2)
+    );
+    expect(runs).toEqual([]);
+    expect(count('apply')).toBe('2');
+    // Making them agree and applying again writes the channel once.
+    await type(node('c-entry', cards[1]), '1');
+    click(node('apply'));
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0].map((w) => [w.pv, w.value])).toEqual([['sim://sine', 1]]);
+    await waitFor(() => expect(count('apply')).toBe('0'));
+    expect(document.querySelectorAll('[data-staged-conflict="true"]')).toHaveLength(0);
+    warn.mockRestore();
+  });
 });

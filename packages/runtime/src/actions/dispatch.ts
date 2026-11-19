@@ -22,7 +22,7 @@
 // still staged, unchanged, for an entry on screen; one that is not stops the
 // run ("no longer on screen"). A channel staged more than once under one
 // Apply is written once when the values agree; when they differ nothing is
-// written. A value leaves the staging store only when its write was
+// written, the entries are marked and the refusal names channel and values. A value leaves the staging store only when its write was
 // confirmed. `clear_staged` drops a scope unwritten. While a run writes a
 // scope, a second `apply_staged` or `clear_staged` on it does nothing and
 // skips the rest of its list.
@@ -46,6 +46,7 @@ import type {
   WriteRunOptions,
   WriteRunResult,
 } from '@slaclab/canopy-screen-widgets';
+import { exactNumberText } from '@slaclab/canopy-screen-widgets';
 import { isGateBypass } from '../channels.js';
 import { substituteMacros } from '../macros.js';
 import type { RuntimeAction } from './staged.js';
@@ -194,6 +195,11 @@ function applyOptions(ctx: ActionContext): WriteRunOptions {
   return ctx.confirm === true ? { ...options, confirm: true } : options;
 }
 
+/** A staged value as a message shows it: a number exactly, text in quotes. */
+function exactValueText(value: StagedValue['value']): string {
+  return typeof value === 'number' ? exactNumberText(value) : JSON.stringify(value);
+}
+
 /** Why a staged value is not sent any more. */
 const NO_LONGER_ON_SCREEN = 'no longer on screen';
 
@@ -214,11 +220,21 @@ async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> 
   for (const s of staged) {
     const group = groups.get(s.pv);
     if (group === undefined) groups.set(s.pv, [s]);
-    else if (group[0]!.value === s.value) group.push(s);
-    else {
-      ctx.showError(`${s.pv}: staged twice with different values; nothing written`);
-      return false;
-    }
+    else group.push(s);
+  }
+  // A channel staged with two values is not written, and nothing else is:
+  // the entries are marked where they sit, and the refusal is shown where
+  // write results are (the gate), else by the host.
+  staging.mark([], staged);
+  const conflicts = [...groups.values()].filter((g) => g.some((s) => s.value !== g[0]!.value));
+  if (conflicts.length > 0) {
+    staging.mark(conflicts.flat());
+    const first = conflicts[0]!;
+    const values = [...new Set(first.map((s) => exactValueText(s.value)))].join(' and ');
+    const text = `${first[0]!.pv}: staged with different values (${values}); nothing written`;
+    if (ctx.gate?.refused !== undefined) ctx.gate.refused(text);
+    else ctx.showError(text);
+    return false;
   }
   const writes = [...groups.values()];
   const held = (group: readonly StagedValue[]) => group.every((s) => staging.holds(scope, s));
