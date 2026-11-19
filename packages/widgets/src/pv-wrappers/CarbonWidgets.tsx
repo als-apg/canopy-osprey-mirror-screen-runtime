@@ -910,10 +910,23 @@ export function CarbonPVLed({ layout, props, isEditing }: WidgetRendererProps) {
   );
 }
 
-/** PVDropdown — Carbon Dropdown bound to PV */
+/**
+ * PVDropdown — Carbon Dropdown bound to PV. Its items are the ones the
+ * screen states (`customItems`); with none stated, the channel's own enum
+ * strings. The string chosen is what is written.
+ */
 export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
-  const items = (props.customItems as string[]) ?? ['Option 1', 'Option 2', 'Option 3'];
+  const stated = props.customItems as string[] | undefined;
+  const items =
+    stated !== undefined && stated.length > 0
+      ? stated
+      : (pv.enumChoices ?? ['Option 1', 'Option 2', 'Option 3']);
+  // The live value as the item it is: an enum index reads as its string.
+  const current =
+    typeof pv.value === 'number'
+      ? (pv.enumChoices?.[pv.value] ?? String(pv.value))
+      : String(pv.value);
   const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   // Carbon's Dropdown keeps its own description and title on its field button.
@@ -926,7 +939,7 @@ export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendere
         key={gated.resetKey}
         id={`pv-dropdown-${id}`}
         titleText=""
-        label={pv.connected ? String(pv.value) : 'Select...'}
+        label={pv.connected ? current : 'Select...'}
         items={items}
         itemToString={(item: string) => item}
         size="sm"
