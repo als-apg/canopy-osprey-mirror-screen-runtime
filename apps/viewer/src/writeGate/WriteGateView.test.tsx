@@ -33,6 +33,8 @@ vi.mock('@slaclab/canopy-react', async (importOriginal) => ({
 }));
 
 const W = await import('@slaclab/canopy-screen-widgets');
+const { PVServiceProvider } = await import('@slaclab/canopy-react');
+type PVService = import('@slaclab/canopy-client').PVService;
 const { createWriteGate } = await import('./gate.js');
 const { ScreenWriteGateProvider } = await import('./WriteGateView.js');
 const { armAgentGuard, GUARD_NOTICE } = await import('./guard.js');
@@ -721,6 +723,162 @@ describe('the shared toast column (workspace)', () => {
     expect(sent).toEqual([]);
     await answer('canopy-write-confirm');
     expect(sent).toEqual([['SIM:A', 2]]);
+  });
+});
+
+describe('a widget that asks to confirm (props.confirmWrites)', () => {
+  it('text input: a dialog with confirmWrites off; the confirmed write says so', async () => {
+    confirm = false;
+    pvState['SIM:SP'] = { connected: true, value: 1 };
+    renderWidget(W.CarbonPVTextInput, { pvName: 'SIM:SP', confirmWrites: true });
+    const input = document.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    expect(dialogs()).toHaveLength(1);
+    expect(sent).toEqual([]);
+    await answer('canopy-write-confirm');
+    expect(sent).toEqual([['SIM:SP', 2.5]]);
+    expect(sentConfirmed).toEqual([true]);
+  });
+
+  it('push button: Cancel writes nothing', async () => {
+    confirm = false;
+    renderWidget(W.CarbonPVButton, { controlPV: 'SIM:CMD', pressValue: '2', confirmWrites: true });
+    fireEvent.click(document.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(dialogs()).toHaveLength(1);
+    await answer('canopy-write-decline');
+    expect(sent).toEqual([]);
+    expect(directPuts).toEqual([]);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('momentary button: press and release are one dialog, sent as a pulse', async () => {
+    confirm = false;
+    renderWidget(W.CarbonPVButton, {
+      controlPV: 'SIM:PULSE',
+      pressValue: 1,
+      releaseValue: 0,
+      confirmWrites: true,
+    });
+    const btn = document.querySelector('button') as HTMLButtonElement;
+    const down = createEvent.pointerDown(btn);
+    Object.defineProperty(down, 'button', { value: 0 });
+    Object.defineProperty(down, 'pointerId', { value: 1 });
+    fireEvent(btn, down);
+    await flush();
+    expect(dialogs()).toHaveLength(1);
+    expect(sent).toEqual([]);
+    await answer('canopy-write-confirm');
+    expect(sent).toEqual([
+      ['SIM:PULSE', 1],
+      ['SIM:PULSE', 0],
+    ]);
+  });
+
+  for (const value of [false, 'true', 1, undefined]) {
+    it(`confirmWrites ${JSON.stringify(value)} asks nothing: written directly, as before`, async () => {
+      confirm = false;
+      renderWidget(W.CarbonPVButton, {
+        controlPV: 'SIM:CMD',
+        pressValue: '2',
+        confirmWrites: value,
+      });
+      fireEvent.click(document.querySelector('button') as HTMLButtonElement);
+      await flush();
+      expect(dialogs()).toHaveLength(0);
+      expect(sent).toEqual([['SIM:CMD', 2]]);
+      expect(sentConfirmed).toEqual([false]);
+    });
+  }
+});
+
+describe("the dialog's current values", () => {
+  /** A PV service holding `values`; a channel it does not hold never delivers. */
+  function service(values: Record<string, string>) {
+    const subscribed: string[] = [];
+    const unsubscribed: string[] = [];
+    const svc = {
+      subscribe(pv: string, listener: (data: unknown) => void) {
+        subscribed.push(pv);
+        if (pv in values) listener({ connected: true, displayValue: values[pv] });
+        return () => unsubscribed.push(pv);
+      },
+      getSnapshot: () => undefined,
+      put() {},
+      connect() {},
+      disconnect() {},
+      isConnected: true,
+    };
+    return { svc: svc as unknown as PVService, subscribed, unsubscribed };
+  }
+
+  function cells(): string[][] {
+    return [...document.querySelectorAll('.canopy-write-dialog__writes tbody tr')].map((row) =>
+      [...row.querySelectorAll('td')].map((cell) => cell.textContent ?? '')
+    );
+  }
+
+  it('lists each channel with its live value beside the value about to be written', async () => {
+    const { svc, subscribed, unsubscribed } = service({ A: '1.50 mm', B: 'Off' });
+    gate = createWriteGate(backend, { screen: 'sr/overview', rev: null });
+    render(
+      <PVServiceProvider service={svc}>
+        <ScreenWriteGateProvider gate={gate}>
+          <span />
+        </ScreenWriteGateProvider>
+      </PVServiceProvider>
+    );
+    void gate.run([
+      { pv: 'A', value: 2 },
+      { pv: 'B', value: 'On' },
+      { pv: 'C', value: 3 },
+    ]);
+    await flush();
+    expect(
+      [...document.querySelectorAll('.canopy-write-dialog__writes th')].map((h) => h.textContent)
+    ).toEqual(['PV', 'Current', 'Value']);
+    expect(cells()).toEqual([
+      ['A', '1.50 mm', '2'],
+      ['B', 'Off', '"On"'],
+      ['C', '\u2014', '3'],
+    ]);
+    expect(subscribed).toEqual(['A', 'B', 'C']);
+    await answer('canopy-write-decline');
+    expect(unsubscribed.sort()).toEqual(['A', 'B', 'C']);
+    expect(sent).toEqual([]);
+  });
+
+  it('reads a channel written twice in one run once', async () => {
+    const { svc, subscribed } = service({ P: '0' });
+    gate = createWriteGate(backend, { screen: 'sr/overview', rev: null });
+    render(
+      <PVServiceProvider service={svc}>
+        <ScreenWriteGateProvider gate={gate}>
+          <span />
+        </ScreenWriteGateProvider>
+      </PVServiceProvider>
+    );
+    void gate.run([
+      { pv: 'P', value: 1 },
+      { pv: 'P', value: 0, release: true },
+    ]);
+    await flush();
+    expect(cells()).toEqual([
+      ['P', '0', '1'],
+      ['P', '0', '0 (release)'],
+    ]);
+    expect(subscribed).toEqual(['P']);
+  });
+
+  it('with no PV service in context the column says nothing and the dialog still works', async () => {
+    renderWidget(W.CarbonPVButton, { controlPV: 'SIM:CMD', pressValue: '2' });
+    fireEvent.click(document.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(cells()).toEqual([['SIM:CMD', '\u2014', '2']]);
+    await answer('canopy-write-confirm');
+    expect(sent).toEqual([['SIM:CMD', 2]]);
   });
 });
 

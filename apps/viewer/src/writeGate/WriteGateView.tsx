@@ -9,6 +9,9 @@
 // with `data-outcome` set to the summary's outcome ('confirmed' for
 // "written", an outcome kind, 'coalesced', or 'guarded' for a run the window's
 // input guard refused: "screen just changed, nothing sent").
+// The dialog's table is PV / Current / Value: the value each channel holds
+// now, read live from the screen's PV service while the dialog is open, beside
+// the value about to be written. A channel with no live value shows a dash.
 // Each toast sits in a `canopy-write-toasts__item` wrapper that holds it (the
 // gate's holdToast/releaseToast) while hovered or focused.
 //
@@ -20,7 +23,14 @@
 // dialog always renders in place: a fixed, viewport-level child of its
 // screen, hidden and inert with it.
 
-import { useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -31,7 +41,8 @@ import {
   ModalHeader,
   ToastNotification,
 } from '@carbon/react';
-import type { PVWriteOrigin } from '@slaclab/canopy-client';
+import type { PVData, PVWriteOrigin } from '@slaclab/canopy-client';
+import { PVServiceContext } from '@slaclab/canopy-react';
 import { WriteGate } from '@slaclab/canopy-screen-widgets';
 import type { WriteRequest } from '@slaclab/canopy-screen-widgets';
 import { createWriteGate } from './gate.js';
@@ -99,6 +110,84 @@ function toastKind(t: WriteToastState): 'success' | 'warning' | 'error' {
     default:
       return 'error';
   }
+}
+
+/** What the Current column shows for a channel with no live value. */
+const NO_CURRENT = '\u2014';
+
+function currentText(data: PVData | undefined): string {
+  if (!data?.connected) return NO_CURRENT;
+  if (typeof data.displayValue === 'string' && data.displayValue !== '') return data.displayValue;
+  return data.value === undefined || data.value === null ? NO_CURRENT : String(data.value);
+}
+
+/**
+ * The live value of each of `pvs` as text, read from the PV service in
+ * context (each channel subscribed once, while mounted). With no service
+ * every channel reads as the dash.
+ */
+function useCurrentValues(pvs: readonly string[]): (pv: string) => string {
+  const service = useContext(PVServiceContext);
+  const key = [...new Set(pvs)].join('\n');
+  const [received, setReceived] = useState<{ key: string; data: Record<string, PVData> }>({
+    key,
+    data: {},
+  });
+  useEffect(() => {
+    if (!service || key === '') return;
+    let active = true;
+    const stops = key.split('\n').map((pv) =>
+      service.subscribe(pv, (data) => {
+        if (active) {
+          setReceived((prev) => ({
+            key,
+            data: { ...(prev.key === key ? prev.data : {}), [pv]: data },
+          }));
+        }
+      })
+    );
+    return () => {
+      active = false;
+      for (const stop of stops) stop();
+    };
+  }, [service, key]);
+  return (pv) =>
+    currentText((received.key === key ? received.data[pv] : undefined) ?? service?.getSnapshot(pv));
+}
+
+function WritesTable({ writes }: { writes: readonly WriteRequest[] }) {
+  const current = useCurrentValues(writes.map((w) => w.pv));
+  // Initial focus lands on the table, on no button: the dialog opens inside
+  // the event that asked for it (a text input's Enter keydown), and that
+  // key's keypress goes to the focused element. On Carbon's default target,
+  // the close button, Enter declined the dialog the moment it opened.
+  return (
+    <table className="canopy-write-dialog__writes" tabIndex={-1} data-modal-primary-focus>
+      <thead>
+        <tr>
+          <th scope="col">PV</th>
+          <th scope="col">Current</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {writes.map((w, i) => (
+          <tr key={i}>
+            <td>
+              <code>{w.pv}</code>
+            </td>
+            <td data-testid="canopy-write-current">
+              <code>{current(w.pv)}</code>
+            </td>
+            <td>
+              <code>{formatWrite(w)}</code>
+              {w.release ? ' (release)' : ''}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 /** The dialog and toasts of `gate` (nothing when null). */
@@ -191,32 +280,7 @@ export function WriteGateView({ gate }: { gate: ScreenWriteGate | null }) {
             label={dialog.machine ? `Machine: ${dialog.machine}` : 'Machine'}
           />
           <ModalBody>
-            {/* Initial focus lands here, on no button: the dialog opens inside
-                the event that asked for it (a text input's Enter keydown), and
-                that key's keypress goes to the focused element. On Carbon's
-                default target, the close button, Enter declined the dialog the
-                moment it opened. */}
-            <table className="canopy-write-dialog__writes" tabIndex={-1} data-modal-primary-focus>
-              <thead>
-                <tr>
-                  <th scope="col">PV</th>
-                  <th scope="col">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dialog.writes.map((w, i) => (
-                  <tr key={i}>
-                    <td>
-                      <code>{w.pv}</code>
-                    </td>
-                    <td>
-                      <code>{formatWrite(w)}</code>
-                      {w.release ? ' (release)' : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <WritesTable writes={dialog.writes} />
           </ModalBody>
           <ModalFooter>
             <Button
