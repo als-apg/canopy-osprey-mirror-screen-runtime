@@ -41,7 +41,8 @@ interface LiveState {
 export interface WidgetRulesState {
   /**
    * Latest output per rule, aligned by index with `rules`; `undefined` means
-   * "no output" (the widget keeps its base prop). A stale rule has no output.
+   * "no output" (the widget keeps its base prop). A stale rule has no output,
+   * but one that drives a colour gives `NO_STATE_COLOR`.
    */
   readonly outputs: readonly (RuleScalar | undefined)[];
   /** Some live rule had an error since its latest result, or never got an answer. */
@@ -65,6 +66,17 @@ export interface WidgetRulesState {
    * its vector tokens name; a stale rule has none.
    */
   readonly vectorSources: readonly VectorSource[];
+}
+
+/**
+ * The colour of a node without a state: the token the disconnected look of
+ * every widget uses, which the scheme's DISCONNECTED role sets.
+ */
+export const NO_STATE_COLOR = 'var(--pydm-alarm-disconnected)';
+
+/** Whether a rule drives a colour: `fillColor`, `color`, `background`, ... */
+function drivesColor(rule: CompiledRule): boolean {
+  return /color$/i.test(rule.targetProperty) || rule.targetProperty === 'background';
 }
 
 const MEMBERS = new WeakMap<CompiledRule, readonly string[]>();
@@ -144,7 +156,8 @@ function resolveArm(arm: RuleValue | undefined, flat: FlatScheme): RuleScalar | 
  * only static rules produce outputs.
  *
  * A subscription error, retryable or not, marks the rule stale: its output
- * drops to the base prop until the next result, and `problem` says what
+ * drops to the base prop until the next result (a colour: to
+ * `NO_STATE_COLOR`, whatever the screen authored), and `problem` says what
  * failed. A light never keeps the colour of a result its formula no longer
  * stands behind. A rule that got no result, null value or error within
  * `formulaStartTimeoutMs()` is stale in the same way.
@@ -241,7 +254,19 @@ export function useWidgetRulesState(
   }, [compiled, subscriber]);
 
   const arms = useMemo(() => selectArms(compiled, live), [compiled, live]);
-  const outputs = useMemo(() => arms.map((arm) => resolveArm(arm, flat)), [arms, flat]);
+  // A colour whose rule has no state is the viewer's own no-state colour, not
+  // the one the screen authored: that may be the colour of a good state.
+  const outputs = useMemo(
+    () =>
+      arms.map((arm, index) => {
+        const rule = compiled[index];
+        if (isLive(rule) && live.get(rule)?.stale === true && drivesColor(rule)) {
+          return NO_STATE_COLOR;
+        }
+        return resolveArm(arm, flat);
+      }),
+    [arms, compiled, live, flat]
+  );
 
   const liveRules = compiled.filter(isLive);
   const stale = liveRules.some((rule) => live.get(rule)?.stale === true);

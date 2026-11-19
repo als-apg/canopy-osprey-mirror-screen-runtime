@@ -54,7 +54,12 @@ What the renderer does:
   behind: before the first result it draws its authored props; after any
   error, or with no answer within `formulaStartTimeoutMs()` (3 s), a rule
   gives no output, the node draws the disconnected cue, and the hover says
-  what failed; a result whose value is null gives no output either.
+  what failed. A colour such a rule drives (a property named `...Color`,
+  `color` or `background`) is then drawn in the viewer's own no-state colour,
+  the token of the disconnected look (`--pydm-alarm-disconnected`, the
+  scheme's `DISCONNECTED` role), whatever the screen authored: the authored
+  colour shows only while the node waits for its first result. A result whose
+  value is null gives no output and keeps the authored props.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a
   converted EDM `CALC\` / PyDM `calc://` channel) reads the rendering
   screen's `formulas[]` entry, its bindings macro-resolved with that screen's

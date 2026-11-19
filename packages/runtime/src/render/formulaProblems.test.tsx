@@ -42,6 +42,8 @@ class Stub implements FormulaSubscriber {
 const NEUTRAL = '#8d8d8d';
 const OK = '#24a148';
 const BAD = '#da1e28';
+/** The viewer's own colour of a node without a state: the token of the disconnected look. */
+const NO_STATE = 'var(--pydm-alarm-disconnected)';
 const SUMMARY = { count: 2, missing: [], more: 0 };
 
 const FORMULAS: FormulaDeclaration[] = [
@@ -143,7 +145,7 @@ describe('a rule whose formula fails after a result', () => {
       expect(node('light').getAttribute('title')).toBe('2 channels, all with a value');
 
       stub.error('formula_type_error', 'The result is not a finite number (nan)', retryable);
-      expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+      expect(fill(node('light'))).toBe(NO_STATE);
       expect(node('light').getAttribute('data-pv-state')).toBe('disconnected');
       expect(node('light').style.outline).toContain('dashed');
       expect(node('light').getAttribute('title')).toBe(
@@ -170,7 +172,7 @@ describe('a rule whose formula fails after a result', () => {
     const node = show([BUTTON]);
     stub.result(-1);
     stub.error('ws_disconnected', 'Formula connection lost.', true);
-    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+    expect(fill(node('light'))).toBe(NO_STATE);
     expect(node('light').getAttribute('data-pv-state')).toBe('disconnected');
     expect(node('light').getAttribute('title')).toBe('ws_disconnected: Formula connection lost.');
   });
@@ -183,12 +185,13 @@ describe('a rule whose formula never answers', () => {
     const node = show([BUTTON]);
     act(() => void vi.advanceTimersByTime(2999));
     expect(node('light').getAttribute('data-pv-state')).toBe('pending');
+    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
     expect(node('light').getAttribute('title')).toBeNull();
     act(() => void vi.advanceTimersByTime(1));
     expect(node('light').getAttribute('data-pv-state')).toBe('disconnected');
     expect(node('light').style.outline).toContain('dashed');
     expect(node('light').getAttribute('title')).toBe('no answer from the formula service');
-    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+    expect(fill(node('light'))).toBe(NO_STATE);
 
     stub.result(-1);
     expect(fill(node('light'))).toBe(rgb(OK));
@@ -206,7 +209,61 @@ describe('a rule whose formula never answers', () => {
   });
 });
 
+describe('the colour of a node without a state', () => {
+  it('does not depend on the colour the screen authored', () => {
+    // A screen that authored the OK colour as the base must not look OK.
+    const green = light('light', 10, { fillColor: OK });
+    const node = show([green]);
+    expect(fill(node('light'))).toBe(rgb(OK));
+    stub.error('formula_type_error', 'no', false);
+    expect(fill(node('light'))).toBe(NO_STATE);
+    expect(node('light').style.outline).toContain('dashed');
+  });
+
+  it('is drawn on every colour property a failed rule drives, and on no other property', () => {
+    const rule = BUTTON.rules![0]!;
+    const many = {
+      ...light('light', 10, { lineColor: '#000000', lineWidth: 2 }),
+      rules: [
+        rule,
+        { ...rule, id: 'line', targetProperty: 'lineColor' },
+        {
+          ...rule,
+          id: 'width',
+          targetProperty: 'lineWidth',
+          default: 4,
+          conditions: [{ expression: '{0} >= 2', value: 6 }],
+        },
+      ],
+    } as WidgetNode;
+    const node = show([many]);
+    for (const index of [0, 1, 2]) stub.error('formula_type_error', 'no', false, index);
+    const shape = node('light').firstElementChild as HTMLElement;
+    expect(shape.style.backgroundColor).toBe(NO_STATE);
+    // The width's rule has no output: the authored width stays.
+    expect(shape.getAttribute('style')).toContain(`border: 2px solid ${NO_STATE}`);
+  });
+
+  it('a result without a value keeps the authored colour: that is an answer', () => {
+    const node = show([LIGHT]);
+    act(() => stub.subscriptions[0]!.options.onNoValue?.({ severity: 'INVALID' }));
+    expect(fill(node('light'))).toBe(rgb(NEUTRAL));
+  });
+});
+
 describe('a widget bound to a formula that fails', () => {
+  it('a result that comes after the start timeout is shown', () => {
+    vi.useFakeTimers();
+    const node = show([READOUT]);
+    act(() => void vi.advanceTimersByTime(3000));
+    expect(node('readout').getAttribute('data-pv-state')).toBe('disconnected');
+    expect(node('readout').getAttribute('title')).toBe('no answer from the formula service');
+    stub.result(7, { severity: 'NO_ALARM', vectorInputs: SUMMARY });
+    expect(node('readout').getAttribute('data-pv-state')).toBe('connected');
+    expect(node('readout').getAttribute('title')).toBe('2 channels, all with a value');
+    expect(node('readout').textContent).toContain('7');
+  });
+
   it('shows the error on hover, not the summary of the result before', () => {
     const node = show([READOUT]);
     stub.result(3, { severity: 'INVALID', vectorInputs: { count: 2, missing: ['A'], more: 0 } });

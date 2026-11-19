@@ -23,7 +23,7 @@ import type { FormulaScalarValue, FormulaSpec, FormulaSubscribeOptions } from '.
 import { FormulaSubscriberContext } from '../formula.js';
 import { ScreenRenderer } from '../render/ScreenRenderer.js';
 import { FormulaError } from '../formula.js';
-import { useWidgetRules, useWidgetRulesState } from './useWidgetRules.js';
+import { NO_STATE_COLOR, useWidgetRules, useWidgetRulesState } from './useWidgetRules.js';
 
 class StubSubscriber {
   readonly subscriptions: { spec: FormulaSpec; options: FormulaSubscribeOptions }[] = [];
@@ -589,7 +589,7 @@ describe('useWidgetRulesState', () => {
 
     stub.fail('{0} == 1', outage());
     expect(result.current).toMatchObject({
-      outputs: [undefined],
+      outputs: [NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: false,
@@ -609,7 +609,7 @@ describe('useWidgetRulesState', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', outage());
     expect(result.current).toMatchObject({
-      outputs: [undefined],
+      outputs: [NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: false,
@@ -620,7 +620,7 @@ describe('useWidgetRulesState', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', terminal());
     expect(result.current).toMatchObject({
-      outputs: [undefined],
+      outputs: [NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: false,
@@ -634,7 +634,7 @@ describe('useWidgetRulesState', () => {
     });
     stub.fail('{0} == 1', terminal());
     expect(result.current).toMatchObject({
-      outputs: [undefined],
+      outputs: [NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: false,
@@ -645,7 +645,7 @@ describe('useWidgetRulesState', () => {
     stub.push('{0} == 1', 0);
     stub.fail('{0} == 1', new Error('mixed locals'));
     expect(result.current).toMatchObject({
-      outputs: [undefined],
+      outputs: [NO_STATE_COLOR],
       stale: true,
       problem: 'mixed locals',
     });
@@ -673,7 +673,7 @@ describe('useWidgetRulesState', () => {
       stub.subscriptions[1]!.options.onError?.(outage());
     });
     expect(result.current).toMatchObject({
-      outputs: ['#ff0000', undefined],
+      outputs: ['#ff0000', NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: true,
@@ -711,7 +711,7 @@ describe('useWidgetRulesState', () => {
     stub.fail('{0} == 1', outage());
     // Stale resets the live rule's output only; the static output stays.
     expect(mixed.result.current).toMatchObject({
-      outputs: ['#123456', undefined],
+      outputs: ['#123456', NO_STATE_COLOR],
       stale: true,
       settled: true,
       delivered: false,
@@ -772,15 +772,15 @@ describe('useWidgetRulesState', () => {
     stub.push('{0} == 1', 0);
     expect(result.current).toEqual(['#ff0000']);
     stub.fail('{0} == 1', outage());
-    expect(result.current).toEqual([undefined]);
+    expect(result.current).toEqual([NO_STATE_COLOR]);
   });
 
-  it('end to end: a stale rule returns the widget to its base prop until the next result', () => {
+  it('end to end: a stale rule draws a colour as the no-state colour until the next result', () => {
     renderScreen(probeDoc(OK, [MAJOR], null));
     stub.push(ONE_ARM, 0);
     expect(probeProps().foregroundColor).toBe('var(--cr-' + majorIndex + ', #ff0000)');
     stub.fail(ONE_ARM, outage());
-    expect(probeProps().foregroundColor).toBe('var(--cr-' + okIndex + ', #00ff00)');
+    expect(probeProps().foregroundColor).toBe(NO_STATE_COLOR);
     stub.push(ONE_ARM, 0);
     expect(probeProps().foregroundColor).toBe('var(--cr-' + majorIndex + ', #ff0000)');
   });
