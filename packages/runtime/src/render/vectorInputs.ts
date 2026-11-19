@@ -1,12 +1,14 @@
-// What a node says on hover about a formula over many channels that feeds
-// it: how many members the formula's vector tokens name, and which of them
-// have no value. The summary comes with each result (`vectorInputs`), from
-// the server or from the in-page evaluator.
+// What a node says on hover about a formula that feeds it. For a formula
+// over many channels: how many members its vector tokens name, and which of
+// them have no value (the summary comes with each result, from the server or
+// from the in-page evaluator). For a formula that failed or never answered:
+// what failed, never the summary of the result before.
 
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { PVServiceContext } from '@slaclab/canopy-screen-widgets';
-import { combineVectorInputs, type FormulaVectorInputs } from '../formula.js';
+import { combineVectorInputs, type FormulaVectorInputs, type VectorSource } from '../formula.js';
 import { isFormulaRef } from '../formulaRef.js';
+import type { FormulaChannelData } from '../screenPV.js';
 
 /** The hover text: `240 channels, 3 without a value: A, B, C +1 more`. */
 export function vectorInputsText(inputs: FormulaVectorInputs): string {
@@ -17,15 +19,31 @@ export function vectorInputsText(inputs: FormulaVectorInputs): string {
   return `${channels}, ${without} without a value: ${inputs.missing.join(', ')}${more}`;
 }
 
-const NONE: ReadonlyMap<string, FormulaVectorInputs | undefined> = new Map();
+/** What the formulas feeding a node report: their members summaries, and what failed. */
+export interface FormulaReport {
+  readonly vectorSources: readonly VectorSource[];
+  readonly problem: string | undefined;
+}
+
+/** The hover text of a node from the reports of its rules and of its channels. */
+export function reportOf(...reports: readonly FormulaReport[]): {
+  problem: string | undefined;
+  vectorInputs: FormulaVectorInputs | undefined;
+} {
+  const problems = [...new Set(reports.flatMap((r) => r.problem ?? []))];
+  return {
+    problem: problems.length > 0 ? problems.join('; ') : undefined,
+    vectorInputs: combineVectorInputs(reports.flatMap((r) => r.vectorSources)),
+  };
+}
+
+const NONE: ReadonlyMap<string, FormulaChannelData> = new Map();
 
 /**
- * The summary of the `formula://` channels among `channels`, as their results
- * come in. Other channels are not subscribed.
+ * The report of the `formula://` channels among `channels`, as their data
+ * comes in. Other channels are not subscribed.
  */
-export function useChannelVectorInputs(
-  channels: readonly string[]
-): FormulaVectorInputs | undefined {
+export function useFormulaChannelReport(channels: readonly string[]): FormulaReport {
   const service = useContext(PVServiceContext);
   const refs = useMemo(() => [...new Set(channels.filter(isFormulaRef))], [channels]);
   const [byChannel, setByChannel] = useState(NONE);
@@ -34,9 +52,15 @@ export function useChannelVectorInputs(
     if (!service || refs.length === 0) return;
     const unsubscribes = refs.map((ref) =>
       service.subscribe(ref, (data) => {
-        const next = (data as { vectorInputs?: FormulaVectorInputs }).vectorInputs;
+        const next = data as FormulaChannelData;
         setByChannel((prev) => {
-          if (prev.get(ref) === next) return prev;
+          const before = prev.get(ref);
+          if (
+            before?.vectorInputs === next.vectorInputs &&
+            before?.formulaError === next.formulaError
+          ) {
+            return prev;
+          }
           const map = new Map(prev);
           map.set(ref, next);
           return map;
@@ -49,8 +73,15 @@ export function useChannelVectorInputs(
     };
   }, [service, refs]);
 
-  return useMemo(
-    () => combineVectorInputs(refs.map((ref) => byChannel.get(ref))),
-    [refs, byChannel]
-  );
+  return useMemo(() => {
+    const data = refs.flatMap((ref) => byChannel.get(ref) ?? []);
+    const problems = [...new Set(data.flatMap((d) => d.formulaError ?? []))];
+    return {
+      vectorSources: data.map((d) => ({
+        members: d.vectorMembers ?? [],
+        inputs: d.vectorInputs,
+      })),
+      problem: problems.length > 0 ? problems.join('; ') : undefined,
+    };
+  }, [refs, byChannel]);
 }

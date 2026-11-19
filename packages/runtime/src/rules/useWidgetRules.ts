@@ -11,8 +11,9 @@ import type {
   Rule,
   RuleValue,
 } from '@slaclab/canopy-screen-ir';
-import type { FormulaScalarValue, FormulaVectorInputs } from '../formula.js';
-import { combineVectorInputs, useFormulaSubscriber } from '../formula.js';
+import type { FormulaScalarValue, FormulaVectorInputs, VectorSource } from '../formula.js';
+import { formulaStartTimeoutMs, NO_ANSWER, useFormulaSubscriber } from '../formula.js';
+import { vectorMembers } from './vectorMembers.js';
 import { resolveRole } from '../theme/resolveRoles.js';
 import { useColorScheme } from '../theme/schemeContext.js';
 import type { CompiledRule, RuleScalar } from './compileRule.js';
@@ -26,10 +27,12 @@ const NO_LIVE: ReadonlyMap<CompiledRule, LiveState> = new Map();
  * map means the rule has settled (a result or an error arrived).
  */
 interface LiveState {
-  /** The latest result; kept across a non-retryable error. */
+  /** The latest result; undefined after a null value. */
   readonly value: FormulaScalarValue | undefined;
-  /** A retryable error arrived since the latest result. */
+  /** An error arrived since the latest result, or no answer came in time. */
   readonly stale: boolean;
+  /** What failed, while stale: the error's code and message. */
+  readonly problem?: string | undefined;
   /** The members summary of the latest result, when its formula has a vector token. */
   readonly vectorInputs?: FormulaVectorInputs | undefined;
 }
@@ -41,8 +44,10 @@ export interface WidgetRulesState {
    * "no output" (the widget keeps its base prop). A stale rule has no output.
    */
   readonly outputs: readonly (RuleScalar | undefined)[];
-  /** Some live rule had a retryable error since its latest result. */
+  /** Some live rule had an error since its latest result, or never got an answer. */
   readonly stale: boolean;
+  /** What failed in the stale rules (code and message of each error), for the hover. */
+  readonly problem: string | undefined;
   /**
    * Some live rule has delivered a result or an error — or the node has no
    * live rule to wait for (none, static only, every one failed to compile, or
@@ -56,14 +61,22 @@ export interface WidgetRulesState {
    */
   readonly delivered: boolean;
   /**
-   * The members of the vector tokens in the node's live rules, summed up from
-   * their latest results; undefined when no rule has a vector token.
+   * The members summary of each live rule's latest result, with the channels
+   * its vector tokens name; a stale rule has none.
    */
-  readonly vectorInputs: FormulaVectorInputs | undefined;
+  readonly vectorSources: readonly VectorSource[];
 }
 
-function isRetryable(error: Error): boolean {
-  return (error as { retryable?: unknown }).retryable === true;
+const MEMBERS = new WeakMap<CompiledRule, readonly string[]>();
+
+/** The channels a live rule's vector tokens name (to count one formula once), read once. */
+function membersOf(rule: Exclude<CompiledRule, { kind: 'static' }>): readonly string[] {
+  let members = MEMBERS.get(rule);
+  if (members === undefined) {
+    members = vectorMembers(rule.spec);
+    MEMBERS.set(rule, members);
+  }
+  return members;
 }
 
 function isLive(rule: CompiledRule | undefined): rule is Exclude<CompiledRule, { kind: 'static' }> {
@@ -130,10 +143,11 @@ function resolveArm(arm: RuleValue | undefined, flat: FlatScheme): RuleScalar | 
  * the widget keeps its base props. Without a FormulaSubscriber in context,
  * only static rules produce outputs.
  *
- * A retryable subscription error (the sdk's `retryable`, kept on the
- * FormulaError the Formula Engine adapter and the local evaluator raise) marks the rule
- * stale: its output drops to the base prop until the next result. A
- * non-retryable error keeps the latest output and only settles the rule.
+ * A subscription error, retryable or not, marks the rule stale: its output
+ * drops to the base prop until the next result, and `problem` says what
+ * failed. A light never keeps the colour of a result its formula no longer
+ * stands behind. A rule that got no result, null value or error within
+ * `formulaStartTimeoutMs()` is stale in the same way.
  *
  * Callers must pass stable identities (the renderer memoizes `macros`); the
  * subscriptions re-establish when any input changes.
@@ -193,21 +207,35 @@ export function useWidgetRulesState(
               vectorInputs: meta?.vectorInputs,
             }));
           },
+          // Any error, retryable or not: what the rule showed no longer
+          // holds, and neither does the summary of the result before.
           onError: (error) => {
-            const retryable = isRetryable(error);
             console.warn(
               `rule targeting '${rule.targetProperty}' subscription error: ${error.message}`
             );
-            update(rule, (prev) => ({
-              value: prev?.value,
-              stale: retryable || (prev?.stale ?? false),
-              vectorInputs: prev?.vectorInputs,
-            }));
+            update(rule, () => ({ value: undefined, stale: true, problem: error.message }));
           },
         })
       );
     }
+    // Pending is bounded: a rule nothing has answered in time has no state.
+    const live = compiled.filter(isLive);
+    const timer =
+      live.length === 0
+        ? undefined
+        : setTimeout(() => {
+            setLive((prev) => {
+              if (live.every((rule) => prev.has(rule))) return prev;
+              const map = new Map(prev);
+              for (const rule of live) {
+                if (!map.has(rule))
+                  map.set(rule, { value: undefined, stale: true, problem: NO_ANSWER });
+              }
+              return map;
+            });
+          }, formulaStartTimeoutMs());
     return () => {
+      clearTimeout(timer);
       for (const unsubscribe of unsubscribes) unsubscribe();
     };
   }, [compiled, subscriber]);
@@ -225,18 +253,24 @@ export function useWidgetRulesState(
       return state !== undefined && !state.stale && state.value !== undefined;
     });
 
-  const vectorKey = JSON.stringify(liveRules.map((rule) => live.get(rule)?.vectorInputs ?? null));
-  const vectorInputs = useMemo(
+  // A stale rule has no summary: the hover says what failed instead.
+  const vectorSources = useMemo(
     () =>
-      combineVectorInputs(
-        (JSON.parse(vectorKey) as (FormulaVectorInputs | null)[]).map((v) => v ?? undefined)
-      ),
-    [vectorKey]
+      compiled.filter(isLive).map((rule) => {
+        const state = live.get(rule);
+        return {
+          members: membersOf(rule),
+          inputs: state === undefined || state.stale ? undefined : state.vectorInputs,
+        };
+      }),
+    [compiled, live]
   );
+  const problems = [...new Set(liveRules.flatMap((rule) => live.get(rule)?.problem ?? []))];
+  const problem = problems.length > 0 ? problems.join('; ') : undefined;
 
   return useMemo(
-    () => ({ outputs, stale, settled, delivered, vectorInputs }),
-    [outputs, stale, settled, delivered, vectorInputs]
+    () => ({ outputs, stale, settled, delivered, vectorSources, problem }),
+    [outputs, stale, settled, delivered, vectorSources, problem]
   );
 }
 

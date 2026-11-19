@@ -53,17 +53,64 @@ export function asVectorInputs(value: unknown): FormulaVectorInputs | undefined 
   return { count: count as number, missing: missing as string[], more: more as number };
 }
 
-/** One summary for several formulas feeding one node: counts added, names joined. */
+/** Most channels without a value that one hover names, over all formulas of a node. */
+export const VECTOR_MISSING_NAMED = 20;
+
+/** One formula's members summary, with the channels its vector tokens name. */
+export interface VectorSource {
+  /** The member channels; empty when they are not known. */
+  readonly members: readonly string[];
+  readonly inputs: FormulaVectorInputs | undefined;
+}
+
+/**
+ * One summary for the formulas feeding one node. Formulas with the same
+ * members count once (one formula read by two rules); at most
+ * `VECTOR_MISSING_NAMED` channels are named, the rest counted in `more`.
+ */
 export function combineVectorInputs(
-  parts: readonly (FormulaVectorInputs | undefined)[]
+  sources: readonly VectorSource[]
 ): FormulaVectorInputs | undefined {
-  const present = parts.filter((p): p is FormulaVectorInputs => p !== undefined);
-  if (present.length <= 1) return present[0];
+  const seen = new Set<string>();
+  const distinct: FormulaVectorInputs[] = [];
+  for (const { members, inputs } of sources) {
+    if (inputs === undefined) continue;
+    if (members.length > 0) {
+      const key = members.join('\n');
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    distinct.push(inputs);
+  }
+  if (distinct.length === 0) return undefined;
+  const names = [...new Set(distinct.flatMap((d) => d.missing))];
   return {
-    count: present.reduce((sum, p) => sum + p.count, 0),
-    missing: [...new Set(present.flatMap((p) => p.missing))],
-    more: present.reduce((sum, p) => sum + p.more, 0),
+    count: distinct.reduce((sum, d) => sum + d.count, 0),
+    missing: names.slice(0, VECTOR_MISSING_NAMED),
+    more:
+      Math.max(names.length - VECTOR_MISSING_NAMED, 0) +
+      distinct.reduce((sum, d) => sum + d.more, 0),
   };
+}
+
+/** What a node says when its formula was asked and nothing came back. */
+export const NO_ANSWER = 'no answer from the formula service';
+
+let startTimeoutMs = 3000;
+
+/**
+ * How long a consumer waits for the first result, null value or error of a
+ * formula before it stops showing "no result yet" and shows that it has no
+ * state. The server holds a first result for its start window (1 s); this is
+ * that window plus margin.
+ */
+export function formulaStartTimeoutMs(): number {
+  return startTimeoutMs;
+}
+
+/** Set `formulaStartTimeoutMs` (one setting for the whole runtime). */
+export function setFormulaStartTimeoutMs(ms: number): void {
+  startTimeoutMs = ms;
 }
 
 /**

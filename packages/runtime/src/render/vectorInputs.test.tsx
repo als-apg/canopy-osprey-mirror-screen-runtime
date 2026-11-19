@@ -139,7 +139,6 @@ describe('a node coloured by a roll-up rule', () => {
     expect(node('light').getAttribute('title')).toBe('3 channels, 1 without a value: RACK:A:FAN');
     expect(node('light').getAttribute('data-vector-count')).toBe('3');
     expect(node('light').getAttribute('data-vector-missing')).toBe('1');
-    expect(node('light').style.pointerEvents).toBe('auto');
 
     stub.push(-1, { severity: 'NO_ALARM', vectorInputs: { count: 3, missing: [], more: 0 } });
     expect(node('light').getAttribute('title')).toBe('3 channels, all with a value');

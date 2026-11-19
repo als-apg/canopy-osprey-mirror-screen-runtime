@@ -36,9 +36,12 @@ import type {
   FormulaSeverity,
   FormulaSpec,
   FormulaSubscriber,
+  FormulaVectorInputs,
 } from './formula.js';
+import { formulaStartTimeoutMs, NO_ANSWER } from './formula.js';
 import { formulaName, isFormulaRef } from './formulaRef.js';
 import { compileFormulaSpec, RuleCompileError } from './rules/compileRule.js';
+import { vectorMembers } from './rules/vectorMembers.js';
 
 const SEVERITY: Readonly<Record<FormulaSeverity, AlarmSeverity>> = {
   NO_ALARM: AlarmSeverity.NO_ALARM,
@@ -59,6 +62,17 @@ export function formatFormulaValue(value: FormulaScalarValue): string {
   if (typeof value !== 'number') return String(value);
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value);
   return String(Number(value.toPrecision(DISPLAY_SIGNIFICANT_DIGITS)));
+}
+
+/**
+ * What a formula channel's data carries beside the PV fields, for the
+ * renderer's hover: the members summary of the result, the channels the
+ * vector tokens name, and what failed.
+ */
+export interface FormulaChannelData extends PVData {
+  vectorInputs?: FormulaVectorInputs;
+  vectorMembers?: readonly string[];
+  formulaError?: string;
 }
 
 interface FormulaChannel {
@@ -148,26 +162,45 @@ export class ScreenPVService implements PVService {
 
     const spec = this.resolve(address);
     if (!spec || !this.subscriber) return channel;
+    const members = vectorMembers(spec);
+    // Nothing in time: the channel says so (it draws as disconnected already).
+    const timer = setTimeout(() => {
+      if (channel.closed) return;
+      this.update(channel, { ...channel.data, formulaError: NO_ANSWER } as PVData);
+    }, formulaStartTimeoutMs());
+    const answered = () => clearTimeout(timer);
 
     channel.release = this.subscriber.subscribe(spec, {
       onResult: (value, meta) => {
+        answered();
         if (channel.closed) return;
-        this.update(channel, resultData(value, meta));
+        this.update(channel, { ...resultData(value, meta), vectorMembers: members } as PVData);
       },
       onNoValue: (meta) => {
+        answered();
         if (channel.closed) return;
-        this.update(channel, noValueData(meta));
+        this.update(channel, { ...noValueData(meta), vectorMembers: members } as PVData);
       },
       onError: (error) => {
+        answered();
         if (channel.closed) return;
         this.warnOnce(`formula channel '${address}' evaluation error: ${error.message}`);
+        // The summary of the result before goes; the error takes its place.
+        const rest: FormulaChannelData = { ...channel.data };
+        delete rest.vectorInputs;
         this.update(channel, {
-          ...channel.data,
+          ...rest,
           connected: false,
           severity: AlarmSeverity.DISCONNECTED,
-        });
+          formulaError: error.message,
+        } as PVData);
       },
     });
+    const release = channel.release;
+    channel.release = () => {
+      answered();
+      release?.();
+    };
     return channel;
   }
 

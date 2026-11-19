@@ -572,7 +572,7 @@ describe('useWidgetRulesState', () => {
   it('a live rule: unsettled, then a result settles; a retryable error is stale and drops to base', () => {
     const rules = [ladderRule('r1', 'DEV:SEVR')];
     const { result } = renderRules(rules);
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: [undefined],
       stale: false,
       settled: false,
@@ -580,7 +580,7 @@ describe('useWidgetRulesState', () => {
     });
 
     stub.push('{0} == 1', 0);
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000'],
       stale: false,
       settled: true,
@@ -588,7 +588,7 @@ describe('useWidgetRulesState', () => {
     });
 
     stub.fail('{0} == 1', outage());
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: [undefined],
       stale: true,
       settled: true,
@@ -597,7 +597,7 @@ describe('useWidgetRulesState', () => {
 
     // The next result, even the same arm, clears stale and restores the output.
     stub.push('{0} == 1', 0);
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000'],
       stale: false,
       settled: true,
@@ -608,7 +608,7 @@ describe('useWidgetRulesState', () => {
   it('the onError path settles: a retryable error before any result is stale and settled', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', outage());
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: [undefined],
       stale: true,
       settled: true,
@@ -616,28 +616,39 @@ describe('useWidgetRulesState', () => {
     });
   });
 
-  it('a non-retryable error settles without stale and keeps the last output', () => {
+  it('a non-retryable error is stale too: the last output is dropped, the problem named', () => {
     const { result } = renderRules([ladderRule('r1', 'DEV:SEVR')]);
     stub.fail('{0} == 1', terminal());
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: [undefined],
-      stale: false,
+      stale: true,
       settled: true,
       delivered: false,
     });
 
     stub.push('{0} == 1', 0);
-    stub.fail('{0} == 1', terminal());
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000'],
       stale: false,
-      settled: true,
-      delivered: true,
+      problem: undefined,
     });
+    stub.fail('{0} == 1', terminal());
+    expect(result.current).toMatchObject({
+      outputs: [undefined],
+      stale: true,
+      settled: true,
+      delivered: false,
+    });
+    expect(result.current.problem).toBe(terminal().message);
 
-    // A plain Error (no retryable flag) is not retryable either.
+    // A plain Error (no retryable flag) is an error like any other.
+    stub.push('{0} == 1', 0);
     stub.fail('{0} == 1', new Error('mixed locals'));
-    expect(result.current.stale).toBe(false);
+    expect(result.current).toMatchObject({
+      outputs: [undefined],
+      stale: true,
+      problem: 'mixed locals',
+    });
   });
 
   it('only the stale rule drops to base; the node is stale while any live rule is', () => {
@@ -648,7 +659,7 @@ describe('useWidgetRulesState', () => {
       stub.subscriptions[0]!.options.onResult(0);
     });
     // One live rule delivering is enough to settle the node.
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000', undefined],
       stale: false,
       settled: true,
@@ -661,7 +672,7 @@ describe('useWidgetRulesState', () => {
     act(() => {
       stub.subscriptions[1]!.options.onError?.(outage());
     });
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000', undefined],
       stale: true,
       settled: true,
@@ -671,7 +682,7 @@ describe('useWidgetRulesState', () => {
     act(() => {
       stub.subscriptions[1]!.options.onResult(0);
     });
-    expect(result.current).toEqual({
+    expect(result.current).toMatchObject({
       outputs: ['#ff0000', '#ff0000'],
       stale: false,
       settled: true,
@@ -681,7 +692,7 @@ describe('useWidgetRulesState', () => {
 
   it('static rules count as settled; with a live rule beside them the node waits for it', () => {
     const only = renderRules([staticRule]);
-    expect(only.result.current).toEqual({
+    expect(only.result.current).toMatchObject({
       outputs: ['#123456'],
       stale: false,
       settled: true,
@@ -691,7 +702,7 @@ describe('useWidgetRulesState', () => {
     only.unmount();
 
     const mixed = renderRules([staticRule, ladderRule('r1', 'DEV:SEVR')]);
-    expect(mixed.result.current).toEqual({
+    expect(mixed.result.current).toMatchObject({
       outputs: ['#123456', undefined],
       stale: false,
       settled: false,
@@ -699,7 +710,7 @@ describe('useWidgetRulesState', () => {
     });
     stub.fail('{0} == 1', outage());
     // Stale resets the live rule's output only; the static output stays.
-    expect(mixed.result.current).toEqual({
+    expect(mixed.result.current).toMatchObject({
       outputs: ['#123456', undefined],
       stale: true,
       settled: true,
@@ -710,13 +721,13 @@ describe('useWidgetRulesState', () => {
   it('settled at once when every rule fails to compile, with no rules, or with no subscriber', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      expect(renderRules([brokenRule]).result.current).toEqual({
+      expect(renderRules([brokenRule]).result.current).toMatchObject({
         outputs: [undefined],
         stale: false,
         settled: true,
         delivered: false,
       });
-      expect(renderRules([]).result.current).toEqual({
+      expect(renderRules([]).result.current).toMatchObject({
         outputs: [],
         stale: false,
         settled: true,
@@ -724,7 +735,7 @@ describe('useWidgetRulesState', () => {
       });
       const lone = [ladderRule('r1', 'DEV:SEVR')];
       const noSubscriber = renderHook(() => useWidgetRulesState(lone, NO_FORMULAS, NO_MACROS));
-      expect(noSubscriber.result.current).toEqual({
+      expect(noSubscriber.result.current).toMatchObject({
         outputs: [undefined],
         stale: false,
         settled: true,
@@ -741,7 +752,7 @@ describe('useWidgetRulesState', () => {
       const { result } = renderRules([brokenRule, ladderRule('r1', 'DEV:SEVR')]);
       expect(result.current.settled).toBe(false);
       stub.push('{0} == 1', -1);
-      expect(result.current).toEqual({
+      expect(result.current).toMatchObject({
         outputs: [undefined, '#ffffff'],
         stale: false,
         settled: true,
