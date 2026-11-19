@@ -24,6 +24,7 @@ import { gatedWriteOptions, isLocalChannel, useGatedWrite } from '../writeGate/u
 import {
   exactNumberText,
   hasStage,
+  nudgedExactly,
   stageScope,
   stagedText as textOfStaged,
   useStaged,
@@ -361,8 +362,11 @@ export function CarbonPVTextInput({
       // it steps by the widget's or the channel's precision, and the result
       // is shown exactly, as every staged value is.
       if (draft === null && stagedText !== null && /e/i.test(shown)) {
+        // No step that is not a sensible nudge of the value: no jump.
         const step = 10 ** -(precision ?? 0) * (coarse ? 10 : 1);
-        const text = exactNumberText(parsed.value + direction * step, precision ?? 0);
+        const next = nudgedExactly(parsed.value, direction * step);
+        if (next === null) return;
+        const text = exactNumberText(next, precision ?? 0);
         setEdit((prev) => ({ text, typed: prev?.typed ?? false }));
         return;
       }

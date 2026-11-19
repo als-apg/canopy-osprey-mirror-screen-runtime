@@ -2,7 +2,7 @@
 // attached; a store answers for itself and the stores below it; a scope being
 // written is busy above and below.
 import { describe, expect, it, vi } from 'vitest';
-import { createStagingStore, hasStage, stageScope, stagedText } from './staging.js';
+import { createStagingStore, hasStage, nudgedExactly, stageScope, stagedText } from './staging.js';
 import type { StagingStore } from './staging.js';
 
 /** A store with entries attached for `pvs` in `scope`. */
@@ -273,33 +273,74 @@ describe('stagedText', () => {
 });
 
 describe('conflict marks', () => {
-  it('a mark goes with its value: restaging or dropping the channel removes it', () => {
-    const store = createStagingStore();
-    store.attach('set', 'A');
-    store.attach('set', 'B');
-    const a = { pv: 'A', value: 1 };
-    const b = { pv: 'B', value: 2 };
-    store.set('set', a);
-    store.set('set', b);
-    const listener = vi.fn();
-    store.subscribe(listener);
-    store.mark([a, b]);
-    expect([store.marked(a), store.marked(b)]).toEqual([true, true]);
-    expect(listener).toHaveBeenCalledTimes(1);
-    const again = { pv: 'A', value: 3 };
-    store.set('set', again);
-    expect([store.marked(a), store.marked(again)]).toEqual([false, false]);
-    store.clearScope('set');
-    expect(store.marked(b)).toBe(false);
+  function tree() {
+    const top = createStagingStore();
+    const left = createStagingStore(top);
+    const right = createStagingStore(top);
+    left.link();
+    right.link();
+    for (const st of [top, left, right]) st.attach('set', 'X');
+    top.attach('set', 'Y');
+    top.set('set', { pv: 'Y', value: 0 });
+    left.set('set', { pv: 'X', value: 1 });
+    right.set('set', { pv: 'X', value: 2 });
+    top.conflict('set', 'X');
+    const marks = () => top.list('set').map((v) => [v.pv, v.value, top.marked(v)]);
+    return { top, left, right, marks };
+  }
+
+  it('marks every value of the channel in reach, and no other', () => {
+    const { marks } = tree();
+    expect(marks()).toEqual([
+      ['Y', 0, false],
+      ['X', 1, true],
+      ['X', 2, true],
+    ]);
   });
 
-  it('mark replaces the marks it is told to', () => {
-    const store = createStagingStore();
-    store.attach('set', 'A');
-    const a = { pv: 'A', value: 1 };
-    store.set('set', a);
-    store.mark([a]);
-    store.mark([], [a]);
-    expect(store.marked(a)).toBe(false);
+  it('restaging one so that they agree removes both marks', () => {
+    const { right, marks } = tree();
+    right.set('set', { pv: 'X', value: 1 });
+    expect(marks().map((m) => m[2])).toEqual([false, false, false]);
+  });
+
+  it('dropping one removes the mark of the other', () => {
+    const { left, marks } = tree();
+    left.drop('set', 'X');
+    expect(marks()).toEqual([
+      ['Y', 0, false],
+      ['X', 2, false],
+    ]);
+  });
+
+  it('restaging one to another differing value keeps both marked', () => {
+    const { right, marks } = tree();
+    right.set('set', { pv: 'X', value: 3 });
+    expect(marks().map((m) => m[2])).toEqual([false, true, true]);
+  });
+
+  it('a conflict that was resolved does not come back without another apply', () => {
+    const { right, marks } = tree();
+    right.set('set', { pv: 'X', value: 1 });
+    right.set('set', { pv: 'X', value: 2 });
+    expect(marks().map((m) => m[2])).toEqual([false, false, false]);
+  });
+
+  it('notifies when a conflict is recorded', () => {
+    const { top } = tree();
+    const listener = vi.fn();
+    top.subscribe(listener);
+    top.conflict('set', 'X');
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('nudgedExactly', () => {
+  it('is null for a step larger than the value or too small to change it', () => {
+    expect(nudgedExactly(1e-25, 1)).toBeNull();
+    expect(nudgedExactly(1e-25, 0.01)).toBeNull();
+    expect(nudgedExactly(1.5e300, 1)).toBeNull();
+    expect(nudgedExactly(1.5e300, -1)).toBeNull();
+    expect(nudgedExactly(1e30, 1e20)).toBe(1e30 + 1e20);
   });
 });

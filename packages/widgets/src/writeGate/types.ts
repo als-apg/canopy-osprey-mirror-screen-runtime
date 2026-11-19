@@ -90,12 +90,12 @@ export interface WriteGateService {
    */
   writes?(): WritesState;
   /** Calls `listener` when `writes()` may have changed. Returns an unsubscribe. */
+  subscribeWrites?(listener: () => void): () => void;
   /**
    * Show `text` where the gate shows the results of writes, for a run that
    * was refused before it reached the gate. Sends nothing.
    */
   refused?(text: string): void;
-  subscribeWrites?(listener: () => void): () => void;
 }
 
 /**

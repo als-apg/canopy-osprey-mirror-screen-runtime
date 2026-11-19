@@ -59,11 +59,12 @@ export interface StagingStore {
    */
   holds(scope: string, staged: StagedValue): boolean;
   /**
-   * Mark `values` as in conflict (one channel staged with different values
-   * under one apply), replacing the marks `unmark` holds. A mark goes with
-   * its value: staging the channel again, or dropping it, removes it.
+   * An apply on this store found `pv` staged with different values in
+   * `scope` (here and below). The values of that channel in this store's
+   * reach are marked for as long as they disagree: when one is staged again
+   * or dropped and the rest agree, every mark goes.
    */
-  mark(values: readonly StagedValue[], unmark?: readonly StagedValue[]): void;
+  conflict(scope: string, pv: string): void;
   /** Whether `staged` is marked as in conflict. */
   marked(staged: StagedValue): boolean;
   /** Drop every value of `scope`, in this instance and those below it. */
@@ -109,8 +110,8 @@ interface Shared {
   order: number;
   version: number;
   listeners: Set<() => void>;
-  /** Values marked as in conflict. */
-  conflicts: Set<StagedValue>;
+  /** Channels an apply found in conflict, with the store whose reach it read. */
+  conflicts: { node: Node; scope: string; pv: string }[];
 }
 
 function below(node: Node): Node[] {
@@ -120,7 +121,17 @@ function below(node: Node): Node[] {
 }
 
 function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; shared: Shared } {
+  /** The values a recorded conflict still covers: none once they agree. */
+  const conflicting = (c: Shared['conflicts'][number]): StagedValue[] => {
+    const values = below(c.node).flatMap((n) => {
+      const held = n.values.get(c.scope)?.get(c.pv);
+      return held === undefined ? [] : [held.staged];
+    });
+    return values.some((v) => v.value !== values[0]!.value) ? values : [];
+  };
   const changed = () => {
+    // A conflict that no longer holds is forgotten, so it cannot come back unasked.
+    shared.conflicts = shared.conflicts.filter((c) => conflicting(c).length > 0);
     shared.version += 1;
     for (const l of [...shared.listeners]) l();
   };
@@ -133,7 +144,6 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
     const held = values?.get(pv);
     if (values === undefined || held === undefined) return false;
     if (only !== undefined && held.staged !== only) return false;
-    shared.conflicts.delete(held.staged);
     values.delete(pv);
     if (values.size === 0) n.values.delete(scope);
     return true;
@@ -164,9 +174,7 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
       if ((node.entries.get(scope)?.get(staged.pv) ?? 0) === 0) return false;
       let values = node.values.get(scope);
       if (values === undefined) node.values.set(scope, (values = new Map()));
-      const before = values.get(staged.pv);
-      if (before !== undefined) shared.conflicts.delete(before.staged);
-      const order = before?.order ?? (shared.order += 1);
+      const order = values.get(staged.pv)?.order ?? (shared.order += 1);
       values.set(staged.pv, { staged, order });
       changed();
       return true;
@@ -183,21 +191,16 @@ function storeOf(node: Node, shared: Shared): StagingStore & { node: Node; share
       below(node).some((n) => n.values.get(scope)?.get(staged.pv)?.staged === staged),
     clearScope(scope) {
       let any = false;
-      for (const n of below(node)) {
-        for (const held of n.values.get(scope)?.values() ?? [])
-          shared.conflicts.delete(held.staged);
-        any = n.values.delete(scope) || any;
-      }
+      for (const n of below(node)) any = n.values.delete(scope) || any;
       if (any) changed();
     },
-    mark(values, unmark = []) {
-      const before = shared.conflicts.size;
-      let removed = false;
-      for (const v of unmark) removed = shared.conflicts.delete(v) || removed;
-      for (const v of values) shared.conflicts.add(v);
-      if (removed || shared.conflicts.size !== before) changed();
+    conflict(scope, pv) {
+      if (shared.conflicts.some((c) => c.node === node && c.scope === scope && c.pv === pv)) return;
+      shared.conflicts.push({ node, scope, pv });
+      changed();
     },
-    marked: (staged) => shared.conflicts.has(staged),
+    marked: (staged) =>
+      shared.conflicts.some((c) => c.pv === staged.pv && conflicting(c).includes(staged)),
     list: (scope) => collect(scope).map((h) => h.staged),
     count: (scope) => below(node).reduce((sum, n) => sum + (n.values.get(scope)?.size ?? 0), 0),
     busy(scope) {
@@ -258,7 +261,7 @@ export function createStagingStore(parent?: StagingStore | null): StagingStore {
   };
   return storeOf(
     node,
-    above?.shared ?? { order: 0, version: 0, listeners: new Set(), conflicts: new Set() }
+    above?.shared ?? { order: 0, version: 0, listeners: new Set(), conflicts: [] }
   );
 }
 
@@ -290,6 +293,17 @@ const MAX_PLAIN_LENGTH = 24;
  * The shortest text that reads back as exactly `value`, written without an
  * exponent (the digits of `String(value)`, the point moved).
  */
+/**
+ * `value` nudged by `step`, or null when the step is no sensible nudge of
+ * it: larger than the value itself, or too small to change it. For a value
+ * shown with an exponent, whose last shown digit names no step.
+ */
+export function nudgedExactly(value: number, step: number): number | null {
+  const next = value + step;
+  if (next === value || Math.abs(step) > Math.abs(value) || !Number.isFinite(next)) return null;
+  return next;
+}
+
 function plainNumber(value: number): string {
   const text = String(value);
   const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(text);

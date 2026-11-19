@@ -325,33 +325,41 @@ describe('Escape in an entry of a screen that embeds others', () => {
 });
 
 describe('a staged value shown with an exponent', () => {
-  it('is the exact value, and steps by the precision of the widget', async () => {
-    renderEntry({ pvName: 'SIM:SP', stage: 'view', precision: 2, precisionFromPV: false });
-    await enter('1e-101');
-    expect(input().value).toBe('1e-101');
-    fireEvent.keyDown(input(), { key: 'ArrowUp' });
-    expect(input().value).toBe('0.01');
-  });
-
-  it('with no precision steps by one', async () => {
-    renderEntry({ pvName: 'SIM:SP', stage: 'view' });
-    await enter('1.5e300');
-    expect(input().value).toBe('1.5e+300');
-    expect(Number(input().value)).toBe(1.5e300);
-    fireEvent.keyDown(input(), { key: 'ArrowDown' });
-    expect(Number(input().value)).toBe(1.5e300 - 1);
-  });
+  for (const [typed, props] of [
+    ['1e-25', {}],
+    ['1e-25', { precision: 2, precisionFromPV: false }],
+    ['1.5e300', {}],
+    ['1e-101', { precision: 2, precisionFromPV: false }],
+  ] as const) {
+    it(`${typed} ${JSON.stringify(props)}: the arrow keys do not jump`, async () => {
+      renderEntry({ pvName: 'SIM:SP', stage: 'view', ...props });
+      await enter(typed);
+      const shown = input().value;
+      expect(Number(shown)).toBe(Number(typed));
+      for (const key of ['ArrowUp', 'ArrowDown']) {
+        fireEvent.keyDown(input(), { key });
+        fireEvent.keyDown(input(), { key, shiftKey: true });
+      }
+      expect(input().value).toBe(shown);
+      expect(store.list('view')[0].value).toBe(Number(typed));
+    });
+  }
 });
 
 describe('a staged value marked as in conflict', () => {
-  it('is drawn as such until the channel is staged again', async () => {
+  it('is drawn as such until the values agree', async () => {
+    const below = createStagingStore(store);
+    below.link();
+    below.attach('view', 'SIM:SP');
+    below.set('view', { pv: 'SIM:SP', value: 8 });
     renderEntry({ pvName: 'SIM:SP', stage: 'view' });
     await enter('2');
-    act(() => store.mark([store.get('view', 'SIM:SP')!]));
+    act(() => store.conflict('view', 'SIM:SP'));
     expect(box().getAttribute('data-staged-conflict')).toBe('true');
     expect(box().classList.contains('carbon-pv-input--conflict')).toBe(true);
     expect(box().getAttribute('title')).toContain('different value');
-    await enter('3');
+    // The other entry is staged again with the same value: this mark goes too.
+    act(() => void below.set('view', { pv: 'SIM:SP', value: 2 }));
     expect(box().getAttribute('data-staged-conflict')).toBeNull();
   });
 });

@@ -225,10 +225,9 @@ async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> 
   // A channel staged with two values is not written, and nothing else is:
   // the entries are marked where they sit, and the refusal is shown where
   // write results are (the gate), else by the host.
-  staging.mark([], staged);
   const conflicts = [...groups.values()].filter((g) => g.some((s) => s.value !== g[0]!.value));
   if (conflicts.length > 0) {
-    staging.mark(conflicts.flat());
+    for (const group of conflicts) staging.conflict(scope, group[0]!.pv);
     const first = conflicts[0]!;
     const values = [...new Set(first.map((s) => exactValueText(s.value)))].join(' and ');
     const text = `${first[0]!.pv}: staged with different values (${values}); nothing written`;
