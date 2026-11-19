@@ -50,6 +50,18 @@ function subscribeStatus(
   options: Parameters<FormulaSubscriber['subscribe']>[1],
   localOptions: LocalFormulaOptions
 ): () => void {
+  const cap = localOptions.maxVectorInputs ?? MAX_VECTOR_INPUTS;
+  if (inputs.members.length > cap) {
+    options.onError?.(
+      new FormulaError(
+        'invalid_spec',
+        `A formula may name at most ${cap} channels through vector tokens, got ` +
+          `${inputs.members.length} (MAX_VECTOR_INPUTS)`,
+        false
+      )
+    );
+    return () => {};
+  }
   const state = new Map<string, InputState>();
   const keys = Object.keys(spec.bindings);
   let started = false;
@@ -84,6 +96,7 @@ function subscribeStatus(
     local.subscribe(address, (data) => {
       state.set(key, {
         value: scalar(data.value),
+        sampled: data.value !== null && data.value !== undefined,
         connected: data.connected,
         severity: severityNumber(data.severity),
         labels: enumStrings(data.enumChoices),
@@ -110,6 +123,9 @@ function scalar(value: unknown): PyValue {
  */
 export const VECTOR_START_WINDOW_MS = 1000;
 
+/** Most channels the vector tokens of one formula may name, as on the server. */
+export const MAX_VECTOR_INPUTS = 1000;
+
 /** Most channels without a value that a result or an error names, as on the server. */
 export const VECTOR_MISSING_LISTED = 20;
 
@@ -130,7 +146,10 @@ function enumStrings(choices: unknown): readonly string[] | undefined {
 
 /** What one input of a formula over many channels last reported. */
 interface InputState {
+  /** The sample as one value; null when there is none, or it is not one value. */
   value: PyValue;
+  /** Whether the channel has a sample at all (an array is one, without a number). */
+  sampled: boolean;
   connected: boolean;
   severity: number;
   /** The channel's enum strings, when it has them. */
@@ -149,6 +168,8 @@ export interface LocalFormulaOptions {
   readonly nameOf?: (address: string) => string;
   /** Most channels without a value a result or an error names. */
   readonly missingListed?: number;
+  /** Most channels the vector tokens of one formula may name. */
+  readonly maxVectorInputs?: number;
 }
 
 /**
@@ -170,8 +191,16 @@ export function evaluateStatusFormula(
   const name = (key: string) => nameOf(spec.bindings[key]!);
   const has = (key: string) => {
     const s = state.get(key);
-    return s !== undefined && s.connected && s.value !== null;
+    return s !== undefined && s.connected && s.sampled;
   };
+  const unusable = [...inputs.strict].filter((key) => has(key) && state.get(key)!.value === null);
+  if (unusable.length > 0) {
+    throw new FormulaError(
+      'formula_type_error',
+      `PV '${name(unusable[0]!)}' value is not usable in a scalar formula`,
+      false
+    );
+  }
   const read = [...new Set([...inputs.strict, ...inputs.members, ...Object.keys(spec.bindings)])];
 
   const strictMissing = [...inputs.strict].filter((key) => !has(key));

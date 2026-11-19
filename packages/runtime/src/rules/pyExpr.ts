@@ -67,11 +67,26 @@ function membersOf(prefix: string, keys: Iterable<string>): string[] {
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-/** A member's number: NaN when it has none (text, null, no sample). */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/**
+ * Text as the number it writes in decimal (spaces around it allowed,
+ * `inf` and `nan` too), as the server reads it; NaN for any other text.
+ */
+function decimalNumber(text: string): number {
+  const t = text.trim();
+  if (DECIMAL.test(t)) return Number(t);
+  const word = /^([+-]?)(inf|infinity|nan)$/i.exec(t);
+  if (!word) return NaN;
+  if (word[2]!.toLowerCase() === 'nan') return NaN;
+  return word[1] === '-' ? -Infinity : Infinity;
+}
+
+/** A member's number: NaN when it has none (text that is no number, null, no sample). */
 function memberNumber(value: PyValue | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
-  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  if (typeof value === 'string') return decimalNumber(value);
   return NaN;
 }
 
@@ -232,12 +247,21 @@ const hasNaN = (data: readonly number[]) => data.some((v) => Number.isNaN(v));
 const present = (data: readonly number[]) => data.filter((v) => !Number.isNaN(v));
 const total = (data: readonly number[]) => data.reduce((sum, v) => sum + v, 0);
 
+function variance(data: readonly number[]): number {
+  const mean = total(data) / data.length;
+  return total(data.map((v) => (v - mean) ** 2)) / data.length;
+}
+
 /** Reductions of a vector to one number. */
 const REDUCTIONS: Record<string, (data: readonly number[]) => number> = {
   max: (d) => (hasNaN(d) ? NaN : Math.max(...d)),
   min: (d) => (hasNaN(d) ? NaN : Math.min(...d)),
   sum: total,
   mean: (d) => total(d) / d.length,
+  // Population variance and standard deviation, as numpy's defaults.
+  var: variance,
+  std: (d) => Math.sqrt(variance(d)),
+  ptp: (d) => (hasNaN(d) ? NaN : Math.max(...d) - Math.min(...d)),
   count: (d) => d.length,
   count_nonzero: (d) => d.filter((v) => v !== 0).length,
   nanmax: (d) => (present(d).length === 0 ? NaN : Math.max(...present(d))),
@@ -335,6 +359,15 @@ class Parser {
       if (args.length !== 3) throw new PyExprError('where() takes a condition and two values');
       if (!args.some((a) => a instanceof Vec)) return truthy(first!) ? args[1]! : args[2]!;
       return lift(args, 'where()', (c, a, b) => (c !== 0 ? a! : b!));
+    }
+    if (name === 'clip') {
+      if (args.length !== 3) throw new PyExprError('clip() takes a value and two bounds');
+      const clip = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
+      if (args.some((a) => a instanceof Vec)) {
+        return lift(args, 'clip()', (x, lo, hi) => (Number.isNaN(x!) ? NaN : clip(x!, lo!, hi!)));
+      }
+      const [x, lo, hi] = args.map((a) => asNumber(a, 'clip()'));
+      return clip(x!, lo!, hi!);
     }
     const reduce = REDUCTIONS[name];
     if (reduce && args.length === 1 && (first instanceof Vec || VECTOR_ONLY.has(name))) {
@@ -537,6 +570,7 @@ class Parser {
       const known =
         STATUS_FUNCTIONS.has(t.text) ||
         t.text === 'where' ||
+        t.text === 'clip' ||
         t.text in REDUCTIONS ||
         t.text in FUNCTIONS;
       if (known && this.takeOp('(')) {

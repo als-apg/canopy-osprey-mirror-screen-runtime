@@ -9,7 +9,7 @@ import { createLocalAwareFormulaSubscriber, type LocalPVLike } from './localForm
 import table from './__fixtures__/formula-vector-cases.json' with { type: 'json' };
 
 interface Channel {
-  value?: number | string | boolean;
+  value?: number | string | boolean | number[];
   severity?: number;
   down?: boolean;
   nonFinite?: 'nan' | 'inf';
@@ -21,10 +21,11 @@ interface Case {
   bindings: Record<string, string>;
   channels: Record<string, Channel>;
   missingListed?: number;
+  maxVectorInputs?: number;
   value?: number | string | boolean;
   severity?: string;
   vectorInputs?: FormulaResultMeta['vectorInputs'] | null;
-  error?: 'input_missing' | 'type_error' | 'parse_error';
+  error?: 'input_missing' | 'type_error' | 'parse_error' | 'invalid_spec';
   detail?: string;
 }
 
@@ -74,6 +75,7 @@ function run(c: Case): Outcome {
   const subscriber = createLocalAwareFormulaSubscriber(service(c.channels), null, {
     nameOf: (address) => address.slice(LOC.length),
     ...(c.missingListed !== undefined ? { missingListed: c.missingListed } : {}),
+    ...(c.maxVectorInputs !== undefined ? { maxVectorInputs: c.maxVectorInputs } : {}),
   });
   subscriber.subscribe(spec, {
     onResult: (value, meta) => (outcome = { value, meta }),
@@ -111,12 +113,43 @@ describe('formulas over many channels: the shared cases, in the page', () => {
         expect(code).toBe('formula_input_missing');
         expect((outcome.error as FormulaError).retryable).toBe(true);
         if (c.detail !== undefined) expect(outcome.error.message).toContain(c.detail);
+      } else if (c.error === 'invalid_spec') {
+        expect(code).toBe('invalid_spec');
+        expect((outcome.error as FormulaError).retryable).toBe(false);
       } else if (c.error === 'type_error') {
         expect(['formula_type_error', 'expression']).toContain(code);
-        expect(outcome.error.message).toMatch(/one value|not a finite number/);
+        expect(outcome.error.message).toMatch(/one value|not a finite number|not usable/);
       } else {
         expect(code).toBe('expression');
       }
     });
   }
+});
+
+// The table has a byte copy in the server's repository. Its sha256 is
+// recorded beside it: an edit of the table on this side fails here until the
+// record is changed on purpose, which is the moment to send the other side
+// the new file.
+//   shasum -a 256 formula-vector-cases.json | cut -d' ' -f1 > formula-vector-cases.sha256
+declare global {
+  interface ImportMeta {
+    glob(
+      pattern: string | string[],
+      options: { query: string; import: string; eager: true }
+    ): Record<string, string>;
+  }
+}
+
+describe('the shared table', () => {
+  it('has the sha256 recorded beside it', async () => {
+    const raw = import.meta.glob(
+      ['./__fixtures__/formula-vector-cases.json', './__fixtures__/formula-vector-cases.sha256'],
+      { query: '?raw', import: 'default', eager: true }
+    );
+    const text = raw['./__fixtures__/formula-vector-cases.json']!;
+    const recorded = raw['./__fixtures__/formula-vector-cases.sha256']!.trim();
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    expect(hex).toBe(recorded);
+  });
 });

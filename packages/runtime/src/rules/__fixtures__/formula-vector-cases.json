@@ -1,5 +1,5 @@
 {
-  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error. missingListed sets the cap on listed members (default 20).",
+  "about": "Formulas over many channels: vector tokens, severity() and connected(); and label(), the enum string of a channel's value. One table for every evaluator of the formula language. A channel is {value, severity 0-3, labels: its enum strings when it has them}; with \"down\" its connection is lost (a value given is stale and must not be read); a channel not listed has no sample. \"nonFinite\" is a number that JSON cannot hold. Expect a value with the result's severity and vectorInputs (null: no such key), or an error class: input_missing, type_error, parse_error, invalid_spec. missingListed sets the cap on listed members (default 20), maxVectorInputs the most members the vector tokens may name (default 1000). A value may be an array: a sample that is not one number.",
   "cases": [
     {
       "name": "reduction: max({*})",
@@ -2526,6 +2526,455 @@
         }
       },
       "value": "Open",
+      "severity": "NO_ALARM",
+      "vectorInputs": null
+    },
+    {
+      "name": "an array member has no number, its own severity and is connected",
+      "expression": "nansum({*}) + 100 * sum(connected({*})) + 1000 * max(severity({*}))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1305.0,
+      "severity": "MINOR",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "an array member makes a value reduction a type error",
+      "expression": "max({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "an array read as a plain value is a type error",
+      "expression": "severity({a}) + {a}",
+      "bindings": {
+        "a": "DEV:B"
+      },
+      "channels": {
+        "DEV:B": {
+          "value": [
+            1.0,
+            2.0
+          ],
+          "severity": 1
+        }
+      },
+      "error": "type_error"
+    },
+    {
+      "name": "numeric text of a member is its number",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "5",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 10.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "numeric text with an exponent and spaces is its number",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": " 1e2 ",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 105.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "text that is not a decimal number has no number",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "0x10",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "empty text has no number",
+      "expression": "nansum({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": "",
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 5.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "ptp: largest minus smallest",
+      "expression": "ptp({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 3.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "var: population variance",
+      "expression": "var({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.5555555555555556,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "std: population standard deviation",
+      "expression": "std({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 1.247219128924647,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "clip: each member into a range",
+      "expression": "sum(clip({*}, 2, 3))",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "value": 7.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 3,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "std over a member without a value names it",
+      "expression": "std({*})",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "down": true
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "error": "input_missing",
+      "detail": "PVs not available: ['DEV:B']"
+    },
+    {
+      "name": "more members than the cap is refused",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:0",
+        "1": "DEV:1",
+        "2": "DEV:2",
+        "3": "DEV:3",
+        "4": "DEV:4",
+        "5": "DEV:5"
+      },
+      "channels": {
+        "DEV:0": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:2": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:3": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:4": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:5": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 5,
+      "error": "invalid_spec"
+    },
+    {
+      "name": "as many members as the cap evaluates",
+      "expression": "sum({*})",
+      "bindings": {
+        "0": "DEV:0",
+        "1": "DEV:1",
+        "2": "DEV:2",
+        "3": "DEV:3",
+        "4": "DEV:4"
+      },
+      "channels": {
+        "DEV:0": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:1": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:2": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:3": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:4": {
+          "value": 1.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 5,
+      "value": 5.0,
+      "severity": "NO_ALARM",
+      "vectorInputs": {
+        "count": 5,
+        "missing": [],
+        "more": 0
+      }
+    },
+    {
+      "name": "the cap does not count plain tokens",
+      "expression": "{0} + {1} + {2}",
+      "bindings": {
+        "0": "DEV:A",
+        "1": "DEV:B",
+        "2": "DEV:C"
+      },
+      "channels": {
+        "DEV:A": {
+          "value": 1.0,
+          "severity": 0
+        },
+        "DEV:B": {
+          "value": 2.0,
+          "severity": 0
+        },
+        "DEV:C": {
+          "value": 4.0,
+          "severity": 0
+        }
+      },
+      "maxVectorInputs": 1,
+      "value": 7.0,
       "severity": "NO_ALARM",
       "vectorInputs": null
     }
