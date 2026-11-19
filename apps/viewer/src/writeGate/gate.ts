@@ -744,7 +744,14 @@ export function createWriteGate(
           options?.stopUnlessConfirmed === true,
           options?.check
         );
-        toast(summarize(outcomes, n, options?.nameStopped === true ? listed : undefined));
+        const summary = summarize(outcomes, n, options?.nameStopped === true ? listed : undefined);
+        // One write of an item chosen by its index: the toast names the item.
+        const chosen = n === 1 && listed.length === 1 ? listed[0].chosen : undefined;
+        toast(
+          summary !== null && chosen !== undefined
+            ? { ...summary, text: `${summary.text}: ${chosen}` }
+            : summary
+        );
         return outcomes;
       } finally {
         release();

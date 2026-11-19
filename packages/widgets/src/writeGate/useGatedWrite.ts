@@ -45,8 +45,14 @@ export interface GatedWrite {
    * state key on it, so a value that was not written is not left on screen.
    */
   resetKey: number;
-  /** One write as one run; `entered` is the text `value` was parsed from, for the dialog. */
-  write(value: WriteValue, options?: { entered?: string }): Promise<GatedWriteResult>;
+  /**
+   * One write as one run; `entered` is the text `value` was parsed from,
+   * `chosen` the text of the item whose index `value` is, for the dialog.
+   */
+  write(
+    value: WriteValue,
+    options?: { entered?: string; chosen?: string }
+  ): Promise<GatedWriteResult>;
   /**
    * A momentary press at pointerdown. With confirmation on (the gate's, or
    * the widget asking), `[press, release]`
@@ -155,7 +161,10 @@ export function useGatedWrite(handle: WritableHandle, options?: GatedWriteOption
   }, []);
 
   const write = useCallback(
-    async (value: WriteValue, options?: { entered?: string }): Promise<GatedWriteResult> => {
+    async (
+      value: WriteValue,
+      options?: { entered?: string; chosen?: string }
+    ): Promise<GatedWriteResult> => {
       const { gate, handle: h, asks } = latest.current;
       if (!h.address) return 'skipped';
       const g = gateFor(gate, h.address);
@@ -163,12 +172,10 @@ export function useGatedWrite(handle: WritableHandle, options?: GatedWriteOption
         h.put(value);
         return 'passthrough';
       }
-      const entered = options?.entered;
-      const result = await runGate(
-        g,
-        [entered === undefined ? { pv: h.address, value } : { pv: h.address, value, entered }],
-        asks ? { confirm: true } : undefined
-      );
+      const request: WriteRequest = { pv: h.address, value };
+      if (options?.entered !== undefined) request.entered = options.entered;
+      if (options?.chosen !== undefined) request.chosen = options.chosen;
+      const result = await runGate(g, [request], asks ? { confirm: true } : undefined);
       settle(result);
       return result;
     },

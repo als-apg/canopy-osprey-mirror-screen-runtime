@@ -1,4 +1,4 @@
-import { useState, useCallback, useLayoutEffect, useRef } from 'react';
+import { useState, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   TextInput,
@@ -935,6 +935,8 @@ function enumItems(choices: readonly string[] | undefined): EnumItem[] {
 
 /** Why a dropdown with no stated items and no enum strings from its channel is inert. */
 const NO_CHOICES = 'The channel states no choices';
+const NOT_CONNECTED = 'The channel is not connected';
+const NO_DATA = 'No data from the channel yet';
 
 /**
  * PVDropdown — Carbon Dropdown bound to PV. With items stated by the screen
@@ -986,10 +988,19 @@ function StatedDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
 /** A dropdown over its channel's enum strings; it shows the live value, never a choice not yet written. */
 function EnumDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
-  const items = enumItems(pv.enumChoices);
+  // One list while the strings stay the same: every sample brings a new
+  // array, and an open list must not be rebuilt under the operator.
+  const strings = JSON.stringify(pv.enumChoices ?? []);
+  const items = useMemo(() => enumItems(JSON.parse(strings) as string[]), [strings]);
   const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  // Nothing to offer: the reason is the cause, not always the channel's list.
+  const nothing = !pv.connected
+    ? NOT_CONNECTED
+    : pv.value === undefined || pv.value === null
+      ? NO_DATA
+      : NO_CHOICES;
   const inert = useInert(
-    ownInertReason(gated, pv.address) ?? (items.length === 0 ? NO_CHOICES : null)
+    ownInertReason(gated, pv.address) ?? (items.length === 0 ? nothing : null)
   );
   const boxRef = useRef<HTMLDivElement | null>(null);
   useInertOnInner(boxRef, 'button', inert);
@@ -1015,7 +1026,12 @@ function EnumDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
         disabled={!pv.connected && !!props.pvName}
         readOnly={inert.inert}
         onChange={({ selectedItem }: { selectedItem: EnumItem | null }) => {
-          if (!isEditing && !inert.inert && selectedItem) void gated.write(selectedItem.write);
+          if (isEditing || inert.inert || !selectedItem) return;
+          // An index alone would not say which item it is.
+          void gated.write(
+            selectedItem.write,
+            typeof selectedItem.write === 'number' ? { chosen: selectedItem.text } : undefined
+          );
         }}
       />
       {inert.note}

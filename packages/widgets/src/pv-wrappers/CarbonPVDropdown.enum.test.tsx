@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
 import type { WriteGateService, WriteRequest } from '../writeGate/types.js';
 
-let pvState: { connected: boolean; value: number | string; enumChoices?: string[] };
+let pvState: { connected: boolean; value: number | string | undefined; enumChoices?: string[] };
 
 vi.mock('@slaclab/canopy-react', () => ({
   usePV: (address?: string) => ({
@@ -143,7 +143,10 @@ describe('dropdown of an enum channel', () => {
     fireEvent.click(screen.getByRole('combobox'));
     fireEvent.click(screen.getByRole('option', { name: 'Fault' }));
     await act(async () => {});
-    expect(runs).toEqual([[{ pv: 'SIM:MODE', value: 3 }], [{ pv: 'SIM:MODE', value: 'Fault' }]]);
+    expect(runs).toEqual([
+      [{ pv: 'SIM:MODE', value: 3, chosen: 'On (3)' }],
+      [{ pv: 'SIM:MODE', value: 'Fault' }],
+    ]);
   });
 });
 
@@ -165,10 +168,58 @@ describe('dropdown with nothing to offer', () => {
     });
   }
 
+  it('says that the channel is not connected, not that it states no choices', () => {
+    pvState = { connected: false, value: 0 };
+    show({});
+    expect(screen.getByRole('combobox').getAttribute('title')).toBe('The channel is not connected');
+  });
+
+  it('says that no data has come yet from a connected channel', () => {
+    pvState = { connected: true, value: undefined };
+    show({});
+    const box = screen.getByRole('combobox');
+    expect(box.getAttribute('aria-disabled')).toBe('true');
+    expect(box.getAttribute('title')).toBe('No data from the channel yet');
+  });
+
   it('is inert too when every enum string of the channel is empty', () => {
     pvState = { connected: true, value: 0, enumChoices: ['', ''] };
     show({});
     expect(screen.getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('an open list of enum strings', () => {
+  it('keeps its highlighted row through a value update', () => {
+    const view = show({});
+    const box = screen.getByRole('combobox');
+    fireEvent.click(box);
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    const highlighted = () =>
+      screen
+        .getAllByRole('option')
+        .filter((o) => o.className.includes('highlighted'))
+        .map((o) => o.textContent);
+    const before = highlighted();
+    expect(before).toHaveLength(1);
+
+    // A new sample: the same strings in a new array, another value.
+    pvState = { connected: true, value: 0, enumChoices: ['Off', 'Standby', 'On'] };
+    const Dropdown = W.CarbonPVDropdown as React.FC<WidgetRendererProps>;
+    view.rerender(
+      <WriteGate.Provider value={gate}>
+        <Dropdown
+          id="d"
+          type="PVDropdown"
+          layout={{ x: 0, y: 0, width: 160, height: 32 }}
+          props={{ pvName: 'SIM:MODE' }}
+          isSelected={false}
+          isEditing={false}
+        />
+      </WriteGate.Provider>
+    );
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    expect(highlighted()).toEqual(before);
   });
 });
 

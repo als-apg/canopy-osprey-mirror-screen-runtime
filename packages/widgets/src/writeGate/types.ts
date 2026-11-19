@@ -22,6 +22,12 @@ export interface WriteRequest {
    */
   entered?: string;
   /**
+   * The text of the item the operator chose when `value` is its index (an
+   * enum string the channel has more than once), for the confirmation dialog
+   * and the toast to show in place of the bare index. It is never sent.
+   */
+  chosen?: string;
+  /**
    * A momentary button's release. It is sent iff the write before it resolved
    * `confirmed`, `mismatch`, `unconfirmed` or `unknown` — unlike every other
    * write, an `unknown` press does not stop it, so a held output is not left

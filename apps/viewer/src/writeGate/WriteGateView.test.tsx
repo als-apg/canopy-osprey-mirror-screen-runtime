@@ -14,7 +14,10 @@ import type {
   WriteOutcomeKind,
 } from '@slaclab/canopy-client';
 
-let pvState: Record<string, { connected: boolean; value: number | string }> = {};
+let pvState: Record<
+  string,
+  { connected: boolean; value: number | string; enumChoices?: string[] }
+> = {};
 const directPuts: Array<[string, unknown]> = [];
 
 vi.mock('@slaclab/canopy-react', async (importOriginal) => ({
@@ -24,6 +27,7 @@ vi.mock('@slaclab/canopy-react', async (importOriginal) => ({
     connected: (address && pvState[address]?.connected) || false,
     value: address ? pvState[address]?.value : undefined,
     displayValue: address ? String(pvState[address]?.value ?? '') : '',
+    enumChoices: address ? pvState[address]?.enumChoices : undefined,
     severity: 0,
     precision: 0,
     put: (v: unknown) => {
@@ -347,6 +351,21 @@ describe('the dialog', () => {
     expect(screen.getByTestId('canopy-write-dialog').textContent).toContain('1000 (entered "1e3")');
     await answer('canopy-write-confirm');
     expect(sent).toEqual([['SIM:SP', 1000]]);
+  });
+
+  it('shows the item chosen when its index is written, in the dialog and in the toast', async () => {
+    Element.prototype.scrollIntoView = () => {};
+    pvState['SIM:MODE'] = { connected: true, value: 0, enumChoices: ['Off', 'On', 'Fault', 'On'] };
+    renderWidget(W.CarbonPVDropdown, { pvName: 'SIM:MODE' });
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'On (3)' }));
+    await flush();
+    const cell = screen.getByTestId('canopy-write-dialog').textContent ?? '';
+    expect(cell).toContain('On (3)');
+    expect(cell).not.toContain('entered');
+    await answer('canopy-write-confirm');
+    expect(sent).toEqual([['SIM:MODE', 3]]);
+    expect(toasts()).toEqual([['confirmed', 'written: On (3)']]);
   });
 
   it('shows only the value when it reads as it was typed', async () => {

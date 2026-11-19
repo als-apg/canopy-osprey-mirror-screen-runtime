@@ -90,6 +90,8 @@ function formatValue(value: WriteRequest['value']): string {
 
 /** The value cell: the value, and the text it was typed as when that reads differently. */
 function formatWrite(w: WriteRequest): string {
+  // An item chosen by its index: the item's text says which one.
+  if (w.chosen !== undefined) return w.chosen;
   const value = formatValue(w.value);
   const entered = w.entered?.trim();
   return entered === undefined || entered === value
