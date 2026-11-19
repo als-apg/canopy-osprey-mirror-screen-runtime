@@ -305,7 +305,8 @@ class Parser {
   /**
    * `label({token})`: the enum string of the channel's value. A value that
    * is text already is its own label; a value the channel has no enum string
-   * for, and any value of a channel without enum strings, has the empty one.
+   * for (a fraction, a negative number, a boolean), and any value of a channel
+   * without enum strings, has the empty one.
    */
   private label(token: string): string {
     if (!this.bindings.has(token)) {
@@ -313,9 +314,9 @@ class Parser {
     }
     const value = this.bindings.get(token)!;
     if (typeof value === 'string') return value;
-    const index = typeof value === 'boolean' ? Number(value) : value;
-    if (index === null || !Number.isInteger(index)) return '';
-    return this.status?.get(token)?.labels?.[index] ?? '';
+    // A flag is not an index; a fraction and a negative number index nothing.
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return '';
+    return this.status?.get(token)?.labels?.[value] ?? '';
   }
 
   /** A call of a function of the namespace, after the name and `(`. */
