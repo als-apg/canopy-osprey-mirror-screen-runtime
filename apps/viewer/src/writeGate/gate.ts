@@ -761,6 +761,10 @@ export function createWriteGate(
         // run() never rejects: a fault in the backend is nothing known written.
         return [localOutcome(clientOutcome('client-unknown'))];
       }),
+    // A run refused before it reached the gate: its one toast. Sends nothing.
+    refused(text) {
+      if (active) toast({ outcome: 'refused', text });
+    },
     writes: () => statement().state,
     subscribeWrites(listener) {
       // A heartbeat (first one seen, socket close) moves the state as much as

@@ -897,6 +897,19 @@ describe("the dialog's current values", () => {
   });
 });
 
+describe('a run refused before it reached the gate', () => {
+  it('is shown as a toast where write results are', async () => {
+    renderWidget(W.CarbonPVButton, { controlPV: 'SIM:CMD', pressValue: '2' });
+    act(() => gate.refused?.('SIM:A: staged with different values (1 and 2); nothing written'));
+    await flush();
+    expect(toasts()).toEqual([
+      ['refused', 'SIM:A: staged with different values (1 and 2); nothing written'],
+    ]);
+    expect(dialogs()).toHaveLength(0);
+    expect(sent).toEqual([]);
+  });
+});
+
 describe('pinLiveToasts', () => {
   const isScreen = (key: string) => !key.startsWith('@');
 
