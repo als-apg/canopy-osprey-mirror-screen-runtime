@@ -52,10 +52,11 @@ What the renderer does:
   have no value); the node the formula feeds shows it on hover when it takes
   the pointer. An error names the inputs it failed on: `PVs not available` for
   inputs with no sample or a lost connection, `PVs without a number` for
-  connected inputs whose sample is no number (NaN, text, an array, empty). A `nanmax` / `nansum` roll-up whose members are all
-  without a number reads as the quiet state (nothing was left to count), so a
-  roll-up light is written with `severity()` and `connected()`, which count a
-  missing member as INVALID and not connected. A node never shows a better
+  connected inputs whose sample is no number (NaN, text, an array, empty). `nanmax`, `nanmin`, `nanmean` and `nansum` leave out members without a
+  number, but with no member left they do not answer: the formula fails with
+  `input_missing`, also inside a comparison or a conditional (`count` still
+  answers, with the number of members). A roll-up light is still best written with `severity()` and
+  `connected()`, which count a missing member as INVALID. A node never shows a better
   state than its formula stands behind: before the first result it draws its authored props; after any
   error, or with no answer within `formulaStartTimeoutMs()` (3 s), a rule
   gives no output, the node draws the disconnected cue, and the hover says

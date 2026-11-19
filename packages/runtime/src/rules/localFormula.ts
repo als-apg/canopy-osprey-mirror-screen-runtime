@@ -252,6 +252,12 @@ export function evaluateStatusFormula(
     (inputs.vectors.get(token) ?? []).filter((key) => Number.isNaN(number(key)))
   );
   if (numberless.length > 0) throw unusableInputs(numberless);
+  // A nan reduction leaves out members without a number, but with none left
+  // it knows nothing: it does not answer, wherever it sits in the expression.
+  for (const token of inputs.reduced) {
+    const members = inputs.vectors.get(token) ?? [];
+    if (members.every((key) => Number.isNaN(number(key)))) throw unusableInputs(members);
+  }
   const value = evaluatePyExpr(spec.expression, values, status);
 
   if (typeof value === 'number' && !Number.isFinite(value)) {

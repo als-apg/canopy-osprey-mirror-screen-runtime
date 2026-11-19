@@ -66,6 +66,14 @@ function unguard(...values: readonly Val[]): void {
   }
 }
 
+/**
+ * The vector tokens of the running dry run whose values go into `nanmax`,
+ * `nanmin`, `nansum` or `nanmean`: such a reduction has nothing to answer
+ * with when no member of the token has a number.
+ */
+let reduced: Set<string> | null = null;
+const NAN_REDUCTIONS = new Set(['nanmax', 'nanmin', 'nansum', 'nanmean']);
+
 const GUARDED_REDUCTIONS = new Set(['nanmax', 'nanmin', 'nansum', 'nanmean', 'count']);
 const GUARDED_FUNCTIONS = new Set(
   'abs sqrt exp log log10 ln floor ceil radians degrees sin cos tan asin acos atan sinh cosh tanh'.split(
@@ -398,6 +406,9 @@ class Parser {
     const reduce = REDUCTIONS[name];
     if (reduce && args.length === 1 && (first instanceof Vec || VECTOR_ONLY.has(name))) {
       if (!GUARDED_REDUCTIONS.has(name)) unguard(first!);
+      if (NAN_REDUCTIONS.has(name) && first instanceof Vec) {
+        for (const token of first.tokens) reduced?.add(token);
+      }
       const data = first instanceof Vec ? first.data : [asNumber(first!, `${name}()`)];
       const value = reduce(data);
       return first instanceof Vec && first.bool && KEEPS_BOOL.has(name) ? value !== 0 : value;
@@ -650,18 +661,20 @@ export function evaluatePyExpr(
 function unguardedUses(
   expression: string,
   keys: readonly string[]
-): { tokens: readonly string[]; fault?: PyExprError } {
-  const before = unguarded;
+): { tokens: readonly string[]; reduced: readonly string[]; fault?: PyExprError } {
+  const before = [unguarded, reduced] as const;
   const trace = new Set<string>();
+  const nan = new Set<string>();
   unguarded = trace;
+  reduced = nan;
   try {
     evaluatePyExpr(expression, new Map(keys.map((key) => [key, 1])));
-    return { tokens: [...trace] };
+    return { tokens: [...trace], reduced: [...nan] };
   } catch (error) {
     if (!(error instanceof PyExprError)) throw error;
-    return { tokens: [...trace], fault: error };
+    return { tokens: [...trace], reduced: [...nan], fault: error };
   } finally {
-    unguarded = before;
+    [unguarded, reduced] = before;
   }
 }
 
@@ -677,6 +690,8 @@ export interface PyExprInputs {
   readonly status: boolean;
   /** The vector tokens with a use of their values that a member without a number fails. */
   readonly unguarded: readonly string[];
+  /** The vector tokens that go into `nanmax`, `nanmin`, `nansum` or `nanmean`. */
+  readonly reduced: readonly string[];
   /** An error of the expression itself, whatever the values. */
   readonly fault?: PyExprError;
 }
@@ -725,13 +740,14 @@ export function analyzePyExpr(expression: string, keys: readonly string[]): PyEx
     if (!inCall || before.text === 'label') strict.add(t.text);
   });
   const members = [...new Set([...vectors.values()].flat())];
-  const uses = vectors.size > 0 ? unguardedUses(expression, keys) : { tokens: [] };
+  const uses = vectors.size > 0 ? unguardedUses(expression, keys) : { tokens: [], reduced: [] };
   return {
     vectors,
     members,
     strict,
     status: status || vectors.size > 0,
     unguarded: uses.tokens,
+    reduced: uses.reduced,
     ...(uses.fault ? { fault: uses.fault } : {}),
   };
 }
