@@ -1,0 +1,3457 @@
+{
+  "apps/viewer/e2e/fixtures/drafts/fixture-mode.screen.json/formulas/0": {
+    "kind": "scalar",
+    "expression": "'wide' if ({A} + {B}) > 5 else 'narrow'",
+    "bindings": {
+      "A": "${P}:W1",
+      "B": "${P}:W2"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/fixture-mode.screen.json/formulas/1": {
+    "kind": "scalar",
+    "expression": "{0} / {1} * 100",
+    "bindings": {
+      "0": "${P}:MEM_MAX",
+      "1": "${P}:MEM_FREE"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/fixture-mode.screen.json/root/children/4/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "text",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 5) else (1 if ({0} > 2) else (-1))",
+      "bindings": {
+        "0": "${P}:LEVEL"
+      }
+    },
+    "values": [
+      "LADDER-HIGH",
+      "LADDER-MID"
+    ],
+    "default": "LADDER-DEFAULT"
+  },
+  "apps/viewer/e2e/fixtures/drafts/fixture-mode.screen.json/root/children/5/rules/0": {
+    "kind": "formula",
+    "targetProperty": "text",
+    "spec": {
+      "kind": "scalar",
+      "expression": "'wide' if ({A} + {B}) > 5 else 'narrow'",
+      "bindings": {
+        "A": "${P}:W1",
+        "B": "${P}:W2"
+      }
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/hover-panel.screen.json/root/children/1/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "outlineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} >= 2) else (1 if ({0} >= 1) else (-1))",
+      "bindings": {
+        "0": "HOV:SEC:ALARM"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#da1e28",
+        "fallbackDark": "#ff8389"
+      },
+      {
+        "$role": "MINOR",
+        "fallback": "#f1c21b"
+      }
+    ],
+    "default": {
+      "$role": "OK",
+      "fallback": "#24a148",
+      "fallbackDark": "#42be65"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/role-screen.screen.json/root/children/1/rules/0": {
+    "kind": "static",
+    "targetProperty": "backgroundColor",
+    "value": {
+      "$role": "OK",
+      "fallback": "#24a148",
+      "fallbackDark": "#42be65"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/93/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R000:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#80f9a1",
+        "fallbackDark": "#598e5d"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#738b96",
+      "fallbackDark": "#b66aad"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/96/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R001:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#0ec235",
+        "fallbackDark": "#c1686f"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#ec0e75",
+      "fallbackDark": "#6a2254"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/99/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R002:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#3d35b4",
+        "fallbackDark": "#f5050a"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#a06c7e",
+      "fallbackDark": "#916c8b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/102/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R003:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#db9444",
+        "fallbackDark": "#14e800"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#56b062",
+      "fallbackDark": "#d8849b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/105/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R004:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#6f66e5",
+        "fallbackDark": "#32edd4"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#96545c",
+      "fallbackDark": "#df682f"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/108/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SYN:R005:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "SYN_Accent_B",
+        "fallback": "#7bf7d2",
+        "fallbackDark": "#c1bb82"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#b7e208",
+      "fallbackDark": "#29c143"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/111/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R006:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#afcdf2",
+        "fallbackDark": "#1ba265"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#180b40",
+        "fallbackDark": "#ff72b1"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#69cdb7",
+      "fallbackDark": "#34ee2e"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/114/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R007:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#2aaf47",
+        "fallbackDark": "#dc48e0"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#265db8",
+        "fallbackDark": "#e9b8ba"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#c53320",
+      "fallbackDark": "#a92058"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/117/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R008:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#ccf281",
+        "fallbackDark": "#cfe676"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#44d1ed",
+        "fallbackDark": "#29cf3a"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#902a25",
+      "fallbackDark": "#679896"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/120/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R009:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Grid",
+        "fallback": "#300eee",
+        "fallbackDark": "#f2d9f2"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#3c8a4f",
+        "fallbackDark": "#ae4b4b"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#169106",
+      "fallbackDark": "#295b61"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/123/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R010:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#55a8f4",
+        "fallbackDark": "#32753f"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#fc3889",
+        "fallbackDark": "#65e09f"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#ff8bed",
+      "fallbackDark": "#281707"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/126/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R011:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#7be1cd",
+        "fallbackDark": "#bd7000"
+      },
+      {
+        "$role": "On",
+        "fallback": "#8f28df",
+        "fallbackDark": "#e4aebd"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#96e299",
+      "fallbackDark": "#994c9c"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/129/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R012:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#e317bb",
+        "fallbackDark": "#87e4f5"
+      },
+      {
+        "$role": "Attention",
+        "fallback": "#1a0b9e",
+        "fallbackDark": "#93d0e4"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#ac473e",
+      "fallbackDark": "#fb2a67"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/132/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R013:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#80e242",
+        "fallbackDark": "#c20343"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#562f70",
+        "fallbackDark": "#d847c7"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#eaaaaf",
+      "fallbackDark": "#2fcb67"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/135/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R014:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#b45466",
+        "fallbackDark": "#1b6a0f"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#35e8e7",
+        "fallbackDark": "#7b22c8"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#40e980",
+      "fallbackDark": "#f472b0"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/138/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R015:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#859f46",
+        "fallbackDark": "#b8c648"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#cb3fd4",
+        "fallbackDark": "#6feea9"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#6efe59",
+      "fallbackDark": "#7d2701"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/141/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R016:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#2bc1d5",
+        "fallbackDark": "#9820b1"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#c6ea7f",
+        "fallbackDark": "#d7c986"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#e9c626",
+      "fallbackDark": "#022cf4"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/144/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R017:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#6455d6",
+        "fallbackDark": "#42717d"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#9bb94e",
+        "fallbackDark": "#79ee8b"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#c59954",
+      "fallbackDark": "#95da22"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/147/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R018:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Attention",
+        "fallback": "#b0ef80",
+        "fallbackDark": "#1fe120"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#e917fb",
+        "fallbackDark": "#7da1f8"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#697d29",
+      "fallbackDark": "#c69c63"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/150/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R019:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#1b13aa",
+        "fallbackDark": "#85609d"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#b6f2bf",
+        "fallbackDark": "#58db84"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#f3bd97",
+      "fallbackDark": "#ed1c0d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/153/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R020:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#dcd586",
+        "fallbackDark": "#a6d097"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#2ec91a",
+        "fallbackDark": "#d03e32"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#683476",
+      "fallbackDark": "#0a820b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/156/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R021:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#16696f",
+        "fallbackDark": "#2574df"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#627e1f",
+        "fallbackDark": "#0df5fc"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#062508",
+      "fallbackDark": "#96d156"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/159/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R022:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#5bdb81",
+        "fallbackDark": "#14d4ec"
+      },
+      {
+        "$role": "On",
+        "fallback": "#c935e3",
+        "fallbackDark": "#48c982"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#7ad1a6",
+      "fallbackDark": "#242e5e"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/162/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R023:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#f49c8d",
+        "fallbackDark": "#9dde64"
+      },
+      {
+        "$role": "On",
+        "fallback": "#2a7e7d",
+        "fallbackDark": "#09bd92"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#59da9f",
+      "fallbackDark": "#db25f5"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/165/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R024:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#c34345",
+        "fallbackDark": "#17c44f"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#a97c55",
+        "fallbackDark": "#23ea0a"
+      }
+    ],
+    "default": {
+      "$role": "Grid",
+      "fallback": "#5602b5",
+      "fallbackDark": "#295e73"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/168/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R025:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#c5f55d",
+        "fallbackDark": "#6900a0"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#87e879",
+        "fallbackDark": "#ebd4a7"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#7fa791",
+      "fallbackDark": "#fadbaf"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/171/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R026:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "STOP",
+        "fallback": "#f4745d",
+        "fallbackDark": "#cca6cd"
+      },
+      {
+        "$role": "STOP",
+        "fallback": "#ed3f7a",
+        "fallbackDark": "#8e65dd"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#529190",
+      "fallbackDark": "#49ee02"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/174/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R027:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#6efc7d",
+        "fallbackDark": "#789df1"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#30d3ca",
+        "fallbackDark": "#bc50fe"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#3247d0",
+      "fallbackDark": "#2b109d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/177/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R028:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#0a2f3f",
+        "fallbackDark": "#c1565c"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#303362",
+        "fallbackDark": "#9bbf7b"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#96c678",
+      "fallbackDark": "#0c32be"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/180/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R029:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#028905",
+        "fallbackDark": "#6e8da1"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#5dabbd",
+        "fallbackDark": "#8d6bf3"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#b02805",
+      "fallbackDark": "#1166a3"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/183/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R030:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#0b12ba",
+        "fallbackDark": "#d37c67"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#04c896",
+        "fallbackDark": "#34de05"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#9381ce",
+      "fallbackDark": "#b0ef3e"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/186/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R031:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#786927",
+        "fallbackDark": "#97d6a0"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#d247b3",
+        "fallbackDark": "#a4fc00"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#125b03",
+      "fallbackDark": "#74c297"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/189/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R032:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "STOP",
+        "fallback": "#f58e61",
+        "fallbackDark": "#9631f9"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#46baba",
+        "fallbackDark": "#11ae36"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#693943",
+      "fallbackDark": "#dc13df"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/192/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R033:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Grid",
+        "fallback": "#4916d9",
+        "fallbackDark": "#e1c742"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#14254e",
+        "fallbackDark": "#b0edea"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#26eb20",
+      "fallbackDark": "#a3e0b3"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/195/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R034:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#7560ed",
+        "fallbackDark": "#667f5f"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#5acb89",
+        "fallbackDark": "#799240"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#3f9fac",
+      "fallbackDark": "#586827"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/198/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R035:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#91a22b",
+        "fallbackDark": "#dfb06d"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#a4735e",
+        "fallbackDark": "#fa7a89"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#575034",
+      "fallbackDark": "#7c9404"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/201/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R036:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#ee53e0",
+        "fallbackDark": "#476fc2"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#b74956",
+        "fallbackDark": "#6c5928"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#d8de23",
+      "fallbackDark": "#f32f48"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/204/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R037:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#083c14",
+        "fallbackDark": "#43a412"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#488716",
+        "fallbackDark": "#ebb94c"
+      }
+    ],
+    "default": {
+      "$role": "STOP",
+      "fallback": "#aeba66",
+      "fallbackDark": "#2812fc"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/207/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R038:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#684906",
+        "fallbackDark": "#df73a6"
+      },
+      {
+        "$role": "On",
+        "fallback": "#d5d84d",
+        "fallbackDark": "#0fe99c"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#7e0cf0",
+      "fallbackDark": "#ea2372"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/210/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R039:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#59313d",
+        "fallbackDark": "#078f6a"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#f95cd5",
+        "fallbackDark": "#e14709"
+      }
+    ],
+    "default": {
+      "$role": "Grid",
+      "fallback": "#04e05b",
+      "fallbackDark": "#8042c6"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/213/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R040:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#d668f3",
+        "fallbackDark": "#ee3ee1"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#bd5773",
+        "fallbackDark": "#874356"
+      }
+    ],
+    "default": {
+      "$role": "Attention",
+      "fallback": "#a94c38",
+      "fallbackDark": "#7c377c"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/216/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R041:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#dda9ce",
+        "fallbackDark": "#33467a"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#bc7e16",
+        "fallbackDark": "#fa6880"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#b37db8",
+      "fallbackDark": "#a40e34"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/219/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R042:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#abf733",
+        "fallbackDark": "#90f95c"
+      },
+      {
+        "$role": "STOP",
+        "fallback": "#a82213",
+        "fallbackDark": "#803ba7"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#5aabd3",
+      "fallbackDark": "#3218e7"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/222/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R043:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#1c3c98",
+        "fallbackDark": "#1f94aa"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#01c400",
+        "fallbackDark": "#c32d2c"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#5a9ebc",
+      "fallbackDark": "#d6ee03"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/225/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R044:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#dea7c0",
+        "fallbackDark": "#d01df4"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#e32fff",
+        "fallbackDark": "#d09619"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#d45561",
+      "fallbackDark": "#c64864"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/228/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R045:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#f459fa",
+        "fallbackDark": "#800b44"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#1a2d1a",
+        "fallbackDark": "#5aa64b"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#003347",
+      "fallbackDark": "#b467f9"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/231/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R046:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#5f3791",
+        "fallbackDark": "#26dbf8"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#849188",
+        "fallbackDark": "#3b1270"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#83be56",
+      "fallbackDark": "#5d5f0b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/234/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R047:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#1e08df",
+        "fallbackDark": "#af2217"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#4a43b0",
+        "fallbackDark": "#eba422"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#aae91d",
+      "fallbackDark": "#9da3d4"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/237/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R048:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#145e7c",
+        "fallbackDark": "#a96f34"
+      },
+      {
+        "$role": "On",
+        "fallback": "#edcf36",
+        "fallbackDark": "#a6f6bb"
+      }
+    ],
+    "default": {
+      "$role": "SYN_Accent_A",
+      "fallback": "#506a78",
+      "fallbackDark": "#927657"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/240/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R049:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#957400",
+        "fallbackDark": "#2bb753"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#90011c",
+        "fallbackDark": "#23cdf1"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#fa6222",
+      "fallbackDark": "#463158"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/243/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R050:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#0ca1fc",
+        "fallbackDark": "#78526d"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#11bb93",
+        "fallbackDark": "#eff6fc"
+      }
+    ],
+    "default": {
+      "$role": "SYN_Accent_B",
+      "fallback": "#ddb32a",
+      "fallbackDark": "#25d5fc"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/246/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R051:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#c5e847",
+        "fallbackDark": "#edb68e"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#873cb7",
+        "fallbackDark": "#9d75ec"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#04a077",
+      "fallbackDark": "#946794"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/249/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R052:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#e55202",
+        "fallbackDark": "#679ace"
+      },
+      {
+        "$role": "On",
+        "fallback": "#d86261",
+        "fallbackDark": "#3c0d9f"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#bcb587",
+      "fallbackDark": "#1e484e"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/252/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R053:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#93267f",
+        "fallbackDark": "#cd63f2"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#e3962c",
+        "fallbackDark": "#7981b3"
+      }
+    ],
+    "default": {
+      "$role": "Grid",
+      "fallback": "#c45afa",
+      "fallbackDark": "#2398c6"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/255/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R054:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#b68d9d",
+        "fallbackDark": "#74334d"
+      },
+      {
+        "$role": "SYN_Accent_B",
+        "fallback": "#b43bb8",
+        "fallbackDark": "#ad1aee"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#e98cb8",
+      "fallbackDark": "#5aad7b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/258/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R055:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#81f166",
+        "fallbackDark": "#f91f73"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#1db97b",
+        "fallbackDark": "#e3c076"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#df7c36",
+      "fallbackDark": "#ed8349"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/261/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R056:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#51b59f",
+        "fallbackDark": "#f31bbe"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#ddd72c",
+        "fallbackDark": "#3c8b29"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#73bbce",
+      "fallbackDark": "#ca78ae"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/264/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R057:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#c07484",
+        "fallbackDark": "#a07ce0"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#ac5031",
+        "fallbackDark": "#cf908b"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#d4524d",
+      "fallbackDark": "#1918a9"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/267/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R058:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#72a4c3",
+        "fallbackDark": "#d3371b"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#db34ca",
+        "fallbackDark": "#9382b1"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#49e2d3",
+      "fallbackDark": "#70edce"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/270/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R059:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#d72ba1",
+        "fallbackDark": "#8d8bda"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#cb6b7b",
+        "fallbackDark": "#ef4a42"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#27cc6c",
+      "fallbackDark": "#12da84"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/273/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R060:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#d8684d",
+        "fallbackDark": "#e1729a"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#21da54",
+        "fallbackDark": "#993de2"
+      }
+    ],
+    "default": {
+      "$role": "STOP",
+      "fallback": "#0704e6",
+      "fallbackDark": "#4287f8"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/276/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R061:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#a331b1",
+        "fallbackDark": "#955ba9"
+      },
+      {
+        "$role": "On",
+        "fallback": "#9b9fd3",
+        "fallbackDark": "#3140af"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#14fa30",
+      "fallbackDark": "#98baa7"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/279/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R062:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "STOP",
+        "fallback": "#069ee1",
+        "fallbackDark": "#1ed85c"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#978728",
+        "fallbackDark": "#ef1460"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#34f4fa",
+      "fallbackDark": "#546beb"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/282/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R063:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#e025c0",
+        "fallbackDark": "#565b74"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#22df6c",
+        "fallbackDark": "#871602"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#a044f6",
+      "fallbackDark": "#a62819"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/285/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R064:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#57d9b3",
+        "fallbackDark": "#0c6223"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#1afa9c",
+        "fallbackDark": "#29f14d"
+      }
+    ],
+    "default": {
+      "$role": "SYN_Accent_B",
+      "fallback": "#3a1a43",
+      "fallbackDark": "#d2a5be"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/288/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R065:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#0c75d5",
+        "fallbackDark": "#95c77d"
+      },
+      {
+        "$role": "STOP",
+        "fallback": "#42e4dd",
+        "fallbackDark": "#a172ce"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#fd2cb3",
+      "fallbackDark": "#a46c87"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/291/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R066:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#95c5c2",
+        "fallbackDark": "#b2eba6"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#c059ee",
+        "fallbackDark": "#c376a5"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#198b97",
+      "fallbackDark": "#052842"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/294/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R067:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#2da957",
+        "fallbackDark": "#c19fc9"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#8aeccf",
+        "fallbackDark": "#16f52d"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#75e2ab",
+      "fallbackDark": "#0b20ab"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/297/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R068:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#75f4fd",
+        "fallbackDark": "#c9616a"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#581b11",
+        "fallbackDark": "#4336a7"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#592eb0",
+      "fallbackDark": "#d0b7e6"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/300/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R069:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#99a618",
+        "fallbackDark": "#48daa0"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#4c9a33",
+        "fallbackDark": "#63c7a4"
+      }
+    ],
+    "default": {
+      "$role": "Attention",
+      "fallback": "#b6b81e",
+      "fallbackDark": "#d013f5"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/303/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R070:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#dfe118",
+        "fallbackDark": "#e831e5"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#7bef08",
+        "fallbackDark": "#769d82"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#93efe0",
+      "fallbackDark": "#04b412"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/306/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R071:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#2dd7e7",
+        "fallbackDark": "#379166"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#06b221",
+        "fallbackDark": "#33887c"
+      }
+    ],
+    "default": {
+      "$role": "Grid",
+      "fallback": "#a68c80",
+      "fallbackDark": "#8c80ac"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/309/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R072:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#6eb0c7",
+        "fallbackDark": "#998872"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#d6a168",
+        "fallbackDark": "#717b2a"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#c5793b",
+      "fallbackDark": "#346560"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/312/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R073:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#41dd6b",
+        "fallbackDark": "#e50ab1"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#c217b6",
+        "fallbackDark": "#85e891"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#69dd49",
+      "fallbackDark": "#668202"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/315/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R074:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#324d1c",
+        "fallbackDark": "#df053d"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#3188bf",
+        "fallbackDark": "#3bcf76"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#fc710c",
+      "fallbackDark": "#55f5e0"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/318/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R075:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#693821",
+        "fallbackDark": "#2311e7"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#24e24a",
+        "fallbackDark": "#f4f2e2"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#fbc9ba",
+      "fallbackDark": "#9aaf6d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/321/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R076:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#50e528",
+        "fallbackDark": "#ea3a46"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#f599f9",
+        "fallbackDark": "#08e167"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#8bd589",
+      "fallbackDark": "#4e7156"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/324/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R077:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Attention",
+        "fallback": "#caa558",
+        "fallbackDark": "#281239"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#e67b0a",
+        "fallbackDark": "#a81213"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#94739c",
+      "fallbackDark": "#f36045"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/327/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R078:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#24dda7",
+        "fallbackDark": "#d5abae"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#d18d6d",
+        "fallbackDark": "#46acf8"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#5303d3",
+      "fallbackDark": "#4f2182"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/330/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R079:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#e512ee",
+        "fallbackDark": "#68b96a"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#210187",
+        "fallbackDark": "#0f7d6f"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#94d0fd",
+      "fallbackDark": "#ccc28d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/333/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R080:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#7f788f",
+        "fallbackDark": "#9f2458"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#54e50b",
+        "fallbackDark": "#5427e0"
+      }
+    ],
+    "default": {
+      "$role": "SYN_Accent_B",
+      "fallback": "#406433",
+      "fallbackDark": "#9ac2d9"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/336/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R081:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#2df979",
+        "fallbackDark": "#e6b07f"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#e97d3f",
+        "fallbackDark": "#58a915"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#8b9ed9",
+      "fallbackDark": "#f2bb98"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/339/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R082:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#ecd6fd",
+        "fallbackDark": "#b22cab"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#c5583d",
+        "fallbackDark": "#6e196e"
+      }
+    ],
+    "default": {
+      "$role": "STOP",
+      "fallback": "#c209ed",
+      "fallbackDark": "#08cfbd"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/342/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R083:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#9ba7d4",
+        "fallbackDark": "#f700b5"
+      },
+      {
+        "$role": "On",
+        "fallback": "#3c7601",
+        "fallbackDark": "#c12552"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#82d168",
+      "fallbackDark": "#5cec8f"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/345/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R084:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Grid",
+        "fallback": "#5442a8",
+        "fallbackDark": "#0fbdb6"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#ef2214",
+        "fallbackDark": "#e787cb"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#6112e9",
+      "fallbackDark": "#6a44ff"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/348/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R085:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#2cdb01",
+        "fallbackDark": "#ff02af"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#9d629e",
+        "fallbackDark": "#a5e9ad"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#53f3be",
+      "fallbackDark": "#88a7fa"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/351/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R086:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#10c3e9",
+        "fallbackDark": "#f8cbdc"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#20edd8",
+        "fallbackDark": "#02fea1"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#b40610",
+      "fallbackDark": "#a0af82"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/354/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R087:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#b1baea",
+        "fallbackDark": "#b2bd5f"
+      },
+      {
+        "$role": "On",
+        "fallback": "#839334",
+        "fallbackDark": "#e3c9c9"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#dde056",
+      "fallbackDark": "#28336a"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/357/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R088:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#d856d4",
+        "fallbackDark": "#9f2a6b"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#c7b016",
+        "fallbackDark": "#df52ff"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#d9f682",
+      "fallbackDark": "#47268d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/360/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R089:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#0c3c80",
+        "fallbackDark": "#820d16"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#113320",
+        "fallbackDark": "#7274f2"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#2b49a6",
+      "fallbackDark": "#e3fbc7"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/363/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R090:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "SYN_Accent_B",
+        "fallback": "#7401cb",
+        "fallbackDark": "#7040d8"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#06a3a3",
+        "fallbackDark": "#93a7b9"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#9e8dbb",
+      "fallbackDark": "#752a5d"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/366/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R091:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#b733e0",
+        "fallbackDark": "#2055de"
+      },
+      {
+        "$role": "On",
+        "fallback": "#f3211f",
+        "fallbackDark": "#10f503"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#0c8648",
+      "fallbackDark": "#73e659"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/369/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R092:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#493855",
+        "fallbackDark": "#03b79a"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#81e36c",
+        "fallbackDark": "#c39af0"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#6b3e3f",
+      "fallbackDark": "#848141"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/372/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R093:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#bdd949",
+        "fallbackDark": "#176512"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#916efd",
+        "fallbackDark": "#8a9ee3"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#c14b64",
+      "fallbackDark": "#21f71f"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/375/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R094:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#979ba0",
+        "fallbackDark": "#9fc7bb"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#c91767",
+        "fallbackDark": "#a61725"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#83bfb9",
+      "fallbackDark": "#8b6eb4"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/378/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R095:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#a9f18f",
+        "fallbackDark": "#f47511"
+      },
+      {
+        "$role": "On",
+        "fallback": "#7285f0",
+        "fallbackDark": "#4bb8da"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#3561f1",
+      "fallbackDark": "#b05bb3"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/381/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R096:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Grid",
+        "fallback": "#e471dc",
+        "fallbackDark": "#368739"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#28a50b",
+        "fallbackDark": "#9e1d3d"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#9fe8b3",
+      "fallbackDark": "#3783ba"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/384/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R097:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#160437",
+        "fallbackDark": "#1699b5"
+      },
+      {
+        "$role": "INVALID",
+        "fallback": "#c836be",
+        "fallbackDark": "#588b2a"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#f3a779",
+      "fallbackDark": "#11a522"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/387/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R098:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "On",
+        "fallback": "#a59241",
+        "fallbackDark": "#83448d"
+      },
+      {
+        "$role": "Text",
+        "fallback": "#ed8663",
+        "fallbackDark": "#dfda00"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#43d7b4",
+      "fallbackDark": "#500517"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/390/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R099:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#33b27e",
+        "fallbackDark": "#9bd0ac"
+      },
+      {
+        "$role": "STOP",
+        "fallback": "#a0c815",
+        "fallbackDark": "#ef2cd3"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#3395c1",
+      "fallbackDark": "#d0a7ce"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/393/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R100:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#466e28",
+        "fallbackDark": "#3cb44f"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#9f6db9",
+        "fallbackDark": "#3b5c97"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#254b31",
+      "fallbackDark": "#7f0a2b"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/396/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R101:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#4eaaa9",
+        "fallbackDark": "#3802f3"
+      },
+      {
+        "$role": "On",
+        "fallback": "#8d74b1",
+        "fallbackDark": "#1d8763"
+      }
+    ],
+    "default": {
+      "$role": "On",
+      "fallback": "#713215",
+      "fallbackDark": "#ba7632"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/399/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R102:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#3a8aa2",
+        "fallbackDark": "#607018"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#2e56de",
+        "fallbackDark": "#1e049c"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#d8b5d2",
+      "fallbackDark": "#0afddf"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/402/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R103:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#f5997f",
+        "fallbackDark": "#87a585"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#a8e080",
+        "fallbackDark": "#f78f08"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#082777",
+      "fallbackDark": "#b23262"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/405/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R104:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "MAJOR",
+        "fallback": "#18ac59",
+        "fallbackDark": "#1d2a92"
+      },
+      {
+        "$role": "On",
+        "fallback": "#ca3ca3",
+        "fallbackDark": "#fab823"
+      }
+    ],
+    "default": {
+      "$role": "MAJOR",
+      "fallback": "#06f491",
+      "fallbackDark": "#2c663c"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/408/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "lineColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R105:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "Text",
+        "fallback": "#633f24",
+        "fallbackDark": "#0716a1"
+      },
+      {
+        "$role": "Grid",
+        "fallback": "#95dd2f",
+        "fallbackDark": "#20b482"
+      }
+    ],
+    "default": {
+      "$role": "Text",
+      "fallback": "#fe6af6",
+      "fallbackDark": "#9cc4bb"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/411/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "offColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R106:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#3421e8",
+        "fallbackDark": "#3a00cc"
+      },
+      {
+        "$role": "DISCONNECTED",
+        "fallback": "#39c3e5",
+        "fallbackDark": "#72a057"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#bf18c1",
+      "fallbackDark": "#0f0e25"
+    }
+  },
+  "apps/viewer/e2e/fixtures/drafts/synthetic-large/main.screen.json/root/children/414/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "backgroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if ({0} > 0) else (-1))",
+      "bindings": {
+        "0": "SYN:R107:STAT"
+      }
+    },
+    "values": [
+      {
+        "$role": "INVALID",
+        "fallback": "#87a397",
+        "fallbackDark": "#d2aca7"
+      },
+      {
+        "$role": "MAJOR",
+        "fallback": "#a06acc",
+        "fallbackDark": "#81c044"
+      }
+    ],
+    "default": {
+      "$role": "INVALID",
+      "fallback": "#ce50ff",
+      "fallbackDark": "#25c7b7"
+    }
+  },
+  "apps/viewer/src/test/vacuum-system.screen.json/root/children/0/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "alarmBorder",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (-1)",
+      "bindings": {
+        "0": "${PREFIX}:STATUS:SEV"
+      }
+    },
+    "values": [
+      true
+    ],
+    "default": false
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/formulas/0": {
+    "kind": "scalar",
+    "expression": "{a}+{b}",
+    "bindings": {
+      "a": "${S}:A",
+      "b": "formula://half"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/formulas/1": {
+    "kind": "scalar",
+    "expression": "{0}/2",
+    "bindings": {
+      "0": "${S}:H"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/formulas/2": {
+    "kind": "scalar",
+    "expression": "{0}",
+    "bindings": {
+      "0": "loc://k"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/root/children/5/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "${S}:ALARM"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/root/children/6/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "loc://flag"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/root/children/7/rules/0": {
+    "kind": "formula",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{a}+{b}",
+      "bindings": {
+        "a": "${S}:A",
+        "b": "formula://half"
+      }
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/root/children/8/rules/0": {
+    "kind": "formula",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{0}",
+      "bindings": {
+        "0": "loc://k"
+      }
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/10/docs/ch/top/root/children/9/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if (({half.0}/2) > 0) else (-1)",
+      "bindings": {
+        "half.0": "${S}:H"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/11/docs/um/top/root/children/2/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "UNMAPPED:RULE"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/12/docs/rr/top/root/children/0/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "file",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SEL"
+      }
+    },
+    "values": [
+      "b.screen.json"
+    ],
+    "default": "a.screen.json"
+  },
+  "packages/runtime/src/render/__fixtures__/expand-cases.json/cases/13/docs/hid/top/root/children/2/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "color",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} == 1) else (-1)",
+      "bindings": {
+        "0": "HID:RULE"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": "#000000"
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/formulas/0": {
+    "kind": "scalar",
+    "expression": "{a}+{b}",
+    "bindings": {
+      "a": "${S}:A",
+      "b": "formula://half"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/formulas/1": {
+    "kind": "scalar",
+    "expression": "{0}/2",
+    "bindings": {
+      "0": "${S}:H"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/formulas/2": {
+    "kind": "scalar",
+    "expression": "{0}",
+    "bindings": {
+      "0": "loc://k"
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/root/children/5/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "${S}:ALARM"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/root/children/6/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "loc://flag"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/root/children/7/rules/0": {
+    "kind": "formula",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{a}+{b}",
+      "bindings": {
+        "a": "${S}:A",
+        "b": "formula://half"
+      }
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/root/children/8/rules/0": {
+    "kind": "formula",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{0}",
+      "bindings": {
+        "0": "loc://k"
+      }
+    }
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/10/docs/ch/top/root/children/9/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if (({half.0}/2) > 0) else (-1)",
+      "bindings": {
+        "half.0": "${S}:H"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/11/docs/um/top/root/children/2/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "UNMAPPED:RULE"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": null
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/12/docs/rr/top/root/children/0/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "file",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 0) else (-1)",
+      "bindings": {
+        "0": "SEL"
+      }
+    },
+    "values": [
+      "b.screen.json"
+    ],
+    "default": "a.screen.json"
+  },
+  "packages/runtime/src/render/__fixtures__/expand-vectors.json/cases/13/docs/hid/top/root/children/2/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "color",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} == 1) else (-1)",
+      "bindings": {
+        "0": "HID:RULE"
+      }
+    },
+    "values": [
+      "#ff0000"
+    ],
+    "default": "#000000"
+  },
+  "packages/runtime/test/fixtures/formula-driven.screen.json/formulas/0": {
+    "kind": "scalar",
+    "expression": "{A} + {B}",
+    "bindings": {
+      "A": "${P}:V1",
+      "B": "${P}:V2"
+    }
+  },
+  "packages/runtime/test/fixtures/formula-driven.screen.json/formulas/1": {
+    "kind": "scalar",
+    "expression": "{A} * 2",
+    "bindings": {
+      "A": "${P}:RAW"
+    }
+  },
+  "packages/runtime/test/fixtures/formula-driven.screen.json/root/children/0/rules/0": {
+    "kind": "formula",
+    "targetProperty": "width",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{A} * 2",
+      "bindings": {
+        "A": "${P}:RAW"
+      }
+    }
+  },
+  "packages/runtime/test/fixtures/formula-driven.screen.json/root/children/1/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if (({f-001.A} + {f-001.B}) > {1}) else (-1)",
+      "bindings": {
+        "1": "${P}:THRESHOLD",
+        "f-001.A": "${P}:V1",
+        "f-001.B": "${P}:V2"
+      }
+    },
+    "values": [
+      false
+    ],
+    "default": true
+  },
+  "packages/runtime/test/fixtures/simple.screen.json/formulas/0": {
+    "kind": "scalar",
+    "expression": "{A}+{B}",
+    "bindings": {
+      "A": "${P}:VAL",
+      "B": "${P}:OFFSET"
+    }
+  },
+  "packages/runtime/test/fixtures/simple.screen.json/root/children/0/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "foregroundColor",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (1 if (({sum.A}+{sum.B}) > 100) else (-1))",
+      "bindings": {
+        "0": "${P}:SEVR",
+        "sum.A": "${P}:VAL",
+        "sum.B": "${P}:OFFSET"
+      }
+    },
+    "values": [
+      "#ff0000",
+      "#ffff00"
+    ],
+    "default": "#ffffff"
+  },
+  "packages/runtime/test/fixtures/simple.screen.json/root/children/0/rules/1": {
+    "kind": "formula",
+    "targetProperty": "visible",
+    "spec": {
+      "kind": "scalar",
+      "expression": "{A}+{B}",
+      "bindings": {
+        "A": "${P}:VAL",
+        "B": "${P}:OFFSET"
+      }
+    }
+  },
+  "packages/runtime/test/fixtures/vacuum-system.screen.json/root/children/0/rules/0": {
+    "kind": "ladder",
+    "targetProperty": "alarmBorder",
+    "spec": {
+      "kind": "scalar",
+      "expression": "0 if ({0} > 1) else (-1)",
+      "bindings": {
+        "0": "${PREFIX}:STATUS:SEV"
+      }
+    },
+    "values": [
+      true
+    ],
+    "default": false
+  }
+}

@@ -19,6 +19,9 @@ src/routeTree.gen.ts
 packages/runtime/src/render/__fixtures__/expand-cases.json
 packages/runtime/src/render/__fixtures__/expand-vectors.json
 
+# What the rule compiler gives for every fixture rule, written by packages/runtime/src/rules/ruleCorpus.test.ts; never reformat
+packages/runtime/src/rules/__fixtures__/compiled-corpus.json
+
 # Byte copy of canopy's machine-statement vectors (src/canopy/contracts/heartbeat_vectors.json); never reformat
 apps/viewer/e2e/fixtures/contracts/
 # Byte copies of canopy's collection fixtures (some deliberately malformed); never reformat
