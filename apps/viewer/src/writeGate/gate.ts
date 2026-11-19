@@ -191,9 +191,13 @@ export interface ScreenWriteGate extends WriteGateService {
 /** Outcomes after which the next write of a run is sent. */
 const CONTINUES: ReadonlySet<WriteOutcomeKind> = new Set(['confirmed', 'mismatch', 'unconfirmed']);
 
-/** Whether `next` is sent after `prev` resolved. */
-function continuesAfter(prev: WriteOutcome, next: WriteRequest): boolean {
+/**
+ * Whether `next` is sent after `prev` resolved. A `strict` run (its
+ * `stopUnlessConfirmed` option) goes on after a confirmed write only.
+ */
+function continuesAfter(prev: WriteOutcome, next: WriteRequest, strict = false): boolean {
   if (prev.coalesced) return false;
+  if (strict) return prev.outcome === 'confirmed';
   if (CONTINUES.has(prev.outcome)) return true;
   return next.release === true && prev.outcome === 'unknown';
 }
@@ -213,6 +217,21 @@ function localOutcome(o: SdkWriteOutcome): WriteOutcome {
   };
 }
 
+/** In plain words, whether the value of a write that was not confirmed was sent. */
+function whetherSent(o: WriteOutcome): string {
+  if (o.coalesced) return 'not sent';
+  switch (o.outcome) {
+    case 'mismatch':
+      return 'sent, readback differs';
+    case 'unconfirmed':
+      return 'sent, not confirmed';
+    case 'unknown':
+      return 'may have been sent';
+    default:
+      return 'not sent';
+  }
+}
+
 /**
  * The one summary toast of a run of `n` writes that resolved `outcomes`, or
  * null when none is shown: a single coalesced write (the value that replaced
@@ -220,7 +239,8 @@ function localOutcome(o: SdkWriteOutcome): WriteOutcome {
  * the first non-confirmed write's detail (the "coalesced" text for a
  * coalesced one), with "(k of n written)" when n > 1. With `writes` (the
  * run's writes, for a run that asked to have the channel named), that detail
- * is headed by the channel of the write it belongs to: "<channel>: <detail>".
+ * is headed by the channel of the write it belongs to and whether its value
+ * was sent: "<channel>: not sent; <detail>".
  */
 export function summarize(
   outcomes: readonly WriteOutcome[],
@@ -239,7 +259,10 @@ export function summarize(
     ? { outcome: 'coalesced', text: WRITE_OUTCOME_COALESCED_TOAST }
     : { outcome: stop.outcome, text: stop.detail };
   const channel = first === undefined ? undefined : writes?.[outcomes.indexOf(first)]?.pv;
-  const base = channel === undefined ? said : { ...said, text: `${channel}: ${said.text}` };
+  const base =
+    channel === undefined
+      ? said
+      : { ...said, text: `${channel}: ${whetherSent(stop)}; ${said.text}` };
   if (n <= 1) return base;
   const k = outcomes.filter(counted).length;
   return { ...base, text: `${base.text} (${k} of ${n} written)` };
@@ -567,16 +590,24 @@ export function createWriteGate(
     listed: readonly WriteRequest[],
     tail: Promise<readonly WriteRequest[]> | undefined,
     binding: string | null,
-    confirmed: boolean
+    confirmed: boolean,
+    strict: boolean
   ): Promise<{ outcomes: WriteOutcome[]; n: number }> {
     const outcomes: WriteOutcome[] = [];
     let n = listed.length;
     let prev: WriteOutcome | null = null;
     const sendOne = async (w: WriteRequest): Promise<boolean> => {
-      if (prev !== null && !continuesAfter(prev, w)) return false;
+      if (prev !== null && !continuesAfter(prev, w, strict)) return false;
       const options: SubmitOptions = { origin: { ...origin }, binding };
       if (confirmed) options.confirmed = true;
-      const o = localOutcome(await backend.submit(w.pv, w.value, options));
+      // A backend that throws is one write of unknown outcome: the outcomes
+      // already known stay known, and the stop rule decides what follows.
+      let o: WriteOutcome;
+      try {
+        o = localOutcome(await backend.submit(w.pv, w.value, options));
+      } catch {
+        o = localOutcome(clientOutcome('client-unknown'));
+      }
       outcomes.push(o);
       prev = o;
       return true;
@@ -587,7 +618,7 @@ export function createWriteGate(
     if (tail !== undefined) {
       // Wait for the tail only when a release could still follow.
       const last: WriteOutcome | null = prev;
-      if (last !== null && !continuesAfter(last, { pv: '', value: 0, release: true })) {
+      if (last !== null && !continuesAfter(last, { pv: '', value: 0, release: true }, strict)) {
         return { outcomes, n };
       }
       let more: readonly WriteRequest[];
@@ -655,7 +686,13 @@ export function createWriteGate(
         await previous;
       }
       try {
-        const { outcomes, n } = await send(listed, tail, binding, dialog);
+        const { outcomes, n } = await send(
+          listed,
+          tail,
+          binding,
+          dialog,
+          options?.stopUnlessConfirmed === true
+        );
         toast(summarize(outcomes, n, options?.nameStopped === true ? listed : undefined));
         return outcomes;
       } finally {

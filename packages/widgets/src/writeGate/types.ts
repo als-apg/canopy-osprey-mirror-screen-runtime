@@ -45,11 +45,19 @@ export interface WriteRunOptions {
    */
   confirm?: boolean;
   /**
-   * Name the channel in the run's summary when a write was not confirmed:
-   * "<channel>: <what happened> (k of n written)". For a run whose writes the
-   * operator did not just type one by one (a whole scope of staged values).
+   * Name the channel in the run's summary when a write was not confirmed, and
+   * say whether its value was sent: "<channel>: not sent; <detail> (k of n
+   * written)", "<channel>: sent, readback differs; <detail> ...". For a run
+   * whose writes the operator did not just type one by one (a whole scope of
+   * staged values).
    */
   nameStopped?: boolean;
+  /**
+   * Stop the run at the first write that is not confirmed, a readback
+   * mismatch and an unconfirmed write included. Without it a run goes on
+   * after those two, as a click's writes always have.
+   */
+  stopUnlessConfirmed?: boolean;
 }
 
 /** `'declined'`, or the outcome of each write that was sent, in order. */

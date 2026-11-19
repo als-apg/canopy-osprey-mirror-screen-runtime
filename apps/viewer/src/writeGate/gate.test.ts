@@ -294,7 +294,7 @@ describe('gate.run — a run that asks to have the stopping channel named', () =
     expect(result).toHaveLength(2);
     expect(f.sent.map((s) => s.pv)).toEqual(['A', 'B']);
     expect(gate.getSnapshot().toasts.map((t) => [t.outcome, t.text])).toEqual([
-      ['refused', 'B: above the limit (1 of 3 written)'],
+      ['refused', 'B: not sent; above the limit (1 of 3 written)'],
     ]);
   });
 
@@ -319,6 +319,91 @@ describe('gate.run — a run that asks to have the stopping channel named', () =
     const gate = createWriteGate(f.backend, ORIGIN);
     await gate.run([w('A', 1), w('B', 2), w('C', 3)]);
     expect(gate.getSnapshot().toasts[0].text).toBe('above the limit (1 of 3 written)');
+  });
+});
+
+describe('gate.run — a run that stops unless confirmed', () => {
+  const strict = { nameStopped: true, stopUnlessConfirmed: true };
+
+  it('stops at a readback mismatch: the rest is not sent, the toast says it was sent', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('mismatch', 'read back 1.9')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = await gate.run([w('A', 1), w('B', 2), w('C', 3)], strict);
+    expect(result).toHaveLength(2);
+    expect(f.sent.map((s) => s.pv)).toEqual(['A', 'B']);
+    expect(gate.getSnapshot().toasts.map((t) => [t.outcome, t.text])).toEqual([
+      ['mismatch', 'B: sent, readback differs; read back 1.9 (2 of 3 written)'],
+    ]);
+  });
+
+  it('stops at an unconfirmed write', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('unconfirmed', 'no readback')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('A', 1), w('B', 2)], strict);
+    expect(f.sent.map((s) => s.pv)).toEqual(['A']);
+    expect(gate.getSnapshot().toasts[0].text).toBe(
+      'A: sent, not confirmed; no readback (1 of 2 written)'
+    );
+  });
+
+  it('says "may have been sent" for an unknown write and "not sent" for a refused one', async () => {
+    for (const [kind, words] of [
+      ['unknown', 'may have been sent'],
+      ['refused', 'not sent'],
+      ['target_changed', 'not sent'],
+    ] as const) {
+      const f = fakeBackend({ confirm: false });
+      f.st.answers = [outcome(kind, 'detail')];
+      const gate = createWriteGate(f.backend, ORIGIN);
+      await gate.run([w('A', 1), w('B', 2)], strict);
+      expect(gate.getSnapshot().toasts[0].text).toBe(`A: ${words}; detail (0 of 2 written)`);
+    }
+  });
+
+  it('a run without the option goes on after a mismatch and an unconfirmed write, as before', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('mismatch', 'm'), outcome('unconfirmed', 'u'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = await gate.run([w('A', 1), w('B', 2), w('C', 3)]);
+    expect(result).toHaveLength(3);
+    expect(f.sent.map((s) => s.pv)).toEqual(['A', 'B', 'C']);
+    expect(gate.getSnapshot().toasts[0].text).toBe('m (3 of 3 written)');
+  });
+});
+
+describe('gate.run — a backend that throws', () => {
+  it('mid-run: the outcomes known so far stay, the throwing write is unknown, the rest is not sent', async () => {
+    const f = fakeBackend({ confirm: false });
+    let calls = 0;
+    const submit = f.backend.submit;
+    f.backend.submit = (pv, value, options) => {
+      calls += 1;
+      if (calls === 2) return Promise.reject(new Error('boom'));
+      return submit(pv, value, options);
+    };
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = (await gate.run([w('A', 1), w('B', 2), w('C', 3)], {
+      nameStopped: true,
+      stopUnlessConfirmed: true,
+    })) as WriteOutcome[];
+    expect(result.map((o) => o.outcome)).toEqual(['confirmed', 'unknown']);
+    expect(calls).toBe(2);
+    const toast = gate.getSnapshot().toasts[0];
+    expect(toast.outcome).toBe('unknown');
+    expect(toast.text.startsWith('B: may have been sent; ')).toBe(true);
+    expect(toast.text.endsWith('(1 of 3 written)')).toBe(true);
+  });
+
+  it('on the first write: one unknown outcome, the shape it always had', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.backend.submit = () => Promise.reject(new Error('boom'));
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = (await gate.run([w('A', 1), w('B', 2)])) as WriteOutcome[];
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ outcome: 'unknown', coalesced: false });
   });
 });
 
