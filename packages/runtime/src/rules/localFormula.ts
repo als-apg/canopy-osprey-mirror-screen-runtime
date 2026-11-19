@@ -184,7 +184,8 @@ export interface LocalFormulaOptions {
  * the server answers it. An input without a value (not connected, or no
  * sample) fails the formula only when the expression reads it as a plain
  * value; as a member of a vector token it has no number, severity 3 and
- * `connected` 0. The result's severity is the worst over all inputs, an input
+ * `connected` 0. A connected member whose sample is empty has no number
+ * and severity 3 too, but `connected` 1. The result's severity is the worst over all inputs, an input
  * without a value counting as INVALID.
  */
 export function evaluateStatusFormula(
@@ -235,7 +236,9 @@ export function evaluateStatusFormula(
     const s = state.get(key);
     values.set(key, has(key) ? s!.value : null);
     status.set(key, {
-      connected: has(key),
+      // connected() reports the connection, nothing else: an empty sample is
+      // connected, and has severity 3 like every input without a value.
+      connected: there(key),
       severity: has(key) ? s!.severity : 3,
       labels: s?.labels,
     });
