@@ -19,3 +19,8 @@ from [Canopy](https://github.com/slaclab/Canopy).
   menu, and getting closed screens back.
 - [Host embedding](host-embedding.md): running the workspace as a tile of a
   host shell, and the messages the two exchange.
+
+## Screens
+
+- [Confirmed and staged writes](confirmed-and-staged-writes.md): asking the
+  operator to confirm a write, and writing several typed values together.
