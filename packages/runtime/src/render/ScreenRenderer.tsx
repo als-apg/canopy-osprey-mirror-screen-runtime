@@ -39,10 +39,9 @@ import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import {
   canopyDefaultFlat,
   isSupportedSchemaVersion,
-  readActions,
   SUPPORTED_SCHEMA_VERSIONS,
 } from '@slaclab/canopy-screen-ir';
-import type { Action, ColorRole, FlatScheme } from '@slaclab/canopy-screen-ir';
+import type { ColorRole, FlatScheme } from '@slaclab/canopy-screen-ir';
 import type {
   Geometry,
   MacroValues,
@@ -56,11 +55,15 @@ import {
   CONFIRM_WRITES_PROP,
   PVServiceContext,
   RenderModeContext,
+  Staging,
   WRITES_INERT_PROP,
+  createStagingStore,
   useWriteGate,
   widgetRegistry,
 } from '@slaclab/canopy-screen-widgets';
 import type { RenderMode, ResolveAsset, WriteGateService } from '@slaclab/canopy-screen-widgets';
+import { readNodeActions } from '../actions/staged.js';
+import type { RuntimeAction } from '../actions/staged.js';
 import { isGateBypass } from '../channels.js';
 import { childMacros, resolveScreenMacros, substituteMacros, substituteProps } from '../macros.js';
 import { applyRuleOutputs } from '../rules/applyRules.js';
@@ -317,10 +320,16 @@ function wrapperAttributes(
   return attrs;
 }
 
-/** Whether an action list holds a write that goes to the machine. */
-function hasMachineWrite(actions: readonly Action[], macros: MacroValues): boolean {
+/**
+ * Whether an action list holds a write that goes to the machine: a `write_pv`
+ * to a machine channel, or an `apply_staged` (staged values are machine
+ * channels' only).
+ */
+function hasMachineWrite(actions: readonly RuntimeAction[], macros: MacroValues): boolean {
   return actions.some(
-    (a) => a.type === 'write_pv' && !isGateBypass(substituteMacros(a.pvName, macros))
+    (a) =>
+      a.type === 'apply_staged' ||
+      (a.type === 'write_pv' && !isGateBypass(substituteMacros(a.pvName, macros)))
   );
 }
 
@@ -428,6 +437,8 @@ function MountedNodeView({
   // The screen's write gate (the viewer's, per screen), or null: machine
   // writes of a click's actions then go straight through pvService.
   const gate = useWriteGate();
+  // The screen's staged values, for `apply_staged` / `clear_staged`.
+  const staging = useContext(Staging);
   const writesInert = useWritesInertReason(gate);
   const [hovered, setHovered] = useState(false);
   // The open menu of a click whose actions are alternatives (actionMenu.tsx).
@@ -487,7 +498,7 @@ function MountedNodeView({
   // A list with a machine write is inert while the gate refuses machine
   // writes: no click handler, so nothing in it runs (no navigation, no
   // toast); the reason is its hover and reaches the widget for its button.
-  const actions = readActions(effective.props);
+  const actions = readNodeActions(effective.props);
   const inertReason = writesInert !== null && hasMachineWrite(actions, macros) ? writesInert : null;
   if (inertReason !== null) {
     attrs['aria-disabled'] = 'true';
@@ -539,7 +550,7 @@ function MountedNodeView({
   }
   if (ownDevice !== null) style.pointerEvents = 'auto';
   if (clickable) style.cursor = 'pointer';
-  const run = (chosen: readonly Action[]) => {
+  const run = (chosen: readonly RuntimeAction[]) => {
     void dispatchActions(chosen, {
       ...host,
       macros,
@@ -553,6 +564,7 @@ function MountedNodeView({
       gate,
       // The node asks for the dialog before its click's machine writes.
       confirm: effective.props[CONFIRM_WRITES_PROP] === true,
+      staging,
     }).catch((err: unknown) => {
       host.showError(err instanceof Error ? err.message : String(err));
     });
@@ -894,6 +906,12 @@ export function ScreenRenderer({
   const [devices, setDevices] = useState(() => ({ screen, store: new DeviceStore() }));
   if (devices.screen !== screen) setDevices({ screen, store: new DeviceStore() });
   const deviceStore = devices.store;
+  // One staging store per screen document, shared with the screens it embeds:
+  // values staged on a screen go when another screen opens in its place.
+  const outerStaging = useContext(Staging);
+  const [staged, setStaged] = useState(() => ({ screen, store: createStagingStore() }));
+  if (staged.screen !== screen) setStaged({ screen, store: createStagingStore() });
+  const stagingStore = outerStaging ?? staged.store;
   const host = useContext(ActionHostContext);
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -913,30 +931,32 @@ export function ScreenRenderer({
       <SchemeContext.Provider value={colorScheme}>
         <EmbedContext.Provider value={embed}>
           <DeviceStoreContext.Provider value={deviceStore}>
-            <div
-              ref={rootRef}
-              className="canopy-screen"
-              data-testid="screen-root"
-              data-screen-id={screen.id}
-              data-scheme={colorScheme.meta.flatHash}
-              data-render-mode={mode}
-              style={{
-                position: 'relative',
-                width: screen.metadata.size.width,
-                height: screen.metadata.size.height,
-                overflow: 'hidden',
-              }}
-            >
-              <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
-                <WidgetNodeView
-                  node={screen.root}
-                  macros={effectiveMacros}
-                  formulas={screen.formulas}
-                  idChain={[]}
-                />
-                {host.plotPVs !== undefined && <DeviceMenu plotPVs={host.plotPVs} />}
-              </ScreenPVScope>
-            </div>
+            <Staging.Provider value={stagingStore}>
+              <div
+                ref={rootRef}
+                className="canopy-screen"
+                data-testid="screen-root"
+                data-screen-id={screen.id}
+                data-scheme={colorScheme.meta.flatHash}
+                data-render-mode={mode}
+                style={{
+                  position: 'relative',
+                  width: screen.metadata.size.width,
+                  height: screen.metadata.size.height,
+                  overflow: 'hidden',
+                }}
+              >
+                <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
+                  <WidgetNodeView
+                    node={screen.root}
+                    macros={effectiveMacros}
+                    formulas={screen.formulas}
+                    idChain={[]}
+                  />
+                  {host.plotPVs !== undefined && <DeviceMenu plotPVs={host.plotPVs} />}
+                </ScreenPVScope>
+              </div>
+            </Staging.Provider>
           </DeviceStoreContext.Provider>
         </EmbedContext.Provider>
       </SchemeContext.Provider>

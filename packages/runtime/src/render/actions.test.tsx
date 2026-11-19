@@ -247,6 +247,132 @@ describe('widget actions', () => {
     });
   });
 
+  describe('staged entries and apply_staged', () => {
+    function entry(id: string, pv: string, y: number, stage?: string): WidgetNode {
+      return {
+        id,
+        type: 'pv-text-input',
+        props: stage === undefined ? { pv } : { pv, stage },
+        geometry: { x: 10, y, width: 100, height: 30 },
+      };
+    }
+    function setup(nodes: WidgetNode[], answer: 'declined' | 'confirmed' = 'confirmed') {
+      const runs: WriteRequest[][] = [];
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: async (writes) => {
+          runs.push([...writes]);
+          if (answer === 'declined') return 'declined';
+          return writes.map(() => ({
+            outcome: 'confirmed' as const,
+            code: null,
+            status: null,
+            detail: 'written',
+            coalesced: false,
+          }));
+        },
+      };
+      const put = vi.spyOn(service, 'put');
+      render(
+        wrap(
+          <WriteGate.Provider value={gate}>
+            <ScreenRenderer screen={doc('top', nodes)} />
+          </WriteGate.Provider>
+        )
+      );
+      return { runs, put };
+    }
+    async function type(nodeId: string, text: string) {
+      const input = await waitFor(() => {
+        const el = document.querySelector(`[data-node-id="${nodeId}"] input`) as HTMLInputElement;
+        expect(el.disabled).toBe(false);
+        return el;
+      });
+      fireEvent.change(input, { target: { value: text } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      return input;
+    }
+    const applyButton = button('apply', 'Apply', [{ type: 'apply_staged', scope: 'set' }]);
+
+    it('Enter in staging entries writes nothing; Apply writes them as one run and clears them', async () => {
+      const { runs, put } = setup([
+        entry('e1', 'sim://sine', 50, 'set'),
+        entry('e2', 'sim://ramp', 90, 'set'),
+        applyButton,
+      ]);
+      const first = await type('e1', '2.5');
+      const second = await type('e2', '4');
+      expect(runs).toEqual([]);
+      expect(first.value).toBe('2.5');
+      expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual([
+        { pv: 'sim://sine', value: 2.5, entered: '2.5' },
+        { pv: 'sim://ramp', value: 4, entered: '4' },
+      ]);
+      await waitFor(() =>
+        expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(0)
+      );
+      expect(second.value).not.toBe('4');
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('a declined Apply keeps the staged values in their entries', async () => {
+      const { runs } = setup([entry('e1', 'sim://sine', 50, 'set'), applyButton], 'declined');
+      const input = await type('e1', '2.5');
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(input.value).toBe('2.5');
+      expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(1);
+    });
+
+    it('clear_staged returns the entries to the live value, unwritten', async () => {
+      const { runs } = setup([
+        entry('e1', 'sim://sine', 50, 'set'),
+        button('reset', 'Reset', [{ type: 'clear_staged', scope: 'set' }]),
+      ]);
+      await type('e1', '2.5');
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      await waitFor(() =>
+        expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(0)
+      );
+      expect(runs).toEqual([]);
+    });
+
+    it('an entry without a stage on the same screen writes on Enter, as before', async () => {
+      const { runs } = setup([entry('e1', 'sim://sine', 50), applyButton]);
+      await type('e1', '2.5');
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual([{ pv: 'sim://sine', value: 2.5, entered: '2.5' }]);
+      expect(document.querySelectorAll('[data-staged="true"]')).toHaveLength(0);
+    });
+
+    it('an Apply button is inert while the gate refuses machine writes', async () => {
+      const reason = 'writes are off';
+      const inert = { disabled: true, reason };
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: vi.fn(async () => []),
+        writes: () => inert,
+        subscribeWrites: () => () => {},
+      };
+      render(
+        wrap(
+          <WriteGate.Provider value={gate}>
+            <ScreenRenderer screen={doc('top', [applyButton])} />
+          </WriteGate.Provider>
+        )
+      );
+      const wrapper = document.querySelector('[data-node-id="apply"]') as HTMLElement;
+      expect(wrapper.getAttribute('aria-disabled')).toBe('true');
+      expect(wrapper.getAttribute('title')).toBe(reason);
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      expect(gate.run).not.toHaveBeenCalled();
+    });
+  });
+
   it('attaches no click handler when the actions list is malformed', async () => {
     const put = vi.spyOn(service, 'put');
     const screenJson = doc('top', [

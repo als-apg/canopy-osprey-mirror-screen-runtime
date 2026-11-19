@@ -5,7 +5,8 @@
 // then opens a menu of them (popupMenu.tsx) and only the action picked runs.
 // Without the prop a click runs every action in order.
 
-import type { Action, MacroValues } from '@slaclab/canopy-screen-ir';
+import type { MacroValues } from '@slaclab/canopy-screen-ir';
+import type { RuntimeAction } from '../actions/staged.js';
 import { substituteMacros } from '../macros.js';
 
 /**
@@ -15,13 +16,13 @@ import { substituteMacros } from '../macros.js';
  */
 export function offersMenu(
   props: Readonly<Record<string, unknown>>,
-  actions: readonly Action[]
+  actions: readonly RuntimeAction[]
 ): boolean {
   return props.actionsAsMenu === true && actions.length >= 2;
 }
 
 /** The name a menu shows for `action`: its description, else what it does. */
-export function actionName(action: Action, macros: MacroValues): string {
+export function actionName(action: RuntimeAction, macros: MacroValues): string {
   const description = 'description' in action ? action.description : undefined;
   if (typeof description === 'string' && description.trim() !== '')
     return substituteMacros(description, macros);
@@ -37,5 +38,9 @@ export function actionName(action: Action, macros: MacroValues): string {
       return `Run ${action.command}`;
     case 'close_display':
       return 'Close';
+    case 'apply_staged':
+      return `Write the staged values of ${substituteMacros(action.scope, macros)}`;
+    case 'clear_staged':
+      return `Drop the staged values of ${substituteMacros(action.scope, macros)}`;
   }
 }

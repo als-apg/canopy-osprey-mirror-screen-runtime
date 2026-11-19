@@ -11,6 +11,14 @@
 // go through the gate (a local channel, or any write with no gate) goes
 // through one call, `dispatchLocalWrite`: it is the only put in this module.
 //
+// `apply_staged` writes the values staged in its scope as one gate run of its
+// own, at its place in the list, in the order they were staged. The run stops
+// at the first write that is refused or unknown, as every run does: what was
+// sent stays sent, and the summary names the channel it stopped at. A value
+// leaves the staging store only when its write was confirmed; a declined
+// dialog, a stopped run and an unconfirmed write keep theirs. `clear_staged`
+// drops a scope unwritten.
+//
 // `open_webpage` and `open_display` only open http(s) or relative URLs; any
 // other scheme (`javascript:`, `data:`, ...) and protocol-relative `//host`
 // URLs are refused with an error, since a URL may carry macro values taken
@@ -18,12 +26,15 @@
 
 import type { Action, MacroValues } from '@slaclab/canopy-screen-ir';
 import type {
+  StagingStore,
   WriteGateService,
   WriteOutcome,
+  WriteRunOptions,
   WriteRunResult,
 } from '@slaclab/canopy-screen-widgets';
 import { isGateBypass } from '../channels.js';
 import { substituteMacros } from '../macros.js';
+import type { RuntimeAction } from './staged.js';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -64,6 +75,11 @@ export interface ActionContext {
    * dialog and never removes the gate's own.
    */
   readonly confirm?: boolean;
+  /**
+   * The screen's staged values, read by `apply_staged` and `clear_staged`;
+   * with none, both do nothing.
+   */
+  readonly staging?: StagingStore | null;
 }
 
 // Action kinds the runtime refuses to run; each is warned about once.
@@ -159,6 +175,42 @@ function completed(result: WriteRunResult, n: number): boolean {
 }
 
 /**
+ * Write the values staged in `scope`. False when the rest of the action list
+ * must not run: the dialog was declined, or the run stopped.
+ */
+async function applyStaged(scope: string, ctx: ActionContext): Promise<boolean> {
+  const staging = ctx.staging ?? null;
+  const staged = staging?.list(scope) ?? [];
+  if (staging === null || staged.length === 0) return true;
+  const gate = ctx.gate ?? null;
+  if (gate === null) {
+    for (const s of staged) {
+      await dispatchLocalWrite(ctx, s.pv, typeof s.value === 'boolean' ? Number(s.value) : s.value);
+      staging.clear(scope, s.pv, s);
+    }
+    return true;
+  }
+  const options: WriteRunOptions =
+    ctx.confirm === true ? { confirm: true, nameStopped: true } : { nameStopped: true };
+  const result = await gate
+    .run(
+      staged.map((s) =>
+        s.entered === undefined
+          ? { pv: s.pv, value: s.value }
+          : { pv: s.pv, value: s.value, entered: s.entered }
+      ),
+      options
+    )
+    .catch((): WriteRunResult => []);
+  if (result === 'declined') return false;
+  staged.forEach((s, i) => {
+    const o = result[i];
+    if (o !== undefined && !o.coalesced && o.outcome === 'confirmed') staging.clear(scope, s.pv, s);
+  });
+  return completed(result, staged.length);
+}
+
+/**
  * Execute `actions` in declaration order, awaiting each before the next.
  *
  * With a gate, the list's machine `write_pv` actions run as ONE gate run, at
@@ -166,7 +218,7 @@ function completed(result: WriteRunResult, n: number): boolean {
  * before writing them all, the rest of the list is skipped.
  */
 export async function dispatchActions(
-  actions: readonly Action[],
+  actions: readonly RuntimeAction[],
   ctx: ActionContext
 ): Promise<void> {
   const gate = ctx.gate ?? null;
@@ -195,6 +247,13 @@ export async function dispatchActions(
         if (!completed(result, machine.length)) return;
         break;
       }
+      case 'apply_staged': {
+        if (!(await applyStaged(substituteMacros(action.scope, ctx.macros), ctx))) return;
+        break;
+      }
+      case 'clear_staged':
+        ctx.staging?.clearScope(substituteMacros(action.scope, ctx.macros));
+        break;
       case 'open_display':
         await openDisplay(action, ctx);
         break;

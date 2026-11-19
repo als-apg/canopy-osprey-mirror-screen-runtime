@@ -90,3 +90,10 @@ export { ActionHostContext, warnOnlyActionHost } from './actions/ActionHostConte
 export type { ActionHost } from './actions/ActionHostContext.js';
 export { dispatchActions } from './actions/dispatch.js';
 export type { ActionContext } from './actions/dispatch.js';
+export { isStagingAction, readNodeActions } from './actions/staged.js';
+export type {
+  ApplyStagedAction,
+  ClearStagedAction,
+  RuntimeAction,
+  StagingAction,
+} from './actions/staged.js';
