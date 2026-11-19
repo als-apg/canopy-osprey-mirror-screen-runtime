@@ -21,6 +21,7 @@ packages/runtime/src/render/__fixtures__/expand-vectors.json
 
 # What the rule compiler gives for every fixture rule, written by packages/runtime/src/rules/ruleCorpus.test.ts; never reformat
 packages/runtime/src/rules/__fixtures__/compiled-corpus.json
+packages/runtime/src/rules/__fixtures__/compiled-inline-corpus.json
 # Cases every evaluator of the formula language answers alike; meant to be copied byte for byte; never reformat
 packages/runtime/src/rules/__fixtures__/formula-vector-cases.json
 

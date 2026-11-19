@@ -1,0 +1,374 @@
+{
+  "collected": {
+    "literals": 69,
+    "compiled": 41,
+    "leftOut": 28
+  },
+  "rules": {
+    "packages/runtime/src/pv/usePVLinkState.test.ts#0": {
+      "kind": "static",
+      "targetProperty": "visible",
+      "value": true
+    },
+    "packages/runtime/src/pv/usePVLinkState.test.ts#1": {
+      "error": "no formulas[] entry declares 'formula://f'"
+    },
+    "packages/runtime/src/render/ScreenRenderer.fixtures.test.tsx#0": {
+      "kind": "ladder",
+      "targetProperty": "foregroundColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 1) else (-1)",
+        "bindings": {
+          "0": "DEAD:RULE"
+        }
+      },
+      "values": [
+        "#ff0000"
+      ],
+      "default": "#ffffff"
+    },
+    "packages/runtime/src/render/ScreenRenderer.hidden.test.tsx#0": {
+      "kind": "ladder",
+      "targetProperty": "color",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 1) else (-1)",
+        "bindings": {
+          "0": "RULE:PV"
+        }
+      },
+      "values": [
+        "#ff0000"
+      ],
+      "default": "#000000"
+    },
+    "packages/runtime/src/render/ScreenRenderer.hidden.test.tsx#1": {
+      "error": "condition references {5} but the rule only binds 1 pv(s)"
+    },
+    "packages/runtime/src/render/collectPVs.test.ts#0": {
+      "kind": "ladder",
+      "targetProperty": "foregroundColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > 0) else (-1)",
+        "bindings": {
+          "0": "${P}:Alarm"
+        }
+      },
+      "values": [
+        "#f00"
+      ],
+      "default": null
+    },
+    "packages/runtime/src/render/collectPVs.test.ts#1": {
+      "error": "no formulas[] entry declares 'formula://paddles'"
+    },
+    "packages/runtime/src/render/collectPVs.test.ts#2": {
+      "kind": "ladder",
+      "targetProperty": "color",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 1) else (-1)",
+        "bindings": {
+          "0": "HID:RULE"
+        }
+      },
+      "values": [
+        "#f00"
+      ],
+      "default": "#000"
+    },
+    "packages/runtime/src/render/collectPVs.test.ts#3": {
+      "kind": "static",
+      "targetProperty": "visible",
+      "value": true
+    },
+    "packages/runtime/src/render/collectPVs.test.ts#4": {
+      "error": "no formulas[] entry declares 'formula://f'"
+    },
+    "packages/runtime/src/render/hover.test.tsx#0": {
+      "kind": "ladder",
+      "targetProperty": "outlineColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} >= 2) else (1 if ({0} >= 1) else (-1))",
+        "bindings": {
+          "0": "SEC:SEVR"
+        }
+      },
+      "values": [
+        {
+          "$role": "MAJOR",
+          "fallback": "#da1e28"
+        },
+        {
+          "$role": "MINOR",
+          "fallback": "#f1c21b"
+        }
+      ],
+      "default": {
+        "$role": "OK",
+        "fallback": "#24a148"
+      }
+    },
+    "packages/runtime/src/render/hover.test.tsx#1": {
+      "kind": "ladder",
+      "targetProperty": "outlineColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} >= 2) else (-1)",
+        "bindings": {
+          "0": "SEC:SEVR"
+        }
+      },
+      "values": [
+        {
+          "$role": "MAJOR",
+          "fallback": "#da1e28"
+        }
+      ],
+      "default": {
+        "$role": "OK",
+        "fallback": "#24a148"
+      }
+    },
+    "packages/runtime/src/render/roleResolution.test.tsx#0": {
+      "kind": "static",
+      "targetProperty": "foregroundColor",
+      "value": {
+        "$role": "MAJOR",
+        "fallback": "#ff0000"
+      }
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#0": {
+      "kind": "ladder",
+      "targetProperty": "alarmBorder",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > 1) else (-1)",
+        "bindings": {
+          "0": "${PREFIX}:STATUS:SEV"
+        }
+      },
+      "values": [
+        true
+      ],
+      "default": false
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#2": {
+      "error": "no formulas[] entry declares 'formula://sum'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#6": {
+      "error": "no formulas[] entry declares 'formula://f-001'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#8": {
+      "kind": "ladder",
+      "targetProperty": "precision",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} >= 0 && {0} < 10) else (-1)",
+        "bindings": {
+          "0": "$(P):RES"
+        }
+      },
+      "values": [
+        3
+      ],
+      "default": null
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#10": {
+      "kind": "ladder",
+      "targetProperty": "text",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 1) else (-1)",
+        "bindings": {
+          "0": "DEV:STATE"
+        }
+      },
+      "values": [
+        "running"
+      ],
+      "default": "idle"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#12": {
+      "kind": "static",
+      "targetProperty": "fontSize",
+      "value": 14
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#18": {
+      "kind": "static",
+      "targetProperty": "label",
+      "value": "constant"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#20": {
+      "error": "condition references {1} but the rule only binds 1 pv(s)"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#21": {
+      "error": "condition token {A} is not a {N} pv-index placeholder"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#22": {
+      "error": "no formulas[] entry declares 'formula://nope'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#23": {
+      "error": "no formulas[] entry declares 'formula://sum'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#25": {
+      "error": "no formulas[] entry declares 'formula://wave'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#27": {
+      "error": "no formulas[] entry declares 'formula://missing'"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#28": {
+      "kind": "static",
+      "targetProperty": "background",
+      "value": "grey"
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#32": {
+      "kind": "static",
+      "targetProperty": "visible",
+      "value": false
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#34": {
+      "kind": "ladder",
+      "targetProperty": "alarmBorder",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > ${LIMIT}) else (-1)",
+        "bindings": {
+          "0": "${P}:SEV"
+        }
+      },
+      "values": [
+        true
+      ],
+      "default": false
+    },
+    "packages/runtime/src/rules/compileRule.test.ts#36": {
+      "kind": "ladder",
+      "targetProperty": "alarmBorder",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > ${LIMIT}) else (-1)",
+        "bindings": {
+          "0": "DEV:SEV"
+        }
+      },
+      "values": [
+        true
+      ],
+      "default": false
+    },
+    "packages/runtime/src/rules/fixtureFormulas.test.ts#0": {
+      "kind": "ladder",
+      "targetProperty": "foregroundColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > 2) else (1 if ({0} > 1) else (-1))",
+        "bindings": {
+          "0": "${P}:SEVR_IN"
+        }
+      },
+      "values": [
+        "#ff0000",
+        {
+          "$role": "MINOR",
+          "fallback": "#ffaa00"
+        }
+      ],
+      "default": "#ffffff"
+    },
+    "packages/runtime/src/rules/fixtureFormulas.test.ts#1": {
+      "kind": "ladder",
+      "targetProperty": "visible",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 0) else (-1)",
+        "bindings": {
+          "0": "${P}:MODE"
+        }
+      },
+      "values": [
+        false
+      ],
+      "default": true
+    },
+    "packages/runtime/src/rules/fixtureFormulas.test.ts#2": {
+      "error": "no formulas[] entry declares 'formula://wsum'"
+    },
+    "packages/runtime/src/rules/localFormula.test.ts#0": {
+      "kind": "ladder",
+      "targetProperty": "backgroundColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 1) else (1 if ({0} == 2) else (-1))",
+        "bindings": {
+          "0": "loc://${!W}tab?type=int&init=0"
+        }
+      },
+      "values": [
+        {
+          "$role": "OK",
+          "fallback": "#00ff00"
+        },
+        "#ffff00"
+      ],
+      "default": {
+        "$role": "Display_Background",
+        "fallback": "#202020"
+      }
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#0": {
+      "kind": "ladder",
+      "targetProperty": "foregroundColor",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} > 1) else (-1)",
+        "bindings": {
+          "0": "${P}:SEVR"
+        }
+      },
+      "values": [
+        "#ff0000"
+      ],
+      "default": "#ffffff"
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#1": {
+      "error": "no formulas[] entry declares 'formula://wsum'"
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#2": {
+      "kind": "ladder",
+      "targetProperty": "visible",
+      "spec": {
+        "kind": "scalar",
+        "expression": "0 if ({0} == 0) else (-1)",
+        "bindings": {
+          "0": "${P}:ON"
+        }
+      },
+      "values": [
+        false
+      ],
+      "default": true
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#4": {
+      "kind": "static",
+      "targetProperty": "foregroundColor",
+      "value": "#123456"
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#5": {
+      "kind": "static",
+      "targetProperty": "foregroundColor",
+      "value": null
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#8": {
+      "kind": "static",
+      "targetProperty": "backgroundColor",
+      "value": "#123456"
+    },
+    "packages/runtime/src/rules/rulesIntegration.test.tsx#9": {
+      "error": "no formulas[] entry declares 'formula://nope'"
+    }
+  }
+}
