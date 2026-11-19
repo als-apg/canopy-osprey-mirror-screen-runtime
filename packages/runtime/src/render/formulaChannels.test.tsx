@@ -6,7 +6,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { LocalPVService, MockPVService, RoutedPVService } from '@slaclab/canopy-client';
 import type { PVService } from '@slaclab/canopy-client';
@@ -193,6 +193,8 @@ describe('formula:// widget channels', () => {
     const resolveScreen = vi.fn().mockResolvedValue(child);
     render(withServices(<ScreenRenderer screen={host} resolveScreen={resolveScreen} />));
     await screen.findByTestId('embedded-screen');
+    // The child's channel subscribes in an effect, after the embed is in the DOM.
+    await waitFor(() => expect(stub.subscriptions).toHaveLength(2));
 
     expect(stub.subscriptions.map((s) => s.spec)).toEqual(
       expect.arrayContaining([
