@@ -39,11 +39,39 @@ export interface PyStatus {
 class Vec {
   readonly data: readonly number[];
   readonly bool: boolean;
-  constructor(data: readonly number[], bool = false) {
+  /** The vector tokens whose values it holds (none: of status functions only). */
+  readonly tokens: readonly string[];
+  constructor(data: readonly number[], bool = false, tokens: readonly string[] = []) {
     this.data = data;
     this.bool = bool;
+    this.tokens = tokens;
   }
 }
+
+/**
+ * The vector tokens of the running evaluation whose values met a use that
+ * does not leave a member without a number out. A use is guarded only when
+ * the values go straight into `nanmax`, `nanmin`, `nansum`, `nanmean` or
+ * `count`, through nothing but `+ - * /`, a sign, and a function of one
+ * number. Every other use (a comparison, another reduction, `where`, `clip`,
+ * a power, a condition) is unguarded: there a member without a number would
+ * pass for one. Decided by the expression alone: collected in a dry run over
+ * stand-in values, in which a value of the wrong kind stops nothing.
+ */
+let unguarded: Set<string> | null = null;
+
+function unguard(...values: readonly Val[]): void {
+  for (const v of values) {
+    if (v instanceof Vec) for (const token of v.tokens) unguarded?.add(token);
+  }
+}
+
+const GUARDED_REDUCTIONS = new Set(['nanmax', 'nanmin', 'nansum', 'nanmean', 'count']);
+const GUARDED_FUNCTIONS = new Set(
+  'abs sqrt exp log log10 ln floor ceil radians degrees sin cos tan asin acos atan sinh cosh tanh'.split(
+    ' '
+  )
+);
 
 type Val = PyValue | Vec;
 
@@ -67,26 +95,13 @@ function membersOf(prefix: string, keys: Iterable<string>): string[] {
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-
 /**
- * Text as the number it writes in decimal (spaces around it allowed,
- * `inf` and `nan` too), as the server reads it; NaN for any other text.
+ * A member's number: NaN when it has none. Text is never a number for a
+ * member, numeric text too; nor is null (no sample, or one that is not one value).
  */
-function decimalNumber(text: string): number {
-  const t = text.trim();
-  if (DECIMAL.test(t)) return Number(t);
-  const word = /^([+-]?)(inf|infinity|nan)$/i.exec(t);
-  if (!word) return NaN;
-  if (word[2]!.toLowerCase() === 'nan') return NaN;
-  return word[1] === '-' ? -Infinity : Infinity;
-}
-
-/** A member's number: NaN when it has none (text that is no number, null, no sample). */
-function memberNumber(value: PyValue | undefined): number {
+export function memberNumber(value: PyValue | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
-  if (typeof value === 'string') return decimalNumber(value);
   return NaN;
 }
 
@@ -198,6 +213,8 @@ const FUNCTIONS: Record<string, (...args: number[]) => number> = {
 
 function truthy(value: Val): boolean {
   if (value instanceof Vec) {
+    unguard(value);
+    if (unguarded) return false;
     throw new PyExprError(
       'and, or, not and the conditional need one value, not a vector; reduce it first'
     );
@@ -209,8 +226,11 @@ function truthy(value: Val): boolean {
 
 function asNumber(value: Val, context: string): number {
   if (value instanceof Vec) {
+    unguard(value);
+    if (unguarded) return NaN;
     throw new PyExprError(`${context} needs one value, not a vector; reduce it first`);
   }
+  if (unguarded) return typeof value === 'number' ? value : NaN;
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
   throw new PyExprError(`${context} needs a number, got ${JSON.stringify(value)}`);
@@ -220,6 +240,7 @@ function asNumber(value: Val, context: string): number {
 function spread(v: Val, size: number, context: string): (i: number) => number {
   if (v instanceof Vec) {
     if (v.data.length !== size) {
+      if (unguarded) return () => NaN;
       throw new PyExprError(`${context}: vectors of ${size} and ${v.data.length} members`);
     }
     return (i) => v.data[i]!;
@@ -233,13 +254,15 @@ function lift(
   operands: readonly Val[],
   context: string,
   f: (...members: number[]) => number,
-  bool = false
+  { bool = false, guarded = false }: { bool?: boolean; guarded?: boolean } = {}
 ): Vec {
+  if (!guarded) unguard(...operands);
   const size = operands.find((v) => v instanceof Vec)!.data.length;
   const reads = operands.map((v) => spread(v, size, context));
   return new Vec(
     Array.from({ length: size }, (_, i) => f(...reads.map((read) => read(i)))),
-    bool
+    bool,
+    [...new Set(operands.flatMap((v) => (v instanceof Vec ? v.tokens : [])))]
   );
 }
 
@@ -301,7 +324,9 @@ class Parser {
         this.status && !(this.status.get(key) ?? NO_STATUS).connected
           ? NaN
           : memberNumber(this.bindings.get(key))
-      )
+      ),
+      false,
+      [token]
     );
   }
 
@@ -357,6 +382,7 @@ class Parser {
     const first = args[0];
     if (name === 'where') {
       if (args.length !== 3) throw new PyExprError('where() takes a condition and two values');
+      unguard(...args);
       if (!args.some((a) => a instanceof Vec)) return truthy(first!) ? args[1]! : args[2]!;
       return lift(args, 'where()', (c, a, b) => (c !== 0 ? a! : b!));
     }
@@ -371,13 +397,21 @@ class Parser {
     }
     const reduce = REDUCTIONS[name];
     if (reduce && args.length === 1 && (first instanceof Vec || VECTOR_ONLY.has(name))) {
+      if (!GUARDED_REDUCTIONS.has(name)) unguard(first!);
       const data = first instanceof Vec ? first.data : [asNumber(first!, `${name}()`)];
       const value = reduce(data);
       return first instanceof Vec && first.bool && KEEPS_BOOL.has(name) ? value !== 0 : value;
     }
     const fn = FUNCTIONS[name];
     if (!fn) throw new PyExprError(`unknown name '${name}'`);
-    if (args.length === 1 && first instanceof Vec) return new Vec(first.data.map((v) => fn(v)));
+    if (args.length === 1 && first instanceof Vec) {
+      if (!GUARDED_FUNCTIONS.has(name)) unguard(first);
+      return new Vec(
+        first.data.map((v) => fn(v)),
+        false,
+        first.tokens
+      );
+    }
     return fn(...args.map((a) => asNumber(a, `${name}()`)));
   }
 
@@ -409,6 +443,8 @@ class Parser {
       throw new PyExprError(`trailing input at token ${this.pos}`);
     }
     if (value instanceof Vec) {
+      unguard(value);
+      if (unguarded) return null;
       throw new PyExprError(
         'a scalar formula must reduce a vector token to one value, e.g. max(...), sum(...), count_nonzero(...)'
       );
@@ -423,6 +459,7 @@ class Parser {
       const cond = this.or();
       if (!this.takeName('else')) throw new PyExprError("conditional missing 'else'");
       const alt = this.conditional();
+      unguard(value, alt);
       return truthy(cond) ? value : alt;
     }
     return value;
@@ -432,6 +469,7 @@ class Parser {
     let value = this.and();
     while (this.takeName('or')) {
       const rhs = this.and();
+      unguard(value, rhs);
       value = truthy(value) ? value : rhs;
     }
     return value;
@@ -441,6 +479,7 @@ class Parser {
     let value = this.not();
     while (this.takeName('and')) {
       const rhs = this.not();
+      unguard(value, rhs);
       value = truthy(value) ? rhs : value;
     }
     return value;
@@ -467,7 +506,7 @@ class Parser {
           '>=': (x, y) => x >= y,
         };
         const test = compare[t.text]!;
-        return lift([lhs, rhs], t.text, (x, y) => (test(x!, y!) ? 1 : 0), true);
+        return lift([lhs, rhs], t.text, (x, y) => (test(x!, y!) ? 1 : 0), { bool: true });
       }
       switch (t.text) {
         case '==':
@@ -493,14 +532,14 @@ class Parser {
       if (this.takeOp('+')) {
         const rhs = this.term();
         if (value instanceof Vec || rhs instanceof Vec) {
-          value = lift([value, rhs], '+', (x, y) => x! + y!);
+          value = lift([value, rhs], '+', (x, y) => x! + y!, { guarded: true });
         } else if (typeof value === 'string' && typeof rhs === 'string') {
           value = value + rhs;
         } else {
           value = asNumber(value, '+') + asNumber(rhs, '+');
         }
       } else if (this.takeOp('-')) {
-        value = this.binary(value, this.term(), '-', (x, y) => x - y);
+        value = this.binary(value, this.term(), '-', (x, y) => x - y, true);
       } else {
         return value;
       }
@@ -510,8 +549,9 @@ class Parser {
   private term(): Val {
     let value = this.factor();
     for (;;) {
-      if (this.takeOp('*')) value = this.binary(value, this.factor(), '*', (x, y) => x * y);
-      else if (this.takeOp('/')) value = this.binary(value, this.factor(), '/', (x, y) => x / y);
+      if (this.takeOp('*')) value = this.binary(value, this.factor(), '*', (x, y) => x * y, true);
+      else if (this.takeOp('/'))
+        value = this.binary(value, this.factor(), '/', (x, y) => x / y, true);
       else if (this.takeOp('//'))
         value = this.binary(value, this.factor(), '//', (x, y) => Math.floor(x / y));
       else if (this.takeOp('%')) value = this.binary(value, this.factor(), '%', (x, y) => x % y);
@@ -520,16 +560,22 @@ class Parser {
   }
 
   /** `f` of two operands: of their numbers, or member by member. */
-  private binary(a: Val, b: Val, context: string, f: (x: number, y: number) => number): Val {
+  private binary(
+    a: Val,
+    b: Val,
+    context: string,
+    f: (x: number, y: number) => number,
+    guarded = false
+  ): Val {
     if (a instanceof Vec || b instanceof Vec) {
-      return lift([a, b], context, (x, y) => f(x!, y!));
+      return lift([a, b], context, (x, y) => f(x!, y!), { guarded });
     }
     return f(asNumber(a, context), asNumber(b, context));
   }
 
   private factor(): Val {
-    if (this.takeOp('+')) return this.binary(this.factor(), 0, 'unary +', (x) => x);
-    if (this.takeOp('-')) return this.binary(this.factor(), 0, 'unary -', (x) => -x);
+    if (this.takeOp('+')) return this.binary(this.factor(), 0, 'unary +', (x) => x, true);
+    if (this.takeOp('-')) return this.binary(this.factor(), 0, 'unary -', (x) => -x, true);
     return this.power();
   }
 
@@ -596,6 +642,29 @@ export function evaluatePyExpr(
   return new Parser(tokenize(expression), bindings, status).parse();
 }
 
+/**
+ * The vector tokens whose values the expression uses unguarded (see
+ * `unguarded`), from a dry run in which every binding is the number 1. An
+ * error of the expression itself (syntax, an unknown name) is returned.
+ */
+function unguardedUses(
+  expression: string,
+  keys: readonly string[]
+): { tokens: readonly string[]; fault?: PyExprError } {
+  const before = unguarded;
+  const trace = new Set<string>();
+  unguarded = trace;
+  try {
+    evaluatePyExpr(expression, new Map(keys.map((key) => [key, 1])));
+    return { tokens: [...trace] };
+  } catch (error) {
+    if (!(error instanceof PyExprError)) throw error;
+    return { tokens: [...trace], fault: error };
+  } finally {
+    unguarded = before;
+  }
+}
+
 /** How an expression reads its bindings. */
 export interface PyExprInputs {
   /** Each vector token with its members, ordered by key. */
@@ -606,6 +675,10 @@ export interface PyExprInputs {
   readonly strict: ReadonlySet<string>;
   /** Whether the expression has a vector token, a status function or `label()`. */
   readonly status: boolean;
+  /** The vector tokens with a use of their values that a member without a number fails. */
+  readonly unguarded: readonly string[];
+  /** An error of the expression itself, whatever the values. */
+  readonly fault?: PyExprError;
 }
 
 /**
@@ -652,5 +725,13 @@ export function analyzePyExpr(expression: string, keys: readonly string[]): PyEx
     if (!inCall || before.text === 'label') strict.add(t.text);
   });
   const members = [...new Set([...vectors.values()].flat())];
-  return { vectors, members, strict, status: status || vectors.size > 0 };
+  const uses = vectors.size > 0 ? unguardedUses(expression, keys) : { tokens: [] };
+  return {
+    vectors,
+    members,
+    strict,
+    status: status || vectors.size > 0,
+    unguarded: uses.tokens,
+    ...(uses.fault ? { fault: uses.fault } : {}),
+  };
 }

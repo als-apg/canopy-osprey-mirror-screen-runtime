@@ -12,7 +12,7 @@ interface Channel {
   value?: number | string | boolean | number[];
   severity?: number;
   down?: boolean;
-  nonFinite?: 'nan' | 'inf';
+  nonFinite?: 'nan' | 'inf' | '-inf';
   labels?: string[];
 }
 interface Case {
@@ -43,11 +43,9 @@ function service(channels: Record<string, Channel>): LocalPVLike {
         listener({ value: channel.value ?? null, connected: false, severity: channel.severity });
       } else {
         const value =
-          channel.nonFinite === 'nan'
-            ? NaN
-            : channel.nonFinite === 'inf'
-              ? Infinity
-              : channel.value;
+          channel.nonFinite === undefined
+            ? channel.value
+            : { nan: NaN, inf: Infinity, '-inf': -Infinity }[channel.nonFinite];
         listener({
           value,
           connected: true,

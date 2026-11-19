@@ -16,6 +16,7 @@ import { FormulaError } from '../formula.js';
 import {
   analyzePyExpr,
   evaluatePyExpr,
+  memberNumber,
   PyExprError,
   type PyExprInputs,
   type PyStatus,
@@ -201,6 +202,12 @@ export function evaluateStatusFormula(
       false
     );
   }
+  const notAvailable = (keys: readonly string[]) =>
+    new FormulaError(
+      'formula_input_missing',
+      `PVs not available: ${namedChannels([...new Set(keys.map(name))], listed)}`,
+      true
+    );
   const read = [...new Set([...inputs.strict, ...inputs.members, ...Object.keys(spec.bindings)])];
 
   const strictMissing = [...inputs.strict].filter((key) => !has(key));
@@ -223,17 +230,27 @@ export function evaluateStatusFormula(
       labels: s?.labels,
     });
   }
+  // A member without a number never passes for one: a formula that uses the
+  // values of a vector token unguarded fails while any member has none. The
+  // expression's own errors come first, the evaluation last.
+  if (inputs.fault) throw inputs.fault;
+  const number = (key: string) => (has(key) ? memberNumber(values.get(key)) : NaN);
+  const numberless = inputs.unguarded.flatMap((token) =>
+    (inputs.vectors.get(token) ?? []).filter((key) => Number.isNaN(number(key)))
+  );
+  if (numberless.length > 0) throw notAvailable(numberless);
   const value = evaluatePyExpr(spec.expression, values, status);
 
-  const absent = [...new Set(read.filter((key) => !has(key)).map(name))];
   if (typeof value === 'number' && !Number.isFinite(value)) {
-    if (absent.length > 0 && Number.isNaN(value)) {
-      throw new FormulaError(
-        'formula_input_missing',
-        `PVs not available: ${namedChannels(absent, listed)}`,
-        true
-      );
-    }
+    // Named: inputs read by value that are not finite themselves, and, for a
+    // result that is not a number, the inputs without a sample.
+    const byValue = [...new Set([...inputs.strict, ...inputs.members])].sort();
+    const culprits = byValue.filter((key) => {
+      if (!has(key)) return Number.isNaN(value);
+      const own = values.get(key);
+      return typeof own === 'number' && !Number.isFinite(own);
+    });
+    if (culprits.length > 0) throw notAvailable(culprits);
     throw new FormulaError(
       'formula_type_error',
       `The result is not a finite number (${value})`,
