@@ -66,11 +66,14 @@ A text entry with a `stage` prop does not write. The prop names a **scope**.
 
 - **Enter** (or leaving the field with typed text) stages the value. The
   field then shows the value that will be sent, in italics with a bar on its
-  left edge, in place of the live value. A number keeps the decimals as
-  typed (`2.50`) and is never shown with an exponent (`1e-7` shows as
-  `0.0000001`).
+  left edge, in place of the live value. What it shows is always exactly
+  the value that will be sent, never a rounded one. A number keeps the
+  decimals as typed (`2.50`) and is written out in plain decimals (`1e-7`
+  shows as `0.0000001`); only a number that would need more than 24
+  characters that way is shown with an exponent (`1e-101`).
 - **Arrow up / down** step a staged number by one unit of its last shown
-  digit, as in any numeric entry.
+  digit, as in any numeric entry. A number shown with an exponent steps by
+  the precision of the widget or the channel.
 - **Escape** drops the text being typed; pressed again, it drops the staged
   value of this entry and the field shows the live value.
 - Only a value the entry accepts is staged. A numeric entry stages nothing
@@ -132,8 +135,11 @@ arrive. Then:
 
 If the same channel is staged more than once under one Apply (in two
 embedded screens, say), it is written once when the values agree. When they
-differ, nothing is written at all and a message names the channel
-(`staged twice with different values`).
+differ, nothing is written at all: the entries that disagree are marked in
+red where they sit, and a message names the channel and the values
+(`DEMO:PS1:SETPOINT: staged with different values (2 and 2.5); nothing
+written`). In the viewer the message appears where the results of writes do.
+Make the entries agree, or drop one with Escape, and apply again.
 
 A value leaves staging only when its write was confirmed. **Cancel** in the
 dialog keeps every value staged.
