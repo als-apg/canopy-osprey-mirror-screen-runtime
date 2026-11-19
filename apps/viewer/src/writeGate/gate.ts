@@ -218,11 +218,14 @@ function localOutcome(o: SdkWriteOutcome): WriteOutcome {
  * null when none is shown: a single coalesced write (the value that replaced
  * it has its own toast). "written" only when all n were confirmed; otherwise
  * the first non-confirmed write's detail (the "coalesced" text for a
- * coalesced one), with "(k of n written)" when n > 1.
+ * coalesced one), with "(k of n written)" when n > 1. With `writes` (the
+ * run's writes, for a run that asked to have the channel named), that detail
+ * is headed by the channel of the write it belongs to: "<channel>: <detail>".
  */
 export function summarize(
   outcomes: readonly WriteOutcome[],
-  n: number
+  n: number,
+  writes?: readonly WriteRequest[]
 ): Omit<WriteToastState, 'id'> | null {
   if (n === 1 && outcomes.length === 1 && outcomes[0].coalesced) return null;
   const first = outcomes.find((o) => o.coalesced || o.outcome !== 'confirmed');
@@ -232,9 +235,11 @@ export function summarize(
   // Fewer outcomes than writes with none failing cannot happen (a run only
   // stops on a failing outcome); read it as nothing written.
   const stop = first ?? localOutcome(clientOutcome('target-changed'));
-  const base: Omit<WriteToastState, 'id'> = stop.coalesced
+  const said: Omit<WriteToastState, 'id'> = stop.coalesced
     ? { outcome: 'coalesced', text: WRITE_OUTCOME_COALESCED_TOAST }
     : { outcome: stop.outcome, text: stop.detail };
+  const channel = first === undefined ? undefined : writes?.[outcomes.indexOf(first)]?.pv;
+  const base = channel === undefined ? said : { ...said, text: `${channel}: ${said.text}` };
   if (n <= 1) return base;
   const k = outcomes.filter(counted).length;
   return { ...base, text: `${base.text} (${k} of ${n} written)` };
@@ -651,7 +656,7 @@ export function createWriteGate(
       }
       try {
         const { outcomes, n } = await send(listed, tail, binding, dialog);
-        toast(summarize(outcomes, n));
+        toast(summarize(outcomes, n, options?.nameStopped === true ? listed : undefined));
         return outcomes;
       } finally {
         release();

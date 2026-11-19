@@ -285,6 +285,43 @@ describe('gate.run — a run that asks for the dialog', () => {
   });
 });
 
+describe('gate.run — a run that asks to have the stopping channel named', () => {
+  it('stops at the first refused write and names its channel; the rest is not sent', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('refused', 'above the limit')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = await gate.run([w('A', 1), w('B', 2), w('C', 3)], { nameStopped: true });
+    expect(result).toHaveLength(2);
+    expect(f.sent.map((s) => s.pv)).toEqual(['A', 'B']);
+    expect(gate.getSnapshot().toasts.map((t) => [t.outcome, t.text])).toEqual([
+      ['refused', 'B: above the limit (1 of 3 written)'],
+    ]);
+  });
+
+  it('says only "written" when every write was confirmed', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('A', 1), w('B', 2)], { nameStopped: true });
+    expect(gate.getSnapshot().toasts.map((t) => t.text)).toEqual(['written']);
+  });
+
+  it('names no channel for a run that sent nothing', async () => {
+    const f = fakeBackend({ confirm: false, seen: false });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('A', 1), w('B', 2)], { nameStopped: true });
+    expect(gate.getSnapshot().toasts[0].text).toBe(`${TARGET_CHANGED} (0 of 2 written)`);
+  });
+
+  it('a run that does not ask keeps the summary as it was', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('refused', 'above the limit')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    await gate.run([w('A', 1), w('B', 2), w('C', 3)]);
+    expect(gate.getSnapshot().toasts[0].text).toBe('above the limit (1 of 3 written)');
+  });
+});
+
 describe('gate.run — one dialog slot', () => {
   it('queues further runs FIFO and never stacks dialogs', async () => {
     const f = fakeBackend();

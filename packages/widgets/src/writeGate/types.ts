@@ -44,6 +44,12 @@ export interface WriteRunOptions {
    * a backend whose write state is `asked`) asks whatever this says.
    */
   confirm?: boolean;
+  /**
+   * Name the channel in the run's summary when a write was not confirmed:
+   * "<channel>: <what happened> (k of n written)". For a run whose writes the
+   * operator did not just type one by one (a whole scope of staged values).
+   */
+  nameStopped?: boolean;
 }
 
 /** `'declined'`, or the outcome of each write that was sent, in order. */
