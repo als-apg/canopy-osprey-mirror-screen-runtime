@@ -42,6 +42,30 @@ export interface FormulaVectorInputs {
   readonly more: number;
 }
 
+/** `value` as a members summary, or undefined when it is not of that shape. */
+export function asVectorInputs(value: unknown): FormulaVectorInputs | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { count, missing, more } = value as Record<string, unknown>;
+  if (!Number.isInteger(count) || !Number.isInteger(more) || !Array.isArray(missing)) {
+    return undefined;
+  }
+  if (!missing.every((name) => typeof name === 'string')) return undefined;
+  return { count: count as number, missing: missing as string[], more: more as number };
+}
+
+/** One summary for several formulas feeding one node: counts added, names joined. */
+export function combineVectorInputs(
+  parts: readonly (FormulaVectorInputs | undefined)[]
+): FormulaVectorInputs | undefined {
+  const present = parts.filter((p): p is FormulaVectorInputs => p !== undefined);
+  if (present.length <= 1) return present[0];
+  return {
+    count: present.reduce((sum, p) => sum + p.count, 0),
+    missing: [...new Set(present.flatMap((p) => p.missing))],
+    more: present.reduce((sum, p) => sum + p.more, 0),
+  };
+}
+
 /**
  * Optional per-result metadata. Rules ignore it; formula-backed widget
  * channels (see ScreenPVService) surface it as the channel's alarm state.

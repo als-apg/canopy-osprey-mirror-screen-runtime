@@ -215,8 +215,16 @@ export class ScreenPVService implements PVService {
   }
 }
 
-function resultData(value: FormulaScalarValue, meta: FormulaResultMeta | undefined): PVData {
+/**
+ * A formula channel's data. A formula with a vector token also carries the
+ * summary of its members (`vectorInputs`), which the renderer shows on hover.
+ */
+function resultData(
+  value: FormulaScalarValue,
+  meta: FormulaResultMeta | undefined
+): PVData & { vectorInputs?: FormulaResultMeta['vectorInputs'] } {
   return {
+    ...(meta?.vectorInputs !== undefined ? { vectorInputs: meta.vectorInputs } : {}),
     value,
     displayValue: formatFormulaValue(value),
     severity: meta?.severity

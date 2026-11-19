@@ -11,8 +11,8 @@ import type {
   Rule,
   RuleValue,
 } from '@slaclab/canopy-screen-ir';
-import type { FormulaScalarValue } from '../formula.js';
-import { useFormulaSubscriber } from '../formula.js';
+import type { FormulaScalarValue, FormulaVectorInputs } from '../formula.js';
+import { combineVectorInputs, useFormulaSubscriber } from '../formula.js';
 import { resolveRole } from '../theme/resolveRoles.js';
 import { useColorScheme } from '../theme/schemeContext.js';
 import type { CompiledRule, RuleScalar } from './compileRule.js';
@@ -30,6 +30,8 @@ interface LiveState {
   readonly value: FormulaScalarValue | undefined;
   /** A retryable error arrived since the latest result. */
   readonly stale: boolean;
+  /** The members summary of the latest result, when its formula has a vector token. */
+  readonly vectorInputs?: FormulaVectorInputs | undefined;
 }
 
 /** The rule outputs of one node plus its live-data state. */
@@ -53,6 +55,11 @@ export interface WidgetRulesState {
    * are its rules' inputs.
    */
   readonly delivered: boolean;
+  /**
+   * The members of the vector tokens in the node's live rules, summed up from
+   * their latest results; undefined when no rule has a vector token.
+   */
+  readonly vectorInputs: FormulaVectorInputs | undefined;
 }
 
 function isRetryable(error: Error): boolean {
@@ -175,8 +182,8 @@ export function useWidgetRulesState(
       if (!isLive(rule)) continue;
       unsubscribes.push(
         subscriber.subscribe(rule.spec, {
-          onResult: (value) => {
-            update(rule, () => ({ value, stale: false }));
+          onResult: (value, meta) => {
+            update(rule, () => ({ value, stale: false, vectorInputs: meta?.vectorInputs }));
           },
           onError: (error) => {
             const retryable = isRetryable(error);
@@ -186,6 +193,7 @@ export function useWidgetRulesState(
             update(rule, (prev) => ({
               value: prev?.value,
               stale: retryable || (prev?.stale ?? false),
+              vectorInputs: prev?.vectorInputs,
             }));
           },
         })
@@ -209,9 +217,18 @@ export function useWidgetRulesState(
       return state !== undefined && !state.stale && state.value !== undefined;
     });
 
+  const vectorKey = JSON.stringify(liveRules.map((rule) => live.get(rule)?.vectorInputs ?? null));
+  const vectorInputs = useMemo(
+    () =>
+      combineVectorInputs(
+        (JSON.parse(vectorKey) as (FormulaVectorInputs | null)[]).map((v) => v ?? undefined)
+      ),
+    [vectorKey]
+  );
+
   return useMemo(
-    () => ({ outputs, stale, settled, delivered }),
-    [outputs, stale, settled, delivered]
+    () => ({ outputs, stale, settled, delivered, vectorInputs }),
+    [outputs, stale, settled, delivered, vectorInputs]
   );
 }
 

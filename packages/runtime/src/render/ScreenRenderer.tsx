@@ -80,6 +80,8 @@ import { usePVLinkState } from '../pv/usePVLinkState.js';
 import type { PVLinkState } from '../pv/usePVLinkState.js';
 import { combineLinkStates, drawsCue, nodeLinkChannels, ruleLinkState } from './linkState.js';
 import { HoverLayer, hoverLabel, hoverLabelPlacement, restingOutline } from './hover.js';
+import { combineVectorInputs } from '../formula.js';
+import { useChannelVectorInputs, vectorInputsText } from './vectorInputs.js';
 import { mapIRWidget } from './irMap.js';
 import { ScreenPVScope } from './ScreenPVScope.js';
 import { resolveRole, resolveRoles } from '../theme/resolveRoles.js';
@@ -543,6 +545,10 @@ function MountedNodeView({
   );
   useRegisterDeviceChannels(ownDevice ?? inherited, linkChannels.channels, pvRoleOf(node.type));
   useRegisterDeviceChannels(ownDevice ?? inherited, deviceRuleChannels, 'rule');
+  // A formula over many channels that feeds the node, through a rule or a
+  // channel: its members summary is the node's hover text.
+  const channelVectorInputs = useChannelVectorInputs(linkChannels.channels);
+  const vectorInputs = combineVectorInputs([rulesLink.vectorInputs, channelVectorInputs]);
   const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
   const deviceHover = useDeviceHover(ownDevice, effective.visible);
   // A node carrying a staging action (in its rule-patched props, as its
@@ -593,6 +599,13 @@ function MountedNodeView({
         : nothingStaged
           ? NOTHING_STAGED
           : null;
+  if (vectorInputs !== undefined) {
+    attrs['data-vector-count'] = String(vectorInputs.count);
+    attrs['data-vector-missing'] = String(vectorInputs.missing.length + vectorInputs.more);
+    attrs.title = vectorInputsText(vectorInputs);
+    // The hover must reach the node, a shape that takes no pointer too.
+    style.pointerEvents = 'auto';
+  }
   if (inertReason !== null) {
     attrs['aria-disabled'] = 'true';
     attrs.title = inertReason;

@@ -6,7 +6,7 @@
 // is the minimal shape of its `subscribe`; the SDK class satisfies it (pinned
 // by the wiring test, which uses the real class as a dev dependency).
 
-import { FormulaError } from '../formula.js';
+import { asVectorInputs, FormulaError } from '../formula.js';
 import type {
   FormulaResultMeta,
   FormulaScalarValue,
@@ -21,6 +21,8 @@ interface FormulaEngineScalarLike {
   severity?: string;
   /** Result timestamp, epoch ns. */
   tsNs?: number;
+  /** The members of the formula's vector tokens, summed up; only such a formula has it. */
+  vectorInputs?: unknown;
 }
 
 const KNOWN_SEVERITIES: ReadonlySet<string> = new Set<FormulaSeverity>([
@@ -31,7 +33,13 @@ const KNOWN_SEVERITIES: ReadonlySet<string> = new Set<FormulaSeverity>([
 ]);
 
 function resultMeta(scalar: FormulaEngineScalarLike): FormulaResultMeta {
-  const meta: { severity?: FormulaSeverity; timestampMs?: number } = {};
+  const meta: {
+    severity?: FormulaSeverity;
+    timestampMs?: number;
+    vectorInputs?: FormulaResultMeta['vectorInputs'];
+  } = {};
+  const vectorInputs = asVectorInputs(scalar.vectorInputs);
+  if (vectorInputs !== undefined) meta.vectorInputs = vectorInputs;
   if (scalar.severity !== undefined) {
     // Like HarePVService: a severity the server grew later reads as INVALID.
     meta.severity = KNOWN_SEVERITIES.has(scalar.severity)
