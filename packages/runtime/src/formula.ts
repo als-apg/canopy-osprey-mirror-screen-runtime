@@ -102,6 +102,12 @@ export interface FormulaSubscribeOptions {
   /** Re-evaluation poll interval; omitted/0 = event-driven (on PV change). */
   intervalMs?: number;
   onResult: (value: FormulaScalarValue, meta?: FormulaResultMeta) => void;
+  /**
+   * The formula was evaluated and has no value to give (the server sends a
+   * number that JSON cannot hold as `null`). What the consumer showed before
+   * no longer holds; `meta` is that of the evaluation.
+   */
+  onNoValue?: (meta?: FormulaResultMeta) => void;
   onError?: (error: Error) => void;
 }
 

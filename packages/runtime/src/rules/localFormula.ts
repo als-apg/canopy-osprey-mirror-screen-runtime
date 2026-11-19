@@ -36,10 +36,12 @@ export interface LocalPVLike {
 }
 
 /**
- * A live formula with a vector token or a status function. Nothing is
- * evaluated before every input has been subscribed, and then on every
- * change; a result is delivered when its value, severity or members without
- * a value differ from the last one.
+ * A live formula with a vector token or a status function. The first answer
+ * waits until every input has reported once, or the start window has passed:
+ * until then the formula has no result, which is not the same as a result
+ * over inputs without a value. After that it is evaluated on every change; a
+ * result is delivered when its value, severity or members without a value
+ * differ from the last one.
  */
 function subscribeStatus(
   local: LocalPVLike,
@@ -49,11 +51,16 @@ function subscribeStatus(
   localOptions: LocalFormulaOptions
 ): () => void {
   const state = new Map<string, InputState>();
-  let ready = false;
+  const keys = Object.keys(spec.bindings);
+  let started = false;
   let last: string | undefined;
 
   const evaluate = () => {
-    if (!ready) return;
+    if (!started) {
+      if (!keys.every((key) => state.has(key))) return;
+      started = true;
+      clearTimeout(startTimer);
+    }
     try {
       const { value, meta } = evaluateStatusFormula(spec, inputs, state, localOptions);
       if (value === null) return;
@@ -69,6 +76,10 @@ function subscribeStatus(
     }
   };
 
+  const startTimer = setTimeout(() => {
+    started = true;
+    evaluate();
+  }, VECTOR_START_WINDOW_MS);
   const unsubscribes = Object.entries(spec.bindings).map(([key, address]) =>
     local.subscribe(address, (data) => {
       state.set(key, {
@@ -80,9 +91,8 @@ function subscribeStatus(
       evaluate();
     })
   );
-  ready = true;
-  evaluate();
   return () => {
+    clearTimeout(startTimer);
     for (const unsubscribe of unsubscribes) unsubscribe();
   };
 }
@@ -93,6 +103,12 @@ function scalar(value: unknown): PyValue {
   }
   return null;
 }
+
+/**
+ * How long a live formula over many channels waits for its inputs to report
+ * before its first answer, as on the server.
+ */
+export const VECTOR_START_WINDOW_MS = 1000;
 
 /** Most channels without a value that a result or an error names, as on the server. */
 export const VECTOR_MISSING_LISTED = 20;

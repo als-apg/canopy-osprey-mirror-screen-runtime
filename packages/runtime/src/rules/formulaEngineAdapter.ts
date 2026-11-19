@@ -16,7 +16,8 @@ import type {
 } from '../formula.js';
 
 interface FormulaEngineScalarLike {
-  value: FormulaScalarValue;
+  /** `null`: the result is a number that JSON cannot hold (NaN, infinite). */
+  value: FormulaScalarValue | null;
   /** Wire severity (`NO_ALARM` | `MINOR` | `MAJOR` | `INVALID`). */
   severity?: string;
   /** Result timestamp, epoch ns. */
@@ -78,7 +79,8 @@ export interface FormulaEngineServiceLike {
 /**
  * Wrap the SDK's Formula Engine service (or anything of its shape) as the
  * FormulaSubscriber the rule engine consumes. Scalar results feed
- * `onResult` with the bare value plus its severity/timestamp metadata;
+ * `onResult` with the bare value plus its severity/timestamp metadata; a
+ * scalar result whose value is null feeds `onNoValue` with the metadata;
  * non-scalar results are ignored (rules and widget channels are scalar);
  * error frames map onto FormulaErrors that keep the frame's `code` and
  * `retryable` (a frame without the flag reads as not retryable).
@@ -87,13 +89,14 @@ export function createFormulaEngineSubscriber(
   service: FormulaEngineServiceLike
 ): FormulaSubscriber {
   return {
-    subscribe(spec: FormulaSpec, { intervalMs, onResult, onError }) {
+    subscribe(spec: FormulaSpec, { intervalMs, onResult, onNoValue, onError }) {
       return service.subscribe(spec, {
         ...(intervalMs !== undefined ? { intervalMs } : {}),
         onResult: (data) => {
-          if (data.kind === 'scalar' && data.scalar) {
-            onResult(data.scalar.value, resultMeta(data.scalar));
-          }
+          if (data.kind !== 'scalar' || !data.scalar) return;
+          const value = data.scalar.value;
+          if (value === null || value === undefined) onNoValue?.(resultMeta(data.scalar));
+          else onResult(value, resultMeta(data.scalar));
         },
         onError: onError
           ? (error) =>

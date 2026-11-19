@@ -154,6 +154,10 @@ export class ScreenPVService implements PVService {
         if (channel.closed) return;
         this.update(channel, resultData(value, meta));
       },
+      onNoValue: (meta) => {
+        if (channel.closed) return;
+        this.update(channel, noValueData(meta));
+      },
       onError: (error) => {
         if (channel.closed) return;
         this.warnOnce(`formula channel '${address}' evaluation error: ${error.message}`);
@@ -213,6 +217,25 @@ export class ScreenPVService implements PVService {
     this.warned.add(message);
     console.warn(message);
   }
+}
+
+/**
+ * A formula channel that was evaluated and has no value: drawn as a channel
+ * without a value is (not connected), never as the text of a null and never
+ * as the value before. It keeps the severity of the inputs (INVALID when the
+ * evaluation states none) and the members summary.
+ */
+function noValueData(
+  meta: FormulaResultMeta | undefined
+): PVData & { vectorInputs?: FormulaResultMeta['vectorInputs'] } {
+  return {
+    ...DISCONNECTED_PV,
+    ...(meta?.vectorInputs !== undefined ? { vectorInputs: meta.vectorInputs } : {}),
+    severity: meta?.severity
+      ? (SEVERITY[meta.severity] ?? AlarmSeverity.INVALID)
+      : AlarmSeverity.INVALID,
+    timestamp: meta?.timestampMs ?? Date.now(),
+  };
 }
 
 /**

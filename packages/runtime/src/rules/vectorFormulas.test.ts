@@ -1,7 +1,7 @@
 // Formulas over many channels in the page: a roll-up in fixture mode, live
 // changes over loc:// inputs, and the evaluator's vector arithmetic.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LocalPVService } from '@slaclab/canopy-client';
 import type { FormulaDeclaration, Rule } from '@slaclab/canopy-screen-ir';
 import type { FormulaResultMeta, FormulaScalarValue, FormulaSpec } from '../formula.js';
@@ -133,18 +133,44 @@ describe('a live formula over many loc:// inputs', () => {
     return { results, errors, send, off, listeners };
   }
 
-  it('answers before any member has reported, and again on every change', () => {
-    const { results, send } = live('sum(connected({*}))', ['a', 'b']);
-    expect(results.map(([v]) => v)).toEqual([0]);
+  afterEach(() => vi.useRealTimers());
+
+  it('holds its first result until every member has reported, then answers every change', () => {
+    const { results, errors, send } = live('sum(connected({*}))', ['a', 'b']);
+    expect(results).toEqual([]);
     send('a', 1);
+    expect(results).toEqual([]);
+    expect(errors).toEqual([]);
     send('b', 1);
     send('b', 2);
     send('a', 1, false);
-    expect(results.map(([v]) => v)).toEqual([0, 1, 2, 1]);
+    expect(results.map(([v]) => v)).toEqual([2, 1]);
     expect(results.at(-1)![1]).toEqual({
       severity: 'INVALID',
       vectorInputs: { count: 2, missing: ['loc://a'], more: 0 },
     });
+  });
+
+  it('answers after the start window when a member has not reported by then', () => {
+    vi.useFakeTimers();
+    const { results, send } = live('sum(connected({*}))', ['a', 'b']);
+    send('a', 1);
+    vi.advanceTimersByTime(999);
+    expect(results).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(results).toEqual([
+      [1, { severity: 'INVALID', vectorInputs: { count: 2, missing: ['loc://b'], more: 0 } }],
+    ]);
+    send('b', 1);
+    expect(results.map(([v]) => v)).toEqual([1, 2]);
+  });
+
+  it('does not answer after the start window once it is unsubscribed', () => {
+    vi.useFakeTimers();
+    const { results, off } = live('sum(connected({*}))', ['a']);
+    off();
+    vi.advanceTimersByTime(5000);
+    expect(results).toEqual([]);
   });
 
   it('delivers again when only the severity changes', () => {
@@ -153,7 +179,6 @@ describe('a live formula over many loc:// inputs', () => {
     send('a', 1, true, 2);
     send('a', 1, true, 2);
     expect(results.map(([v, meta]) => [v, meta?.severity])).toEqual([
-      [1, 'INVALID'],
       [1, 'NO_ALARM'],
       [1, 'MAJOR'],
     ]);
@@ -162,6 +187,7 @@ describe('a live formula over many loc:// inputs', () => {
   it('reports a value reduction with a member missing as a retryable error, then recovers', () => {
     const { results, errors, send } = live('max({*})', ['a', 'b']);
     send('a', 1);
+    send('b', null);
     expect(results).toEqual([]);
     expect(errors.at(-1)).toMatchObject({ code: 'formula_input_missing', retryable: true });
     expect(errors.at(-1)!.message).toContain("PVs not available: ['loc://b']");

@@ -185,6 +185,14 @@ export function useWidgetRulesState(
           onResult: (value, meta) => {
             update(rule, () => ({ value, stale: false, vectorInputs: meta?.vectorInputs }));
           },
+          // Evaluated, no value: no output (the base prop), and not stale.
+          onNoValue: (meta) => {
+            update(rule, () => ({
+              value: undefined,
+              stale: false,
+              vectorInputs: meta?.vectorInputs,
+            }));
+          },
           onError: (error) => {
             const retryable = isRetryable(error);
             console.warn(
