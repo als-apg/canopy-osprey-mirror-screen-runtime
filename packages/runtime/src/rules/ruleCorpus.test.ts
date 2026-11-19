@@ -3,28 +3,36 @@
 // to the compiler that alters what an existing screen sends shows up here.
 //
 // Regenerate (only when a change of the sent form is intended):
-//   UPDATE_RULE_CORPUS=1 pnpm --filter @slaclab/canopy-screen-runtime exec vitest run src/rules/ruleCorpus.test.ts
+//   pnpm --filter @slaclab/canopy-screen-runtime exec vitest run src/rules/ruleCorpus.test.ts -u
 
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { FormulaDeclaration, MacroValues, Rule } from '@slaclab/canopy-screen-ir';
 import { compileFormulaSpec, compileRule } from './compileRule.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = join(HERE, '../../../..');
-const RECORDED = join(HERE, '__fixtures__/compiled-corpus.json');
-const ROOTS = ['packages', 'apps'];
-const SKIP = new Set(['node_modules', 'dist', 'build', '.turbo', 'coverage']);
-
-function jsonFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return SKIP.has(entry.name) ? [] : jsonFiles(path);
-    return entry.name.endsWith('.json') && path !== RECORDED ? [path] : [];
-  });
+declare global {
+  interface ImportMeta {
+    glob(
+      pattern: string | string[],
+      options: { query: string; import: string; eager: true }
+    ): Record<string, string>;
+  }
 }
+
+/** This file's directory from the repository root; glob keys are relative to it. */
+const HERE = 'packages/runtime/src/rules';
+const RECORDED = './__fixtures__/compiled-corpus.json';
+
+/** Every JSON file of the packages and apps, as text, by path from this file. */
+const sources: Record<string, string> = import.meta.glob(
+  [
+    '../../../../packages/**/*.json',
+    '../../../../apps/**/*.json',
+    '!**/node_modules/**',
+    '!**/dist/**',
+    '!**/__fixtures__/compiled-corpus.json',
+  ],
+  { query: '?raw', import: 'default', eager: true }
+);
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const isObject = (v: Json | undefined): v is { [key: string]: Json } =>
@@ -78,27 +86,35 @@ function collect(
   }
 }
 
+/** A glob key (`../render/x.json`) as a path from the repository root. */
+function fromRoot(key: string): string {
+  const parts = HERE.split('/');
+  for (const part of key.split('/')) {
+    if (part === '..') parts.pop();
+    else if (part !== '.') parts.push(part);
+  }
+  return parts.join('/');
+}
+
 function compileCorpus(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const files = ROOTS.flatMap((root) => jsonFiles(join(REPO, root))).sort();
-  for (const file of files) {
+  const files = Object.entries(sources).map(([key, text]) => [fromRoot(key), text] as const);
+  for (const [file, text] of files.sort(([a], [b]) => (a < b ? -1 : 1))) {
     let parsed: Json;
     try {
-      parsed = JSON.parse(readFileSync(file, 'utf8')) as Json;
+      parsed = JSON.parse(text) as Json;
     } catch {
       continue; // some fixtures are malformed on purpose
     }
-    collect(parsed, relative(REPO, file).split('\\').join('/'), undefined, {}, out);
+    collect(parsed, file, undefined, {}, out);
   }
   return out;
 }
 
 describe('rule corpus', () => {
-  it('compiles every fixture rule and formula to the recorded bytes', () => {
+  it('compiles every fixture rule and formula to the recorded bytes', async () => {
     const corpus = compileCorpus();
-    const text = `${JSON.stringify(corpus, null, 2)}\n`;
-    if (process.env.UPDATE_RULE_CORPUS === '1') writeFileSync(RECORDED, text);
     expect(Object.keys(corpus).length).toBeGreaterThan(100);
-    expect(text).toBe(readFileSync(RECORDED, 'utf8'));
+    await expect(`${JSON.stringify(corpus, null, 2)}\n`).toMatchFileSnapshot(RECORDED);
   });
 });
