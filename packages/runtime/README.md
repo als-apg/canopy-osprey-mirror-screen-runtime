@@ -49,7 +49,12 @@ What the renderer does:
   `src/rules/__fixtures__/formula-vector-cases.json` hold both to one
   behaviour), without the server's pacing: it evaluates on every change. A
   result carries a summary of the members (`vectorInputs`: how many, which
-  have no value); the node the formula feeds shows it on hover.
+  have no value); the node the formula feeds shows it on hover when it takes
+  the pointer. A node never shows a better state than its formula stands
+  behind: before the first result it draws its authored props; after any
+  error, or with no answer within `formulaStartTimeoutMs()` (3 s), a rule
+  gives no output, the node draws the disconnected cue, and the hover says
+  what failed; a result whose value is null gives no output either.
 - **Formula channels** — a widget channel prop bound to `formula://<name>` (a
   converted EDM `CALC\` / PyDM `calc://` channel) reads the rendering
   screen's `formulas[]` entry, its bindings macro-resolved with that screen's
