@@ -202,6 +202,51 @@ describe('widget actions', () => {
     expect(host.resolveManifest).toHaveBeenCalledWith('a/b/details.screen.json');
   });
 
+  describe('props.confirmWrites', () => {
+    function gated(node: WidgetNode) {
+      const options: unknown[] = [];
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: async (writes, ...rest) => {
+          options.push(rest.length === 0 ? undefined : rest[0]);
+          return writes.map(() => ({
+            outcome: 'confirmed' as const,
+            code: null,
+            status: null,
+            detail: 'written',
+            coalesced: false,
+          }));
+        },
+      };
+      render(
+        wrap(
+          <WriteGate.Provider value={gate}>
+            <ScreenRenderer screen={doc('top', [node])} />
+          </WriteGate.Provider>
+        )
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+      return options;
+    }
+    const write = [{ type: 'write_pv', pvName: 'X:A', value: 1 }];
+
+    it("asks the gate to confirm the click's run when the node sets it true", async () => {
+      const node = button('b1', 'Go', write);
+      const options = gated({ ...node, props: { ...node.props, confirmWrites: true } });
+      await waitFor(() => expect(options).toEqual([{ confirm: true }]));
+    });
+
+    it('gives the gate no options on a node without it, or with a value that is not true', async () => {
+      for (const value of [undefined, false, 'true']) {
+        const node = button('b1', 'Go', write);
+        const props = value === undefined ? node.props : { ...node.props, confirmWrites: value };
+        const options = gated({ ...node, props });
+        await waitFor(() => expect(options).toEqual([undefined]));
+        cleanup();
+      }
+    });
+  });
+
   it('attaches no click handler when the actions list is malformed', async () => {
     const put = vi.spyOn(service, 'put');
     const screenJson = doc('top', [

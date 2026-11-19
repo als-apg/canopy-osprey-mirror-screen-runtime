@@ -53,6 +53,7 @@ import type {
 import type { FormulaDeclaration } from '@slaclab/canopy-screen-ir';
 import {
   AssetResolverContext,
+  CONFIRM_WRITES_PROP,
   PVServiceContext,
   RenderModeContext,
   WRITES_INERT_PROP,
@@ -550,6 +551,8 @@ function MountedNodeView({
       resolveManifest: (file) =>
         host.resolveManifest(resolveAgainstChain(embed.topScreenPath, embed.chain, file)),
       gate,
+      // The node asks for the dialog before its click's machine writes.
+      confirm: effective.props[CONFIRM_WRITES_PROP] === true,
     }).catch((err: unknown) => {
       host.showError(err instanceof Error ? err.message : String(err));
     });

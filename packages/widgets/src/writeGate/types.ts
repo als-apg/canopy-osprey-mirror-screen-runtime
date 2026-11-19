@@ -38,6 +38,12 @@ export interface WriteRunOptions {
    * promise never rejects and may resolve to an empty list.
    */
   tail?: Promise<readonly WriteRequest[]>;
+  /**
+   * The screen asks for the confirmation dialog before this run. It only adds
+   * a dialog: a gate that asks on its own account (the deployment's setting,
+   * a backend whose write state is `asked`) asks whatever this says.
+   */
+  confirm?: boolean;
 }
 
 /** `'declined'`, or the outcome of each write that was sent, in order. */
@@ -46,7 +52,8 @@ export type WriteRunResult = 'declined' | readonly WriteOutcome[];
 /**
  * The gate a composition root provides for machine writes.
  *
- * `run()` takes one click's writes: at most one confirmation dialog, then the
+ * `run()` takes one click's writes: at most one confirmation dialog (the
+ * gate's own rule, or the run's `confirm` option), then the
  * writes in order, continuing only after `confirmed`, `mismatch` or
  * `unconfirmed` (a `release` write: see `WriteRequest.release`). It never
  * rejects.

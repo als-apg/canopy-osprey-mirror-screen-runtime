@@ -228,6 +228,63 @@ describe('gate.run — the dialog', () => {
   });
 });
 
+describe('gate.run — a run that asks for the dialog', () => {
+  it('opens the dialog with confirmWrites off, and its confirmed writes say so', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('A', 1), w('B', 2)], { confirm: true });
+    await tick();
+    const dialog = gate.getSnapshot().dialog!;
+    expect(dialog.writes).toEqual([w('A', 1), w('B', 2)]);
+    expect(f.sent).toEqual([]);
+    gate.confirm(dialog.id);
+    await p;
+    expect(f.sent.map((s) => [s.pv, s.value, s.options])).toEqual([
+      ['A', 1, { origin: ORIGIN, binding: 'va@1', confirmed: true }],
+      ['B', 2, { origin: ORIGIN, binding: 'va@1', confirmed: true }],
+    ]);
+  });
+
+  it('declined: nothing sent, nothing shown', async () => {
+    const f = fakeBackend({ confirm: false });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('A', 1), w('B', 2)], { confirm: true });
+    await tick();
+    gate.decline(gate.getSnapshot().dialog!.id);
+    expect(await p).toBe('declined');
+    expect(f.sent).toEqual([]);
+    expect(gate.getSnapshot()).toEqual({ dialog: null, toasts: [] });
+  });
+
+  it('is still refused while the write state is inert: no dialog, nothing sent', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.state({ state: 'off', reason: null, cause: null });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = await gate.run([w('A', 1)], { confirm: true });
+    expect(result).not.toBe('declined');
+    expect(f.sent).toEqual([]);
+    expect(gate.getSnapshot().dialog).toBeNull();
+  });
+
+  it('confirm: false never removes the dialog the deployment asks for', async () => {
+    const f = fakeBackend({ confirm: true });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    void gate.run([w('A', 1)], { confirm: false });
+    await tick();
+    expect(gate.getSnapshot().dialog).not.toBeNull();
+    expect(f.sent).toEqual([]);
+  });
+
+  it('does not change what the gate says of its own confirmWrites', async () => {
+    const f = fakeBackend({ confirm: false });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    void gate.run([w('A', 1)], { confirm: true });
+    await tick();
+    expect(gate.confirmWrites()).toBe(false);
+  });
+});
+
 describe('gate.run — one dialog slot', () => {
   it('queues further runs FIFO and never stacks dialogs', async () => {
     const f = fakeBackend();

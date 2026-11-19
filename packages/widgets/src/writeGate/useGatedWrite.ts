@@ -8,6 +8,11 @@
 // `disabled` and `reason` carry the gate's writes state for a machine write
 // (a local channel or no provider is never disabled). A disabled write still
 // goes to the gate, whose refusal sends nothing.
+//
+// A widget may ask for the confirmation dialog (`options.confirm`, the node's
+// `confirmWrites` prop): its gate runs then carry `confirm: true`, and a
+// momentary press is one [press, release] run, as it is when the gate itself
+// asks. It changes nothing for a pass-through write.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWriteGate, useWritesState } from './WriteGate.js';
@@ -43,7 +48,8 @@ export interface GatedWrite {
   /** One write as one run; `entered` is the text `value` was parsed from, for the dialog. */
   write(value: WriteValue, options?: { entered?: string }): Promise<GatedWriteResult>;
   /**
-   * A momentary press at pointerdown. With confirmation on, `[press, release]`
+   * A momentary press at pointerdown. With confirmation on (the gate's, or
+   * the widget asking), `[press, release]`
    * is one run (both shown in the dialog, sent as a pulse). With it off, the
    * press runs now and the release is appended when the pointer comes up — a
    * window-level pointerup/pointercancel for `pointerId`, a document-level
@@ -82,16 +88,34 @@ async function runGate(
   }
 }
 
-export function useGatedWrite(handle: WritableHandle): GatedWrite {
+/** What a widget asks of its gate runs. */
+export interface GatedWriteOptions {
+  /** Ask for the confirmation dialog before every run of this widget. */
+  confirm?: boolean;
+}
+
+/** The reserved prop a screen sets on a node to ask for the dialog: exactly `true`. */
+export const CONFIRM_WRITES_PROP = 'confirmWrites';
+
+/** The gated-write options a widget's props ask for. */
+export function gatedWriteOptions(props: Readonly<Record<string, unknown>>): GatedWriteOptions {
+  return props[CONFIRM_WRITES_PROP] === true ? ASKS : ASKS_NOTHING;
+}
+
+const ASKS: GatedWriteOptions = Object.freeze({ confirm: true });
+const ASKS_NOTHING: GatedWriteOptions = Object.freeze({});
+
+export function useGatedWrite(handle: WritableHandle, options?: GatedWriteOptions): GatedWrite {
   const gate = useWriteGate();
+  const asks = options?.confirm === true;
   const statement = useWritesState();
   const writes = gateFor(gate, handle.address) === null ? WRITES_LIVE : statement;
   const [resetKey, setResetKey] = useState(0);
 
   // The gate and handle of the latest commit, read by the stable callbacks.
-  const latest = useRef({ gate, handle });
+  const latest = useRef({ gate, handle, asks });
   useLayoutEffect(() => {
-    latest.current = { gate, handle };
+    latest.current = { gate, handle, asks };
   });
 
   const mounted = useRef(false);
@@ -112,7 +136,7 @@ export function useGatedWrite(handle: WritableHandle): GatedWrite {
 
   const write = useCallback(
     async (value: WriteValue, options?: { entered?: string }): Promise<GatedWriteResult> => {
-      const { gate, handle: h } = latest.current;
+      const { gate, handle: h, asks } = latest.current;
       if (!h.address) return 'skipped';
       const g = gateFor(gate, h.address);
       if (g === null) {
@@ -120,9 +144,11 @@ export function useGatedWrite(handle: WritableHandle): GatedWrite {
         return 'passthrough';
       }
       const entered = options?.entered;
-      const result = await runGate(g, [
-        entered === undefined ? { pv: h.address, value } : { pv: h.address, value, entered },
-      ]);
+      const result = await runGate(
+        g,
+        [entered === undefined ? { pv: h.address, value } : { pv: h.address, value, entered }],
+        asks ? { confirm: true } : undefined
+      );
       settle(result);
       return result;
     },
@@ -136,14 +162,18 @@ export function useGatedWrite(handle: WritableHandle): GatedWrite {
       pointerId?: number
     ): Promise<GatedWriteResult> => {
       if (endHold.current) return 'skipped'; // one run per click
-      const { gate, handle: h } = latest.current;
+      const { gate, handle: h, asks } = latest.current;
       const pv = h.address;
       if (!pv) return 'skipped';
       const g = gateFor(gate, pv);
       const releaseWrite: WriteRequest = { pv, value: releaseValue, release: true };
 
-      if (g !== null && g.confirmWrites()) {
-        const result = await runGate(g, [{ pv, value: pressValue }, releaseWrite]);
+      if (g !== null && (asks || g.confirmWrites())) {
+        const result = await runGate(
+          g,
+          [{ pv, value: pressValue }, releaseWrite],
+          asks ? { confirm: true } : undefined
+        );
         settle(result);
         return result;
       }

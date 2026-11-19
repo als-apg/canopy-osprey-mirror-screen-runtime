@@ -20,7 +20,7 @@ import type { RenderProfile } from '../renderMode.js';
 import type { WidgetProps } from '../types.js';
 import { useFitText } from '../shared/useFitText.js';
 import { useResolveAsset } from '../assets.js';
-import { useGatedWrite } from '../writeGate/useGatedWrite.js';
+import { gatedWriteOptions, useGatedWrite } from '../writeGate/useGatedWrite.js';
 import { parseNumericEntry } from './numericEntry.js';
 import { hostInertReason, ownInertReason, useInert, useInertOnInner } from '../writeGate/inert.js';
 import { displayText, entryText } from './pvText.js';
@@ -253,7 +253,7 @@ export function CarbonPVTextInput({
   // with the arrow keys is written by Enter alone, never by leaving the field.
   const [edit, setEdit] = useState<{ text: string; typed: boolean } | null>(null);
   const draft = edit?.text ?? null;
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   const alarm = readoutAlarm(pv, props, profile, styleProp(props.foregroundColor));
   // IR text/field colours and font on the Carbon input itself (inline beats
@@ -424,7 +424,7 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   };
   const pressValue = writeValue(props.pressValue);
   const releaseValue = writeValue(props.releaseValue);
-  const gated = useGatedWrite(controlPV);
+  const gated = useGatedWrite(controlPV, gatedWriteOptions(props));
   // Inert for its own control write, or for the actions its host runs on a click.
   const inert = useInert(ownInertReason(gated, controlPV.address) ?? hostInertReason(props));
 
@@ -568,7 +568,7 @@ export function CarbonPVSlider({ id, layout, props, isSelected, isEditing }: Wid
   const min = (props.minValue as number) ?? pv.lowerLimit ?? 0;
   const max = (props.maxValue as number) ?? pv.upperLimit ?? 100;
   const value = pv.connected ? (typeof pv.value === 'number' ? pv.value : 0) : 0;
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   // The value under the user's hand while dragging or stepping; null when the
@@ -657,7 +657,7 @@ export function CarbonPVSlider({ id, layout, props, isSelected, isEditing }: Wid
 export function CarbonPVToggle({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const isOn = pv.connected && (typeof pv.value === 'number' ? pv.value !== 0 : Boolean(pv.value));
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   const handleToggle = useCallback(
@@ -839,7 +839,7 @@ export function CarbonPVLed({ layout, props, isEditing }: WidgetRendererProps) {
 export function CarbonPVDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const items = (props.customItems as string[]) ?? ['Option 1', 'Option 2', 'Option 3'];
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   // Carbon's Dropdown keeps its own description and title on its field button.
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -902,7 +902,7 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
     }
   }
 
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   const handleChange = useCallback(
     (selection: string | number | undefined) => {
@@ -964,7 +964,7 @@ export function CarbonPVCheckbox({ id, layout, props, isEditing }: WidgetRendere
   const nostate = noState(props.pvName, pv, isEditing);
   const isChecked =
     pv.connected && (typeof pv.value === 'number' ? pv.value !== 0 : Boolean(pv.value));
-  const gated = useGatedWrite(pv);
+  const gated = useGatedWrite(pv, gatedWriteOptions(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   const handleChange = useCallback(

@@ -32,6 +32,8 @@ function outcome(kind: WriteOutcomeKind): WriteOutcome {
 
 interface Run {
   writes: WriteRequest[];
+  /** The run's `confirm` option, absent when the run did not carry the key. */
+  confirm?: boolean;
   tail?: Promise<readonly WriteRequest[]>;
   tailWrites?: readonly WriteRequest[];
 }
@@ -43,6 +45,7 @@ function fakeGate(answer: WriteOutcomeKind | 'declined' | 'reject', confirm = fa
     confirmWrites: () => confirm,
     run: async (writes, options) => {
       const run: Run = { writes: [...writes], tail: options?.tail };
+      if (options !== undefined && 'confirm' in options) run.confirm = options.confirm;
       runs.push(run);
       if (answer === 'reject') throw new Error('boom');
       if (answer === 'declined') return 'declined';
@@ -298,6 +301,75 @@ describe('useGatedWrite.press — confirmation off', () => {
       firePointer(window, 'pointerup', 3);
       await p;
     });
+  });
+});
+
+describe('useGatedWrite — a widget that asks to confirm', () => {
+  it('a write carries confirm: true to the gate', async () => {
+    const { gate, runs } = fakeGate('confirmed');
+    const { h } = handle('SIM:X');
+    const { result } = renderHook(() => useGatedWrite(h, { confirm: true }), {
+      wrapper: withGate(gate),
+    });
+    await act(async () => {
+      await result.current.write(2, { entered: '2' });
+    });
+    expect(runs).toEqual([
+      { writes: [{ pv: 'SIM:X', value: 2, entered: '2' }], tail: undefined, confirm: true },
+    ]);
+  });
+
+  it('a write that does not ask carries no confirm key, as before', async () => {
+    const { gate, runs } = fakeGate('confirmed');
+    const { h } = handle('SIM:X');
+    for (const options of [undefined, {}, { confirm: false }]) {
+      const { result } = renderHook(() => useGatedWrite(h, options), { wrapper: withGate(gate) });
+      await act(async () => {
+        await result.current.write(2);
+      });
+    }
+    expect(runs.every((r) => !('confirm' in r))).toBe(true);
+  });
+
+  it('a momentary press is one [press, release] run with the gate confirmation off', async () => {
+    const { gate, runs } = fakeGate('confirmed', false);
+    const { h, puts } = handle('SIM:P');
+    const { result } = renderHook(() => useGatedWrite(h, { confirm: true }), {
+      wrapper: withGate(gate),
+    });
+    await act(async () => {
+      await result.current.press(1, 0, 7);
+    });
+    expect(runs).toEqual([
+      {
+        writes: [
+          { pv: 'SIM:P', value: 1 },
+          { pv: 'SIM:P', value: 0, release: true },
+        ],
+        tail: undefined,
+        confirm: true,
+      },
+    ]);
+    expect(puts).toEqual([]);
+  });
+
+  it('asking changes nothing for a local channel or with no provider', async () => {
+    const { gate, runs } = fakeGate('confirmed');
+    const local = handle('loc://x');
+    const a = renderHook(() => useGatedWrite(local.h, { confirm: true }), {
+      wrapper: withGate(gate),
+    });
+    await act(async () => {
+      await a.result.current.write(1);
+    });
+    const bare = handle('SIM:X');
+    const b = renderHook(() => useGatedWrite(bare.h, { confirm: true }));
+    await act(async () => {
+      await b.result.current.write(1);
+    });
+    expect(local.puts).toEqual([1]);
+    expect(bare.puts).toEqual([1]);
+    expect(runs).toEqual([]);
   });
 });
 

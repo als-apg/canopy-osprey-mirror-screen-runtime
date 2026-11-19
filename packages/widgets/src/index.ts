@@ -53,7 +53,11 @@ export { AssetResolverContext, useResolveAsset } from './assets.js';
 export type { ResolveAsset } from './assets.js';
 
 export { WriteGate, useWriteGate } from './writeGate/WriteGate.js';
-export { useGatedWrite } from './writeGate/useGatedWrite.js';
+export {
+  CONFIRM_WRITES_PROP,
+  gatedWriteOptions,
+  useGatedWrite,
+} from './writeGate/useGatedWrite.js';
 export { allConfirmed } from './writeGate/types.js';
 export { WRITES_INERT_PROP } from './writeGate/inert.js';
 export type {
@@ -65,7 +69,12 @@ export type {
   WriteRunResult,
   WriteGateService,
 } from './writeGate/types.js';
-export type { WritableHandle, GatedWrite, GatedWriteResult } from './writeGate/useGatedWrite.js';
+export type {
+  WritableHandle,
+  GatedWrite,
+  GatedWriteOptions,
+  GatedWriteResult,
+} from './writeGate/useGatedWrite.js';
 
 export { widgetRegistry } from './registry/WidgetRegistry.js';
 export type {

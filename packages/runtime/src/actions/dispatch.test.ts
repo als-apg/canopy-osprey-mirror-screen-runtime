@@ -279,16 +279,19 @@ function outcome(kind: WriteOutcomeKind, coalesced = false): WriteOutcome {
  */
 function fakeGate(calls: string[], answer: 'declined' | WriteOutcome[]) {
   const runs: WriteRequest[][] = [];
+  /** The options each run was given, `undefined` for a run given none. */
+  const options: unknown[] = [];
   const gate: WriteGateService = {
     confirmWrites: () => true,
-    run: async (writes) => {
+    run: async (writes, ...rest) => {
       runs.push([...writes]);
+      options.push(rest.length === 0 ? undefined : rest[0]);
       calls.push(`run ${writes.map((w) => `${w.pv}=${w.value}`).join(',')}`);
       if (answer === 'declined') return 'declined';
       return answer.slice(0, writes.length);
     },
   };
-  return { gate, runs };
+  return { gate, runs, options };
 }
 
 describe('dispatchActions with a write gate', () => {
@@ -427,6 +430,35 @@ describe('dispatchActions with a write gate', () => {
     );
     expect(ctx.calls).toEqual([]);
     expect(ctx.pvService.put).not.toHaveBeenCalled();
+  });
+
+  it('gives the gate no options for a click that does not ask to confirm', async () => {
+    const ctx = makeCtx();
+    const { gate, options } = fakeGate(ctx.calls, [outcome('confirmed')]);
+    await dispatchActions([{ type: 'write_pv', pvName: 'A', value: 1 }], { ...ctx, gate });
+    expect(options).toEqual([undefined]);
+  });
+
+  it("asks the gate to confirm the click's one run when the node asks", async () => {
+    const ctx = makeCtx();
+    const { gate, runs, options } = fakeGate(ctx.calls, [
+      outcome('confirmed'),
+      outcome('confirmed'),
+    ]);
+    await dispatchActions(
+      [
+        { type: 'write_pv', pvName: 'A', value: 1 },
+        { type: 'write_pv', pvName: 'B', value: 2 },
+      ],
+      { ...ctx, gate, confirm: true }
+    );
+    expect(runs).toEqual([
+      [
+        { pv: 'A', value: 1 },
+        { pv: 'B', value: 2 },
+      ],
+    ]);
+    expect(options).toEqual([{ confirm: true }]);
   });
 
   it('with a null gate writes straight through, as before', async () => {

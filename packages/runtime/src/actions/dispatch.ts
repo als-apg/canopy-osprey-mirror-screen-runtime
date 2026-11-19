@@ -5,7 +5,8 @@
 // be exercised without a browser or a running viewer.
 //
 // Machine writes of one click go through the provided write gate as one run
-// (at most one confirmation dialog, one summary toast); a decline or a run
+// (at most one confirmation dialog, one summary toast; a node that sets
+// `confirmWrites` asks for the dialog whatever the gate's own rule); a decline or a run
 // that stopped skips the rest of the action list. Every write that does not
 // go through the gate (a local channel, or any write with no gate) goes
 // through one call, `dispatchLocalWrite`: it is the only put in this module.
@@ -57,6 +58,12 @@ export interface ActionContext {
    * straight through `pvService` (mock and fixture mode, the builder).
    */
   readonly gate?: WriteGateService | null;
+  /**
+   * The node asks for the confirmation dialog before its click's machine
+   * writes (its `confirmWrites` prop). Read only with a gate; it adds a
+   * dialog and never removes the gate's own.
+   */
+  readonly confirm?: boolean;
 }
 
 // Action kinds the runtime refuses to run; each is warned about once.
@@ -182,7 +189,9 @@ export async function dispatchActions(
         }
         if (ran) break; // already sent with the click's run
         ran = true;
-        const result = await gate.run(machine).catch((): WriteRunResult => []);
+        const result = await (
+          ctx.confirm === true ? gate.run(machine, { confirm: true }) : gate.run(machine)
+        ).catch((): WriteRunResult => []);
         if (!completed(result, machine.length)) return;
         break;
       }

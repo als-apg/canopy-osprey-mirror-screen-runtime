@@ -29,8 +29,10 @@
 //                 toast ("writes changed" for a statement, "target changed" for
 //                 a closed socket). A run queued behind an open dialog is
 //                 re-checked when its turn comes. Otherwise at most one
-//                 confirmation dialog (iff confirmWrites, and always under
-//                 `asked`), opened only with a seen heartbeat and the link up
+//                 confirmation dialog (iff confirmWrites, always under
+//                 `asked`, and whenever the run asks for it with its `confirm`
+//                 option: a screen can add the dialog, never remove it),
+//                 opened only with a seen heartbeat and the link up
 //                 (else "target changed"); the binding and statement are
 //                 captured when it opens. While it is open, nothing is sent
 //                 if: the binding changes on a live socket ("target changed"
@@ -612,7 +614,8 @@ export function createWriteGate(
     const { refusal } = statement();
     if (refusal !== null) return unsent(refusal, listed.length);
 
-    const dialog = asks();
+    // The run's own request only adds a dialog; it never removes the gate's.
+    const dialog = asks() || options?.confirm === true;
     const multi = listed.length > 1 || tail !== undefined;
     let held = dialog || multi;
     if (held) hold(1);
