@@ -124,8 +124,11 @@ const toasts = (page: Page) => page.locator('[data-testid="canopy-write-toast"]'
 const machineToasts = (page: Page) => page.locator('[data-testid="canopy-machine-toast"]');
 const badge = (page: Page) => page.locator('.target-badge');
 const dialog = (page: Page) => page.getByTestId('canopy-write-dialog');
+// A screen's button; the dialog's confirm button may carry the same word.
 const button = (page: Page, name: string): Locator =>
-  page.getByRole('button', { name, exact: true });
+  page
+    .getByRole('button', { name, exact: true })
+    .and(page.locator(':not([data-testid="canopy-write-confirm"])'));
 
 /** Presses Tab until `target` has focus; fails after `limit` presses. */
 async function tabTo(page: Page, target: Locator, limit = 40): Promise<void> {

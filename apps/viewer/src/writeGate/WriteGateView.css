@@ -1,8 +1,129 @@
-/* The write dialog's table of pending writes: PV names and values in mono. */
+/* The write dialog. Top to bottom: what is written to, the question, the
+   screen's sentence, the writes. */
+
+/* The first line: the target, with a marker in the colour of its kind. A
+   target whose kind is not known keeps the muted marker. */
+.canopy-write-target {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--canopy-text-primary);
+}
+
+.canopy-write-target::before {
+  content: '';
+  flex: none;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 50%;
+  background: var(--canopy-text-muted);
+}
+
+.canopy-write-dialog[data-target-kind='unknown']:not([data-target-notice]) .canopy-write-target {
+  color: var(--canopy-text-secondary);
+}
+
+.canopy-write-dialog[data-target-kind='machine'] .canopy-write-target::before {
+  background: var(--canopy-status-warning);
+}
+
+.canopy-write-dialog[data-target-kind='simulation'] .canopy-write-target::before {
+  background: var(--canopy-accent);
+}
+
+.canopy-write-dialog[data-target-kind='test'] .canopy-write-target::before {
+  background: var(--canopy-status-success);
+}
+
+.canopy-write-dialog[data-target-notice='fallback'] .canopy-write-target::before {
+  background: var(--canopy-status-warning);
+}
+
+.canopy-write-dialog[data-target-notice='unservable'] .canopy-write-target::before {
+  background: var(--canopy-status-error);
+}
+
+/* The screen's sentence; a write with consequences carries the warning bar. */
+.canopy-write-dialog__text {
+  max-inline-size: 52ch;
+  margin: 0 0 1rem;
+}
+
+.canopy-write-dialog__text--consequence {
+  padding-inline-start: 0.625rem;
+  border-inline-start: 3px solid var(--canopy-status-warning);
+}
+
+/* The writes, as a table in both forms. Its values are in mono (the host
+   contract reads the face at `.canopy-write-dialog__writes td`), its labels
+   and headings in the UI face. */
+.canopy-write-dialog__writes {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.canopy-write-dialog__writes th {
+  color: var(--canopy-text-secondary);
+  font-size: var(--canopy-text-sm);
+  font-weight: 400;
+  text-align: start;
+}
+
 .canopy-write-dialog__writes td {
-  padding: 0 12px;
   font-family: var(--canopy-font-mono);
   font-size: var(--canopy-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.canopy-write-dialog__writes th,
+.canopy-write-dialog__writes td {
+  padding: 0.4375rem 0;
+  border-block-end: 1px solid var(--canopy-border);
+  vertical-align: baseline;
+}
+
+.canopy-write-dialog__writes code {
+  font: inherit;
+}
+
+.canopy-write-dialog__writes strong {
+  font-weight: 600;
+}
+
+/* One change: labelled rows (channel, now, writes, limits). */
+.canopy-write-dialog__rows {
+  border-block-start: 1px solid var(--canopy-border);
+}
+
+.canopy-write-dialog__rows th {
+  inline-size: 5.5rem;
+}
+
+/* Several changes: "now" and "writes" in their own right-aligned columns. */
+.canopy-write-dialog__columns th {
+  padding: 0.375rem 0;
+}
+
+.canopy-write-dialog__writes .canopy-write-dialog__n {
+  padding-inline-start: 1.125rem;
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* What follows the value on its row: the difference, a pulse's release. */
+.canopy-write-dialog__more {
+  color: var(--canopy-text-secondary);
+}
+
+.canopy-write-dialog__more::before {
+  content: '\00b7';
+  padding: 0 0.5rem;
+}
+
+/* A channel with no live value says so; it is not a value. */
+.canopy-write-dialog__none {
+  color: var(--canopy-text-secondary);
+  font-style: italic;
 }
 
 /* One screen's toasts in the workspace's shared column (toastHost.tsx). */

@@ -36,6 +36,35 @@ export interface WriteRequest {
   release?: boolean;
 }
 
+/**
+ * What a run's confirmation dialog says, beyond its writes. It never decides
+ * whether the dialog opens: a gate reads it only for a dialog it opens anyway.
+ */
+export interface WriteDialogText {
+  /** The question in the title (the node's `confirmTitle`). */
+  title?: string;
+  /** One sentence under the title (the node's `confirmText`). */
+  text?: string;
+  /** The word on the confirm button (the node's `confirmVerb`). */
+  verb?: string;
+  /**
+   * `'consequence'` (the node's `confirmKind`): the sentence is drawn as a
+   * warning and the confirm button in the danger style.
+   */
+  kind?: 'consequence';
+  /**
+   * The label of the widget or node that asked. Without a `title` or a `verb`
+   * the dialog builds them from it.
+   */
+  label?: string;
+  /**
+   * What the run is, for a built title: `'set'` a value the operator chose
+   * for a channel, `'press'` the press of a control, `'apply'` a scope of
+   * staged values.
+   */
+  action?: 'set' | 'press' | 'apply';
+}
+
 export interface WriteRunOptions {
   /**
    * Writes known only after the run has started: a momentary button's release
@@ -50,6 +79,8 @@ export interface WriteRunOptions {
    * a backend whose write state is `asked`) asks whatever this says.
    */
   confirm?: boolean;
+  /** What the dialog says, when one opens. It does not open one. */
+  dialog?: WriteDialogText;
   /**
    * Name the channel in the run's summary when a write was not confirmed, and
    * say whether its value was sent: "<channel>: not sent; <detail> (k of n

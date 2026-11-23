@@ -121,21 +121,44 @@ export async function installHost(page: Page, opts: HostOptions): Promise<void> 
 /** PVs answered by installHareMock; only PROBE:WRITE is writable. */
 export const WRITABLE_PV = 'PROBE:WRITE';
 
-function pvValue(pv: string) {
+/**
+ * What one channel of the mocked socket holds, where a spec needs more than
+ * the default (the value 1, connected, precision 2, no unit, no limits).
+ */
+export interface MockChannel {
+  value?: number | string;
+  connected?: boolean;
+  units?: string;
+  precision?: number;
+  controlLow?: number;
+  controlHigh?: number;
+}
+
+function pvValue(pv: string, channel: MockChannel = {}) {
   return {
     pv,
-    value: 1,
+    value: channel.value ?? 1,
     valueKind: 'scalar',
     severity: 'NO_ALARM',
     tsNs: Date.now() * 1e6,
-    connected: true,
+    connected: channel.connected ?? true,
     error: null,
   };
 }
 
-function pvMeta(pv: string) {
-  const nil = { units: null, precision: 2, description: null, enumChoices: null };
-  const limits = { displayLow: null, displayHigh: null, controlLow: null, controlHigh: null };
+function pvMeta(pv: string, channel: MockChannel = {}) {
+  const nil = {
+    units: channel.units ?? null,
+    precision: channel.precision ?? 2,
+    description: null,
+    enumChoices: null,
+  };
+  const limits = {
+    displayLow: null,
+    displayHigh: null,
+    controlLow: channel.controlLow ?? null,
+    controlHigh: channel.controlHigh ?? null,
+  };
   const alarms = { warningLow: null, warningHigh: null, alarmLow: null, alarmHigh: null };
   return {
     pv,
@@ -166,6 +189,8 @@ export type OpenFrame = object | (() => object) | null;
 export interface HareMockOptions {
   /** The frame each new socket gets first; defaults to probeHeartbeat. */
   onOpen?: OpenFrame;
+  /** Channels that hold something other than the default, by name. */
+  channels?: Readonly<Record<string, MockChannel>>;
 }
 
 /**
@@ -275,8 +300,8 @@ export async function installHareMock(
         ws.send(
           JSON.stringify({
             type: 'initial',
-            data: Object.fromEntries(pvs.map((pv) => [pv, pvValue(pv)])),
-            meta: Object.fromEntries(pvs.map((pv) => [pv, pvMeta(pv)])),
+            data: Object.fromEntries(pvs.map((pv) => [pv, pvValue(pv, opts.channels?.[pv])])),
+            meta: Object.fromEntries(pvs.map((pv) => [pv, pvMeta(pv, opts.channels?.[pv])])),
             count: pvs.length,
           })
         );

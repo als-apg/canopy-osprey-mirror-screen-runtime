@@ -54,8 +54,14 @@ export type { ResolveAsset } from './assets.js';
 
 export { WriteGate, useWriteGate } from './writeGate/WriteGate.js';
 export {
+  CONFIRM_KIND_PROP,
+  CONFIRM_MESSAGE_PROP,
+  CONFIRM_TEXT_PROP,
+  CONFIRM_TITLE_PROP,
+  CONFIRM_VERB_PROP,
   CONFIRM_WRITES_PROP,
   asksToConfirm,
+  dialogText,
   gatedWriteOptions,
   useGatedWrite,
 } from './writeGate/useGatedWrite.js';
@@ -76,6 +82,7 @@ export type {
   WriteOutcomeKind,
   WriteOutcome,
   WriteRequest,
+  WriteDialogText,
   WriteRunOptions,
   WriteRunResult,
   WriteGateService,

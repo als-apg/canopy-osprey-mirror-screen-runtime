@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
 import type {
+  WriteDialogText,
   WriteGateService,
   WriteOutcomeKind,
   WriteRequest,
@@ -39,6 +40,9 @@ const { WRITES_INERT_PROP } = await import('../writeGate/inert.js');
 
 interface Run {
   writes: WriteRequest[];
+  /** The run asked for the dialog, and what it says in one. */
+  confirm?: boolean;
+  dialog?: WriteDialogText;
   tail?: Promise<readonly WriteRequest[]>;
   tailWrites?: readonly WriteRequest[];
 }
@@ -51,6 +55,8 @@ const gate: WriteGateService = {
   confirmWrites: () => confirm,
   run: async (writes, options): Promise<WriteRunResult> => {
     const run: Run = { writes: [...writes], tail: options?.tail };
+    if (options?.confirm !== undefined) run.confirm = options.confirm;
+    if (options?.dialog !== undefined) run.dialog = options.dialog;
     runs.push(run);
     if (answer === 'declined') return 'declined';
     const all = [...writes];
@@ -516,6 +522,151 @@ function expectLive(el: Element) {
   expect(el.getAttribute('aria-disabled')).not.toBe('true');
   expect(el.getAttribute('aria-describedby') ?? '').not.toMatch(/\S/);
 }
+
+describe('what the dialog says, carried from the props to the gate', () => {
+  const SAID = {
+    confirmTitle: 'Reboot controller RACK1:CTRL1?',
+    confirmText: 'It commands 2 power supplies.',
+    confirmVerb: 'Reboot',
+    confirmKind: 'consequence',
+  };
+  const WORDS = {
+    title: 'Reboot controller RACK1:CTRL1?',
+    text: 'It commands 2 power supplies.',
+    verb: 'Reboot',
+    kind: 'consequence',
+  };
+  const said = () => runs.map((r) => r.dialog);
+  const asked = () => runs.map((r) => r.confirm);
+
+  it('button: the four props, its label, and that the run is a press', async () => {
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'RACK1:CTRL1:Reboot',
+      pressValue: 0,
+      label: 'Reboot',
+      confirmWrites: true,
+      ...SAID,
+    });
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(written()).toEqual([[{ pv: 'RACK1:CTRL1:Reboot', value: 0 }]]);
+    expect(said()).toEqual([{ ...WORDS, label: 'Reboot', action: 'press' }]);
+    expect(asked()).toEqual([true]);
+  });
+
+  it('button: the wording asks for no dialog on its own', async () => {
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'RACK1:CTRL1:Reboot',
+      pressValue: 0,
+      ...SAID,
+    });
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(said()).toEqual([{ ...WORDS, action: 'press' }]);
+    expect(asked()).toEqual([undefined]);
+  });
+
+  it('button: a labelled press with no wording still names itself', async () => {
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'DEV:CMD',
+      pressValue: 1,
+      label: 'Reset',
+    });
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(said()).toEqual([{ label: 'Reset', action: 'press' }]);
+  });
+
+  it('momentary button with confirm: the wording rides the one [press, release] run', async () => {
+    confirm = true;
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'DEV:PULSE',
+      pressValue: 1,
+      releaseValue: 0,
+      label: 'Fire',
+      ...SAID,
+    });
+    const btn = container.querySelector('button') as HTMLButtonElement;
+    const down = createEvent.pointerDown(btn);
+    Object.defineProperty(down, 'button', { value: 0 });
+    Object.defineProperty(down, 'pointerId', { value: 1 });
+    fireEvent(btn, down);
+    await flush();
+    expect(written()).toEqual([
+      [
+        { pv: 'DEV:PULSE', value: 1 },
+        { pv: 'DEV:PULSE', value: 0, release: true },
+      ],
+    ]);
+    expect(said()).toEqual([{ ...WORDS, label: 'Fire', action: 'press' }]);
+  });
+
+  it('toggle button: it sets its channel, named by its plain label', async () => {
+    pvState['DEV:EN'] = { connected: true, value: 0 };
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'DEV:EN',
+      readbackPV: 'DEV:EN',
+      buttonType: 'toggle',
+      label: 'Enable',
+    });
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(written()).toEqual([[{ pv: 'DEV:EN', value: 1 }]]);
+    expect(said()).toEqual([{ label: 'Enable', action: 'set' }]);
+  });
+
+  it('text input: the four props, its label, and that the run sets a value', async () => {
+    pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+    const { container } = renderGated(W.CarbonPVTextInput, {
+      pvName: 'DEV:PS1:Setpoint',
+      label: 'PS1 current',
+      confirmTitle: 'Change the PS1 current?',
+      confirmText: 'The supply ramps at once.',
+      confirmVerb: 'Change',
+    });
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    expect(written()).toEqual([[{ pv: 'DEV:PS1:Setpoint', value: 2.5, entered: '2.5' }]]);
+    expect(said()).toEqual([
+      {
+        title: 'Change the PS1 current?',
+        text: 'The supply ramps at once.',
+        verb: 'Change',
+        label: 'PS1 current',
+        action: 'set',
+      },
+    ]);
+  });
+
+  it('text input: confirmMessage is the sentence when confirmText is not set', async () => {
+    pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+    const { container } = renderGated(W.CarbonPVTextInput, {
+      pvName: 'DEV:PS1:Setpoint',
+      confirmMessage: 'The supply ramps at once.',
+    });
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '2.5' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    expect(said()).toEqual([{ text: 'The supply ramps at once.', action: 'set' }]);
+  });
+
+  it('a declined run writes nothing through the handle', async () => {
+    answer = 'declined';
+    const { container } = renderGated(W.CarbonPVButton, {
+      controlPV: 'RACK1:CTRL1:Reboot',
+      pressValue: 0,
+      confirmWrites: true,
+      ...SAID,
+    });
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+    await flush();
+    expect(runs).toHaveLength(1);
+    expect(puts).toEqual({});
+  });
+});
 
 describe('inert while writes are not accepted', () => {
   it('text input: aria-disabled, read-only, and Enter or blur runs nothing', async () => {

@@ -20,6 +20,7 @@ import {
 } from '@slaclab/canopy-screen-runtime';
 import type { ViewerConfig } from './config.js';
 import { createConfirmWritesSource, readConfirmWrites } from './config.js';
+import { statedLimits } from './writeGate/gate.js';
 import type { WriteBackend } from './writeGate/gate.js';
 import { badgeIdentity, createBackendBadgeStore } from './backendBadge.js';
 import type { BackendBadgeIdentity, BackendBadgeState, BackendBadgeStore } from './backendBadge.js';
@@ -223,6 +224,10 @@ export function createServices(
       },
       confirmWrites: () => confirm.current(),
       machineLabel: () => backend.getSnapshot().label,
+      // The heartbeat names the target and says when it is not served as
+      // configured; it does not say what kind of target it is.
+      targetNotice: () => backend.getSnapshot().notice,
+      controlLimits: (pv) => statedLimits(hare.getMeta(pv)),
       writes: () => ({ writes: backend.getSnapshot().writes, seen: writesSeen }),
       onWrites: (listener) => backend.subscribe(listener),
     };

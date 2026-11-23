@@ -40,6 +40,8 @@ const W = await import('@slaclab/canopy-screen-widgets');
 const { PVServiceProvider } = await import('@slaclab/canopy-react');
 type PVService = import('@slaclab/canopy-client').PVService;
 const { createWriteGate } = await import('./gate.js');
+type WriteTargetKind = import('./gate.js').WriteTargetKind;
+type ControlLimits = import('./gate.js').ControlLimits;
 const { ScreenWriteGateProvider } = await import('./WriteGateView.js');
 const { armAgentGuard, GUARD_NOTICE } = await import('./guard.js');
 type WriteBackend = import('./gate.js').WriteBackend;
@@ -57,6 +59,11 @@ let answers: WriteOutcome[] = [];
 let sent: Array<[string, unknown]> = [];
 let sentConfirmed: boolean[] = [];
 const hbListeners = new Set<(s: HareHeartbeatState) => void>();
+/** What the backend says of its target, and the control limits its channels state. */
+let targetLabel: string | null = 'VA simulator';
+let targetKind: WriteTargetKind | null = null;
+let targetNotice: 'fallback' | 'unservable' | null = null;
+let limits: Record<string, ControlLimits> = {};
 
 const backend: WriteBackend = {
   heartbeat: () => hb,
@@ -71,7 +78,10 @@ const backend: WriteBackend = {
     return () => hbListeners.delete(l);
   },
   confirmWrites: () => confirm,
-  machineLabel: () => 'VA simulator',
+  machineLabel: () => targetLabel,
+  targetKind: () => targetKind,
+  targetNotice: () => targetNotice,
+  controlLimits: (pv) => limits[pv] ?? null,
   writes: () => ({ writes: said, seen: said !== null }),
 };
 
@@ -93,6 +103,10 @@ beforeEach(() => {
   answers = [];
   sent = [];
   sentConfirmed = [];
+  targetLabel = 'VA simulator';
+  targetKind = null;
+  targetNotice = null;
+  limits = {};
 });
 afterEach(() => {
   cleanup();
@@ -130,6 +144,14 @@ const toasts = () =>
     t.getAttribute('data-outcome'),
     t.textContent,
   ]);
+
+/** The labelled rows of a one-change dialog as [label, content]. */
+function rows(): string[][] {
+  return [...document.querySelectorAll('.canopy-write-dialog__row')].map((row) => [
+    row.querySelector('th')?.textContent ?? '',
+    row.querySelector('td')?.textContent ?? '',
+  ]);
+}
 
 async function answer(button: 'canopy-write-confirm' | 'canopy-write-decline') {
   fireEvent.click(screen.getByTestId(button));
@@ -222,23 +244,74 @@ describe('one dialog per click across widget kinds', () => {
 });
 
 describe('the dialog', () => {
-  // The dialog opens inside the event that asked for it (a text input's Enter
-  // keydown). The browser then delivers that key's keypress to whatever holds
-  // focus, and Enter on a focused button clicks it: with Carbon's default
-  // initial focus (the close button) the dialog declined itself. Initial focus
-  // must land on something no key activates.
+  // Focus starts on Cancel, so Enter never writes. The dialog opens inside
+  // the event that asked for it (a text input's Enter keydown), and the
+  // browser delivers the rest of that key press to the button that now holds
+  // focus: Cancel must not take an Enter it did not see go down.
   for (const kind of KINDS) {
-    it(`${kind.name}: opens with focus on no button, so the opening key cannot answer it`, async () => {
+    it(`${kind.name}: opens with focus on Cancel`, async () => {
       kind.render();
       kind.act();
       await flush();
-      const dialog = dialogs()[0] as HTMLElement;
-      const focused = document.activeElement as HTMLElement | null;
-      expect(focused).not.toBeNull();
-      expect(dialog.contains(focused)).toBe(true);
-      expect(focused?.closest('button, a, input, select, textarea, [role="button"]')).toBeNull();
+      expect(document.activeElement).toBe(screen.getByTestId('canopy-write-decline'));
     });
   }
+
+  it('the key press that opened the dialog cannot answer it', async () => {
+    KINDS[0].render();
+    KINDS[0].act();
+    await flush();
+    const cancel = screen.getByTestId('canopy-write-decline');
+    // The opening Enter's keypress, and its auto-repeat while held.
+    expect(fireEvent.keyPress(cancel, { key: 'Enter', charCode: 13 })).toBe(false);
+    expect(fireEvent.keyDown(cancel, { key: 'Enter', repeat: true })).toBe(false);
+    expect(fireEvent.keyPress(cancel, { key: 'Enter', charCode: 13 })).toBe(false);
+    fireEvent.keyUp(cancel, { key: 'Enter' });
+    expect(dialogs()).toHaveLength(1);
+    // An Enter pressed on Cancel itself is let through to the button.
+    expect(fireEvent.keyDown(cancel, { key: 'Enter' })).toBe(true);
+    expect(fireEvent.keyPress(cancel, { key: 'Enter', charCode: 13 })).toBe(true);
+    expect(sent).toEqual([]);
+  });
+
+  it('Enter on the open dialog writes nothing: the confirm button is not its default', async () => {
+    KINDS[1].render();
+    KINDS[1].act();
+    await flush();
+    const dialog = dialogs()[0] as HTMLElement;
+    for (const target of [dialog, document.activeElement as HTMLElement]) {
+      fireEvent.keyDown(target, { key: 'Enter' });
+      fireEvent.keyPress(target, { key: 'Enter', charCode: 13 });
+      fireEvent.keyUp(target, { key: 'Enter' });
+    }
+    await flush();
+    expect(sent).toEqual([]);
+    expect(dialog.querySelector('form')).toBeNull();
+    expect(screen.getByTestId('canopy-write-confirm').getAttribute('type')).toBe('button');
+    expect(document.activeElement).not.toBe(screen.getByTestId('canopy-write-confirm'));
+  });
+
+  it('Escape declines: nothing is written', async () => {
+    KINDS[1].render();
+    KINDS[1].act();
+    await flush();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    await flush();
+    expect(dialogs()).toHaveLength(0);
+    expect(sent).toEqual([]);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('the close mark declines: nothing is written', async () => {
+    KINDS[1].render();
+    KINDS[1].act();
+    await flush();
+    fireEvent.click(document.querySelector('.cds--modal-close') as HTMLButtonElement);
+    await flush();
+    expect(dialogs()).toHaveLength(0);
+    expect(sent).toEqual([]);
+    expect(toasts()).toEqual([]);
+  });
 
   // Carbon's sm size is what the host's control height applies to.
   it('draws both footer buttons at the sm size', async () => {
@@ -849,7 +922,7 @@ describe("the dialog's current values", () => {
   }
 
   function cells(): string[][] {
-    return [...document.querySelectorAll('.canopy-write-dialog__writes tbody tr')].map((row) =>
+    return [...document.querySelectorAll('.canopy-write-dialog__columns tbody tr')].map((row) =>
       [...row.querySelectorAll('td')].map((cell) => cell.textContent ?? '')
     );
   }
@@ -871,12 +944,12 @@ describe("the dialog's current values", () => {
     ]);
     await flush();
     expect(
-      [...document.querySelectorAll('.canopy-write-dialog__writes th')].map((h) => h.textContent)
-    ).toEqual(['PV', 'Current', 'Value']);
+      [...document.querySelectorAll('.canopy-write-dialog__columns th')].map((h) => h.textContent)
+    ).toEqual(['channel', 'now', 'writes']);
     expect(cells()).toEqual([
       ['A', '1.50 mm', '2'],
       ['B', 'Off', '"On"'],
-      ['C', '\u2014', '3'],
+      ['C', 'not connected', '3'],
     ]);
     expect(subscribed).toEqual(['A', 'B', 'C']);
     await answer('canopy-write-decline');
@@ -899,20 +972,435 @@ describe("the dialog's current values", () => {
       { pv: 'P', value: 0, release: true },
     ]);
     await flush();
-    expect(cells()).toEqual([
-      ['P', '0', '1'],
-      ['P', '0', '0 (release)'],
+    // A press and its release on one channel are one change: labelled rows.
+    expect(cells()).toEqual([]);
+    expect(rows()).toEqual([
+      ['channel', 'P'],
+      ['now', '0'],
+      ['writes', '1then 0 (release)'],
     ]);
     expect(subscribed).toEqual(['P']);
   });
 
-  it('with no PV service in context the column says nothing and the dialog still works', async () => {
+  it('with no PV service in context "now" says not connected and the dialog still works', async () => {
     renderWidget(W.CarbonPVButton, { controlPV: 'SIM:CMD', pressValue: '2' });
     fireEvent.click(document.querySelector('button') as HTMLButtonElement);
     await flush();
-    expect(cells()).toEqual([['SIM:CMD', '\u2014', '2']]);
+    expect(rows()).toEqual([
+      ['channel', 'SIM:CMD'],
+      ['now', 'not connected'],
+      ['writes', '2'],
+    ]);
     await answer('canopy-write-confirm');
     expect(sent).toEqual([['SIM:CMD', 2]]);
+  });
+});
+
+describe('what the dialog says', () => {
+  type Live = Partial<import('@slaclab/canopy-client').PVData>;
+
+  /** A PV service whose channels hold `values`; one it does not hold never delivers. */
+  function liveService(values: Record<string, Live>): PVService {
+    return {
+      subscribe(pv: string, listener: (data: unknown) => void) {
+        if (pv in values) listener({ connected: true, ...values[pv] });
+        return () => {};
+      },
+      getSnapshot: () => undefined,
+      put() {},
+      connect() {},
+      disconnect() {},
+      isConnected: true,
+    } as unknown as PVService;
+  }
+
+  /** A widget (or nothing) under a gate, with live channel data for the dialog. */
+  function renderLive(
+    values: Record<string, Live>,
+    C?: unknown,
+    props: Record<string, unknown> = {}
+  ) {
+    const Comp = C as React.FC<typeof base> | undefined;
+    gate = createWriteGate(backend, { screen: 'sr/overview', rev: null });
+    return render(
+      <PVServiceProvider service={liveService(values)}>
+        <ScreenWriteGateProvider gate={gate}>
+          {Comp ? <Comp {...base} props={props} /> : <span />}
+        </ScreenWriteGateProvider>
+      </PVServiceProvider>
+    );
+  }
+
+  const dialog = () => dialogs()[0] as HTMLElement;
+  const title = () => screen.getByTestId('canopy-write-title').textContent;
+  const verb = () => screen.getByTestId('canopy-write-confirm').textContent;
+  const target = () => document.querySelector('.canopy-write-target') as HTMLElement;
+  const press = () => fireEvent.click(document.querySelector('button') as HTMLButtonElement);
+
+  /** Types `text` into the one entry on screen and presses Enter. */
+  function enter(text: string) {
+    const input = document.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  }
+
+  describe('the target line', () => {
+    it('comes first, before the title, and names what is written to', async () => {
+      renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1 });
+      press();
+      await flush();
+      const header = dialog().querySelector('.cds--modal-header') as HTMLElement;
+      expect(header.firstElementChild).toBe(target());
+      expect(target().textContent).toBe('VA simulator');
+      expect(target().nextElementSibling?.textContent).toBe(title());
+      // Only the name is known: the marker makes no claim about the kind.
+      expect(dialog().getAttribute('data-target-kind')).toBe('unknown');
+    });
+
+    for (const [kind, text] of [
+      ['machine', 'Ring · the machine'],
+      ['simulation', 'Ring · not the machine'],
+      ['test', 'Ring · not the machine'],
+    ] as const) {
+      it(`marks a ${kind} target by its kind and says it in words`, async () => {
+        targetLabel = 'Ring';
+        targetKind = kind;
+        renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1 });
+        press();
+        await flush();
+        expect(dialog().getAttribute('data-target-kind')).toBe(kind);
+        expect(target().textContent).toBe(text);
+      });
+    }
+
+    it('says when the target is served from the fallback', async () => {
+      targetNotice = 'fallback';
+      renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1 });
+      press();
+      await flush();
+      expect(dialog().getAttribute('data-target-notice')).toBe('fallback');
+      expect(target().textContent).toBe('VA simulator · fallback (no target record)');
+    });
+
+    it('is drawn for a target with no name too', async () => {
+      targetLabel = null;
+      renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1 });
+      press();
+      await flush();
+      expect(target().textContent).toBe('Control target (not named)');
+    });
+  });
+
+  describe('what the screen says', () => {
+    const REBOOT = {
+      controlPV: 'RACK1:CTRL1:Reboot',
+      pressValue: 0,
+      label: 'Reboot',
+      confirmTitle: 'Reboot controller RACK1:CTRL1?',
+      confirmText: 'It commands 2 power supplies.',
+      confirmVerb: 'Reboot now',
+      confirmKind: 'consequence',
+    };
+
+    it('a press with consequences: its title, its sentence as a warning, a danger button', async () => {
+      limits = { 'RACK1:CTRL1:Reboot': { low: 0, high: 1 } };
+      renderLive(
+        { 'RACK1:CTRL1:Reboot': { value: 1, displayValue: '1' } },
+        W.CarbonPVButton,
+        REBOOT
+      );
+      press();
+      await flush();
+      expect(title()).toBe('Reboot controller RACK1:CTRL1?');
+      const sentence = screen.getByTestId('canopy-write-text');
+      expect(sentence.textContent).toBe('It commands 2 power supplies.');
+      expect(sentence.classList.contains('canopy-write-dialog__text--consequence')).toBe(true);
+      // The sentence sits under the title, above the writes.
+      expect(
+        sentence.compareDocumentPosition(screen.getByTestId('canopy-write-title')) &
+          Node.DOCUMENT_POSITION_PRECEDING
+      ).toBeTruthy();
+      expect(sentence.nextElementSibling?.classList.contains('canopy-write-dialog__rows')).toBe(
+        true
+      );
+      // The host contract reads the values' face at this selector.
+      expect(dialog().querySelector('.canopy-write-dialog__writes td')).not.toBeNull();
+      expect(dialog().getAttribute('data-kind')).toBe('consequence');
+      const go = screen.getByTestId('canopy-write-confirm');
+      expect(go.textContent).toBe('Reboot now');
+      expect(go.classList.contains('cds--btn--danger')).toBe(true);
+      expect(rows()).toEqual([
+        ['channel', 'RACK1:CTRL1:Reboot'],
+        ['now', '1'],
+        // A press writes a fixed value: no step, no limits row.
+        ['writes', '0'],
+      ]);
+      await answer('canopy-write-confirm');
+      expect(sent).toEqual([['RACK1:CTRL1:Reboot', 0]]);
+    });
+
+    it('without confirmKind the sentence is plain and the button primary', async () => {
+      renderLive({}, W.CarbonPVButton, { ...REBOOT, confirmKind: undefined });
+      press();
+      await flush();
+      const sentence = screen.getByTestId('canopy-write-text');
+      expect(sentence.classList.contains('canopy-write-dialog__text--consequence')).toBe(false);
+      expect(dialog().hasAttribute('data-kind')).toBe(false);
+      const go = screen.getByTestId('canopy-write-confirm');
+      expect(go.classList.contains('cds--btn--primary')).toBe(true);
+      expect(go.classList.contains('cds--btn--danger')).toBe(false);
+    });
+
+    it('draws no sentence when the screen gives none', async () => {
+      renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1 });
+      press();
+      await flush();
+      expect(screen.queryByTestId('canopy-write-text')).toBeNull();
+    });
+
+    it('reads confirmMessage as the sentence when confirmText is not set', async () => {
+      pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+      renderLive({}, W.CarbonPVTextInput, {
+        pvName: 'DEV:PS1:Setpoint',
+        confirmMessage: 'The supply ramps at once.',
+      });
+      enter('2');
+      await flush();
+      expect(screen.getByTestId('canopy-write-text').textContent).toBe('The supply ramps at once.');
+    });
+
+    it('the wording opens no dialog: without one asked, the write goes straight out', async () => {
+      confirm = false;
+      renderLive({}, W.CarbonPVButton, REBOOT);
+      press();
+      await flush();
+      expect(dialogs()).toHaveLength(0);
+      expect(sent).toEqual([['RACK1:CTRL1:Reboot', 0]]);
+      expect(sentConfirmed).toEqual([false]);
+    });
+
+    it('Cancel on a press with consequences writes nothing', async () => {
+      renderLive({}, W.CarbonPVButton, REBOOT);
+      press();
+      await flush();
+      await answer('canopy-write-decline');
+      expect(dialogs()).toHaveLength(0);
+      expect(sent).toEqual([]);
+      expect(directPuts).toEqual([]);
+      expect(toasts()).toEqual([]);
+    });
+  });
+
+  describe('a title and a button word built from the run', () => {
+    it('a labelled button: "<label>?" and the label on the button', async () => {
+      renderLive({}, W.CarbonPVButton, { controlPV: 'DEV:CMD', pressValue: 1, label: 'Reset' });
+      press();
+      await flush();
+      expect(title()).toBe('Reset?');
+      expect(verb()).toBe('Reset');
+    });
+
+    it('a momentary button is one press: its label, and the release on the writes row', async () => {
+      renderLive({ 'DEV:PULSE': { value: 0, displayValue: '0' } }, W.CarbonPVButton, {
+        controlPV: 'DEV:PULSE',
+        pressValue: 1,
+        releaseValue: 0,
+        label: 'Fire',
+      });
+      const btn = document.querySelector('button') as HTMLButtonElement;
+      const down = createEvent.pointerDown(btn);
+      Object.defineProperty(down, 'button', { value: 0 });
+      Object.defineProperty(down, 'pointerId', { value: 1 });
+      fireEvent(btn, down);
+      await flush();
+      expect(title()).toBe('Fire?');
+      expect(verb()).toBe('Fire');
+      expect(rows()).toEqual([
+        ['channel', 'DEV:PULSE'],
+        ['now', '0'],
+        ['writes', '1then 0 (release)'],
+      ]);
+      await answer('canopy-write-confirm');
+      expect(sent).toEqual([
+        ['DEV:PULSE', 1],
+        ['DEV:PULSE', 0],
+      ]);
+    });
+
+    it('a set point: "Set <label> to <value> <unit>?", Set, and rows with unit, difference and limits', async () => {
+      pvState['DEV:PS1:Setpoint'] = { connected: true, value: 0.125 };
+      limits = { 'DEV:PS1:Setpoint': { low: -10, high: 10 } };
+      renderLive(
+        {
+          'DEV:PS1:Setpoint': {
+            value: 0.125,
+            displayValue: '0.1250 mrad',
+            units: 'mrad',
+            precision: 4,
+          },
+        },
+        W.CarbonPVTextInput,
+        { pvName: 'DEV:PS1:Setpoint', label: 'corrector PS1' }
+      );
+      enter('0.14');
+      await flush();
+      expect(title()).toBe('Set corrector PS1 to 0.14 mrad?');
+      expect(verb()).toBe('Set');
+      expect(rows()).toEqual([
+        ['channel', 'DEV:PS1:Setpoint'],
+        ['now', '0.1250 mrad'],
+        ['writes', '0.14 mrad+0.0150'],
+        ['limits', '-10 … 10 mrad'],
+      ]);
+      // The value about to be written is the emphasised one.
+      const value = screen.getByTestId('canopy-write-value');
+      expect(value.tagName).toBe('STRONG');
+      expect(value.textContent).toBe('0.14 mrad');
+      expect(screen.getByTestId('canopy-write-difference').textContent).toBe('+0.0150');
+      await answer('canopy-write-confirm');
+      expect(sent).toEqual([['DEV:PS1:Setpoint', 0.14]]);
+    });
+
+    it('without a label the title names the channel', async () => {
+      pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+      renderLive({ 'DEV:PS1:Setpoint': { value: 1, displayValue: '1' } }, W.CarbonPVTextInput, {
+        pvName: 'DEV:PS1:Setpoint',
+      });
+      enter('2.5');
+      await flush();
+      expect(title()).toBe('Set DEV:PS1:Setpoint to 2.5?');
+      expect(verb()).toBe('Set');
+    });
+
+    it('leaves out each row that is not known: no unit, no difference, no limits', async () => {
+      pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+      // The channel never delivers: no live value, no unit; it states no limits.
+      renderLive({}, W.CarbonPVTextInput, { pvName: 'DEV:PS1:Setpoint' });
+      enter('2.5');
+      await flush();
+      expect(rows()).toEqual([
+        ['channel', 'DEV:PS1:Setpoint'],
+        ['now', 'not connected'],
+        ['writes', '2.5'],
+      ]);
+      const now = screen.getByTestId('canopy-write-current');
+      expect(now.getAttribute('data-known')).toBe('false');
+      expect(screen.queryByTestId('canopy-write-difference')).toBeNull();
+      expect(screen.queryByTestId('canopy-write-limits')).toBeNull();
+    });
+
+    it('a channel that reports itself disconnected reads "not connected", not its stale value', async () => {
+      pvState['DEV:PS1:Setpoint'] = { connected: true, value: 1 };
+      renderLive(
+        { 'DEV:PS1:Setpoint': { connected: false, value: 0, displayValue: '0' } },
+        W.CarbonPVTextInput,
+        { pvName: 'DEV:PS1:Setpoint' }
+      );
+      enter('2.5');
+      await flush();
+      expect(rows()[1]).toEqual(['now', 'not connected']);
+      expect(screen.queryByTestId('canopy-write-difference')).toBeNull();
+    });
+
+    it('several staged values: "Apply N changes?", "Apply N", and a table with right-aligned columns', async () => {
+      renderLive({
+        'DEV:PS1:Setpoint': { value: 0.125, displayValue: '0.1250 mrad', units: 'mrad' },
+        'DEV:PS1:RampRate': { value: 1, displayValue: '1.0000' },
+      });
+      void gate.run(
+        [
+          { pv: 'DEV:PS1:Setpoint', value: 0.14, entered: '0.14' },
+          { pv: 'DEV:PS1:RampRate', value: 0.5, entered: '0.5' },
+          { pv: 'DEV:PS1:Enable', value: 1, entered: '1' },
+        ],
+        { dialog: { label: 'Apply', action: 'apply' } }
+      );
+      await flush();
+      expect(title()).toBe('Apply 3 changes?');
+      expect(verb()).toBe('Apply 3');
+      expect(rows()).toEqual([]);
+      const table = dialog().querySelector('table.canopy-write-dialog__columns') as HTMLElement;
+      const heads = [...table.querySelectorAll('th')];
+      expect(heads.map((h) => h.textContent)).toEqual(['channel', 'now', 'writes']);
+      expect(heads.map((h) => h.classList.contains('canopy-write-dialog__n'))).toEqual([
+        false,
+        true,
+        true,
+      ]);
+      const body = [...table.querySelectorAll('tbody tr')].map((tr) => [
+        ...tr.querySelectorAll('td'),
+      ]);
+      expect(body.map((tds) => tds.map((td) => td.textContent))).toEqual([
+        ['DEV:PS1:Setpoint', '0.1250 mrad', '0.14 mrad'],
+        ['DEV:PS1:RampRate', '1.0000', '0.5'],
+        ['DEV:PS1:Enable', 'not connected', '1'],
+      ]);
+      for (const tds of body) {
+        // "now" and "writes" are cells of their own, right-aligned; the value is emphasised.
+        expect(tds.map((td) => td.classList.contains('canopy-write-dialog__n'))).toEqual([
+          false,
+          true,
+          true,
+        ]);
+        expect(tds[2].querySelector('strong')).not.toBeNull();
+      }
+      await answer('canopy-write-decline');
+      expect(sent).toEqual([]);
+    });
+
+    it('one staged value applied reads as a set point, by its channel', async () => {
+      renderLive({ 'DEV:PS1:Setpoint': { value: 1, displayValue: '1.0 A', units: 'A' } });
+      void gate.run([{ pv: 'DEV:PS1:Setpoint', value: 2, entered: '2' }], {
+        dialog: { label: 'Apply', action: 'apply' },
+      });
+      await flush();
+      expect(title()).toBe('Set DEV:PS1:Setpoint to 2 A?');
+      expect(verb()).toBe('Set');
+    });
+
+    it('a labelled press that writes several channels keeps its label', async () => {
+      renderLive({});
+      void gate.run(
+        [
+          { pv: 'DEV:PS1:Setpoint', value: 12.5 },
+          { pv: 'DEV:PS2:Setpoint', value: -3 },
+        ],
+        { dialog: { label: 'Set mode A', action: 'press' } }
+      );
+      await flush();
+      expect(title()).toBe('Set mode A?');
+      expect(verb()).toBe('Set mode A');
+      expect(dialog().querySelector('table.canopy-write-dialog__columns')).not.toBeNull();
+    });
+
+    it('with nothing known but the write: "Write <value> to <channel>?" and Write', async () => {
+      renderLive({});
+      void gate.run([{ pv: 'DEV:CMD', value: 1 }]);
+      await flush();
+      expect(title()).toBe('Write 1 to DEV:CMD?');
+      expect(verb()).toBe('Write');
+    });
+
+    it('several writes with nothing else known: "Apply N changes?" and "Apply N"', async () => {
+      renderLive({});
+      void gate.run([
+        { pv: 'DEV:A', value: 1 },
+        { pv: 'DEV:B', value: 2 },
+      ]);
+      await flush();
+      expect(title()).toBe('Apply 2 changes?');
+      expect(verb()).toBe('Apply 2');
+    });
+
+    it('a label too long for a button stays the title; the button falls back', async () => {
+      renderLive({});
+      void gate.run([{ pv: 'DEV:CMD', value: 1 }], {
+        dialog: { label: 'Write 1 to DEV:CMD and start the sequence', action: 'press' },
+      });
+      await flush();
+      expect(title()).toBe('Write 1 to DEV:CMD and start the sequence?');
+      expect(verb()).toBe('Write');
+    });
   });
 });
 
