@@ -462,9 +462,29 @@ describe('dispatchActions with a write gate', () => {
     expect(options).toEqual([{ confirm: true }]);
   });
 
+  it("carries what the node says in the dialog on the click's run, asked or not", async () => {
+    const dialog = { title: 'Reset the interlock?', label: 'Reset', action: 'press' } as const;
+    for (const confirm of [false, true]) {
+      const ctx = makeCtx();
+      const { gate, options } = fakeGate(ctx.calls, [outcome('confirmed')]);
+      await dispatchActions([{ type: 'write_pv', pvName: 'A', value: 1 }], {
+        ...ctx,
+        gate,
+        dialog,
+        ...(confirm ? { confirm } : {}),
+      });
+      expect(options).toEqual([confirm ? { confirm: true, dialog } : { dialog }]);
+    }
+  });
+
   it('with a null gate writes straight through, as before', async () => {
     const ctx = makeCtx();
-    await dispatchActions([{ type: 'write_pv', pvName: 'A', value: 1 }], { ...ctx, gate: null });
+    await dispatchActions([{ type: 'write_pv', pvName: 'A', value: 1 }], {
+      ...ctx,
+      gate: null,
+      confirm: true,
+      dialog: { title: 'Reset the interlock?' },
+    });
     expect(ctx.calls).toEqual(['put A=1']);
   });
 });
@@ -520,6 +540,28 @@ describe('apply_staged and clear_staged', () => {
     await dispatchActions([apply], { ...ctx, gate, staging, confirm: true });
     expect(options).toEqual([
       { nameStopped: true, stopUnlessConfirmed: true, confirm: true, check: expect.any(Function) },
+    ]);
+  });
+
+  it('words the dialog of a staged run as an Apply, keeping what the node says', async () => {
+    const ctx = makeCtx();
+    const { gate, options } = fakeGate(ctx.calls, [outcome('confirmed')]);
+    const staging = createStagingStore();
+    staging.attach('view', 'A');
+    staging.set('view', { pv: 'A', value: 1 });
+    await dispatchActions([apply], {
+      ...ctx,
+      gate,
+      staging,
+      dialog: { text: 'Both supplies ramp.', label: 'Apply', action: 'press' },
+    });
+    expect(options).toEqual([
+      {
+        nameStopped: true,
+        stopUnlessConfirmed: true,
+        dialog: { text: 'Both supplies ramp.', label: 'Apply', action: 'apply' },
+        check: expect.any(Function),
+      },
     ]);
   });
 

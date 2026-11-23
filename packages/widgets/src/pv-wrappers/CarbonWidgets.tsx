@@ -247,6 +247,15 @@ export function CarbonPVTextDisplay({ layout, props, isSelected }: WidgetRendere
   );
 }
 
+/**
+ * The gated-write options of a widget that sets its channel to a value the
+ * operator chose: what its props ask, and for the confirmation dialog its
+ * label and that the run sets a value.
+ */
+function setsValue(props: WidgetProps) {
+  return gatedWriteOptions(props, { label: props.label, action: 'set' });
+}
+
 /** PVTextInput — Carbon TextInput bound to PV */
 /** Why an entry whose `stage` names no scope is inert. */
 const STAGE_UNUSABLE = 'this entry stages its value, and its stage names no scope';
@@ -270,7 +279,7 @@ export function CarbonPVTextInput({
   // with the arrow keys is written by Enter alone, never by leaving the field.
   const [edit, setEdit] = useState<{ text: string; typed: boolean } | null>(null);
   const draft = edit?.text ?? null;
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   // An entry with a `stage` scope writes nothing itself: Enter keeps the value
   // in the screen's staging store, the field shows the value that will be
   // sent (marked) in place of the live one, and an `apply_staged` action
@@ -499,7 +508,23 @@ export function CarbonPVButton({ layout, props, isEditing }: WidgetRendererProps
   };
   const pressValue = writeValue(props.pressValue);
   const releaseValue = writeValue(props.releaseValue);
-  const gated = useGatedWrite(controlPV, gatedWriteOptions(props));
+  // For a confirmation dialog that builds its own title: a push button is a
+  // press named by the caption pressed, a toggle sets its channel.
+  const pressedCaption =
+    labelType === 'pvState' || nostate
+      ? authoredLabel
+      : isOn
+        ? (onLabel ?? authoredLabel)
+        : (offLabel ?? authoredLabel);
+  const gated = useGatedWrite(
+    controlPV,
+    gatedWriteOptions(
+      props,
+      buttonType === 'toggle'
+        ? { label: authoredLabel, action: 'set' }
+        : { label: pressedCaption, action: 'press' }
+    )
+  );
   // Inert for its own control write, or for the actions its host runs on a click.
   const inert = useInert(ownInertReason(gated, controlPV.address) ?? hostInertReason(props));
 
@@ -643,7 +668,7 @@ export function CarbonPVSlider({ id, layout, props, isSelected, isEditing }: Wid
   const min = (props.minValue as number) ?? pv.lowerLimit ?? 0;
   const max = (props.maxValue as number) ?? pv.upperLimit ?? 100;
   const value = pv.connected ? (typeof pv.value === 'number' ? pv.value : 0) : 0;
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   // The value under the user's hand while dragging or stepping; null when the
@@ -732,7 +757,7 @@ export function CarbonPVSlider({ id, layout, props, isSelected, isEditing }: Wid
 export function CarbonPVToggle({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const isOn = pv.connected && (typeof pv.value === 'number' ? pv.value !== 0 : Boolean(pv.value));
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   const handleToggle = useCallback(
@@ -958,7 +983,7 @@ export function CarbonPVDropdown(rendererProps: WidgetRendererProps) {
 function StatedDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   const pv = usePV(props.pvName as string | undefined);
   const items = props.customItems as string[];
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   // Carbon's Dropdown keeps its own description and title on its field button.
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -992,7 +1017,7 @@ function EnumDropdown({ id, layout, props, isEditing }: WidgetRendererProps) {
   // array, and an open list must not be rebuilt under the operator.
   const strings = JSON.stringify(pv.enumChoices ?? []);
   const items = useMemo(() => enumItems(JSON.parse(strings) as string[]), [strings]);
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   // Nothing to offer: the reason is the cause, not always the channel's list.
   const nothing = !pv.connected
     ? NOT_CONNECTED
@@ -1075,7 +1100,7 @@ export function CarbonPVRadioGroup({ id, layout, props, isEditing }: WidgetRende
     }
   }
 
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   const inert = useInert(ownInertReason(gated, pv.address));
   const handleChange = useCallback(
     (selection: string | number | undefined) => {
@@ -1137,7 +1162,7 @@ export function CarbonPVCheckbox({ id, layout, props, isEditing }: WidgetRendere
   const nostate = noState(props.pvName, pv, isEditing);
   const isChecked =
     pv.connected && (typeof pv.value === 'number' ? pv.value !== 0 : Boolean(pv.value));
-  const gated = useGatedWrite(pv, gatedWriteOptions(props));
+  const gated = useGatedWrite(pv, setsValue(props));
   const inert = useInert(ownInertReason(gated, pv.address));
 
   const handleChange = useCallback(

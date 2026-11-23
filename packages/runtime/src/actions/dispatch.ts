@@ -6,7 +6,8 @@
 //
 // Machine writes of one click go through the provided write gate as one run
 // (at most one confirmation dialog, one summary toast; a node that sets
-// `confirmWrites` asks for the dialog whatever the gate's own rule); a decline
+// `confirmWrites` asks for the dialog whatever the gate's own rule, and what
+// the node says in the dialog, `ctx.dialog`, travels with each run); a decline
 // or a run that stopped skips the rest of the action list. Every write that
 // does not go through the gate (a local channel, or any write with no gate)
 // goes through one call, `dispatchLocalWrite`: it is the only put in this
@@ -41,6 +42,7 @@ import type { Action, MacroValues } from '@slaclab/canopy-screen-ir';
 import type {
   StagedValue,
   StagingStore,
+  WriteDialogText,
   WriteGateService,
   WriteOutcome,
   WriteRunOptions,
@@ -90,6 +92,12 @@ export interface ActionContext {
    * dialog and never removes the gate's own.
    */
   readonly confirm?: boolean;
+  /**
+   * What the node says in the confirmation dialog of its click's machine
+   * writes (its `confirmTitle`, `confirmText`, `confirmVerb`, `confirmKind`,
+   * and its label). Read only by a gate that opens the dialog; it opens none.
+   */
+  readonly dialog?: WriteDialogText;
   /**
    * The screen's staged values, read by `apply_staged` and `clear_staged`;
    * with none, both do nothing.
@@ -189,10 +197,21 @@ function completed(result: WriteRunResult, n: number): boolean {
   );
 }
 
-/** The gate run of an `apply_staged`: strict, and naming where it stopped. */
+/** The options of a click's `write_pv` run, or undefined when it asks and says nothing. */
+function clickOptions(ctx: ActionContext): WriteRunOptions | undefined {
+  if (ctx.dialog === undefined) return ctx.confirm === true ? { confirm: true } : undefined;
+  return ctx.confirm === true ? { confirm: true, dialog: ctx.dialog } : { dialog: ctx.dialog };
+}
+
+/**
+ * The gate run of an `apply_staged`: strict, and naming where it stopped. Its
+ * dialog is worded as an Apply whatever the node is.
+ */
 function applyOptions(ctx: ActionContext): WriteRunOptions {
   const options: WriteRunOptions = { nameStopped: true, stopUnlessConfirmed: true };
-  return ctx.confirm === true ? { ...options, confirm: true } : options;
+  if (ctx.confirm === true) options.confirm = true;
+  if (ctx.dialog !== undefined) options.dialog = { ...ctx.dialog, action: 'apply' };
+  return options;
 }
 
 /** A staged value as a message shows it: a number exactly, text in quotes. */
@@ -312,8 +331,9 @@ export async function dispatchActions(
         if (ran.has(stretchOf[index]!)) break; // already sent with its stretch's run
         ran.add(stretchOf[index]!);
         const machine = machineOf(index);
+        const options = clickOptions(ctx);
         const result = await (
-          ctx.confirm === true ? gate.run(machine, { confirm: true }) : gate.run(machine)
+          options === undefined ? gate.run(machine) : gate.run(machine, options)
         ).catch((): WriteRunResult => []);
         if (!completed(result, machine.length)) return;
         break;

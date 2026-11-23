@@ -5,7 +5,7 @@ import type React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { WriteGate, useWritesState } from './WriteGate.js';
-import { asksToConfirm, gatedWriteOptions, useGatedWrite } from './useGatedWrite.js';
+import { asksToConfirm, dialogText, gatedWriteOptions, useGatedWrite } from './useGatedWrite.js';
 import type { WritableHandle } from './useGatedWrite.js';
 import type {
   WriteGateService,
@@ -384,6 +384,126 @@ describe('asksToConfirm / gatedWriteOptions', () => {
       expect(gatedWriteOptions({ confirmWrites: value })).toEqual({});
     }
     expect(gatedWriteOptions({})).toEqual({});
+  });
+});
+
+describe('dialogText / gatedWriteOptions — what the dialog says', () => {
+  it('reads the four props, trimmed, and what the widget adds', () => {
+    expect(
+      dialogText(
+        {
+          confirmTitle: ' Reboot controller RACK1:CTRL1? ',
+          confirmText: 'It commands 2 power supplies.',
+          confirmVerb: 'Reboot',
+          confirmKind: 'Consequence',
+        },
+        { label: 'Reboot', action: 'press' }
+      )
+    ).toEqual({
+      title: 'Reboot controller RACK1:CTRL1?',
+      text: 'It commands 2 power supplies.',
+      verb: 'Reboot',
+      kind: 'consequence',
+      label: 'Reboot',
+      action: 'press',
+    });
+  });
+
+  it('says nothing for props that say nothing', () => {
+    expect(dialogText({})).toBeUndefined();
+    expect(
+      dialogText(
+        { confirmTitle: '  ', confirmText: 3, confirmVerb: null, confirmKind: 'loud' },
+        { label: '' }
+      )
+    ).toBeUndefined();
+  });
+
+  it('reads confirmMessage as the sentence, and confirmText before it', () => {
+    expect(dialogText({ confirmMessage: 'old' })).toEqual({ text: 'old' });
+    expect(dialogText({ confirmMessage: 'old', confirmText: 'new' })).toEqual({ text: 'new' });
+  });
+
+  it('never asks for the dialog: only confirmWrites does', () => {
+    const said = { confirmTitle: 'Reset?', confirmKind: 'consequence' };
+    const words = { title: 'Reset?', kind: 'consequence' };
+    expect(gatedWriteOptions(said)).toEqual({ dialog: words });
+    expect(gatedWriteOptions({ ...said, confirmWrites: false })).toEqual({ dialog: words });
+    expect(gatedWriteOptions({ ...said, confirmWrites: true })).toEqual({
+      confirm: true,
+      dialog: words,
+    });
+    // The older flag is not read: it asks for nothing.
+    expect(gatedWriteOptions({ confirmOnWrite: true })).toEqual({});
+  });
+});
+
+describe('useGatedWrite — what the dialog says', () => {
+  const dialog = { title: 'Reset?', label: 'Reset', action: 'press' } as const;
+
+  function recording(confirm = false) {
+    const options: unknown[] = [];
+    const gate: WriteGateService = {
+      confirmWrites: () => confirm,
+      run: async (writes, ...rest) => {
+        options.push(rest[0]);
+        return writes.map(() => outcome('confirmed'));
+      },
+    };
+    return { gate, options };
+  }
+
+  it('a write carries it, with or without the widget asking', async () => {
+    for (const asks of [false, true]) {
+      const { gate, options } = recording();
+      const { h } = handle('SIM:X');
+      const { result } = renderHook(
+        () => useGatedWrite(h, asks ? { confirm: true, dialog } : { dialog }),
+        { wrapper: withGate(gate) }
+      );
+      await act(async () => {
+        await result.current.write(1);
+      });
+      expect(options).toEqual([asks ? { confirm: true, dialog } : { dialog }]);
+    }
+  });
+
+  it('a pulse under confirmation carries it on its one run', async () => {
+    const { gate, options } = recording(true);
+    const { h } = handle('SIM:BTN');
+    const { result } = renderHook(() => useGatedWrite(h, { dialog }), { wrapper: withGate(gate) });
+    await act(async () => {
+      await result.current.press(1, 0);
+    });
+    expect(options).toEqual([{ dialog }]);
+  });
+
+  it('a hold carries it beside its tail', async () => {
+    const { gate, options } = recording();
+    const { h } = handle('SIM:BTN');
+    const { result, unmount } = renderHook(() => useGatedWrite(h, { dialog }), {
+      wrapper: withGate(gate),
+    });
+    act(() => {
+      void result.current.press(1, 0, 7);
+    });
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({ dialog });
+    expect((options[0] as { tail?: unknown }).tail).toBeInstanceOf(Promise);
+    unmount();
+  });
+
+  it('a pass-through write is unchanged by it', async () => {
+    const { h, puts } = handle('loc://x');
+    const { gate, options } = recording();
+    const { result } = renderHook(() => useGatedWrite(h, { confirm: true, dialog }), {
+      wrapper: withGate(gate),
+    });
+    await act(async () => {
+      await result.current.write(1);
+    });
+    expect(puts).toEqual([1]);
+    expect(options).toEqual([]);
   });
 });
 

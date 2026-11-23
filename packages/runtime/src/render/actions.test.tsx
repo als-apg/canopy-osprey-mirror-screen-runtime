@@ -230,18 +230,21 @@ describe('widget actions', () => {
     }
     const write = [{ type: 'write_pv', pvName: 'X:A', value: 1 }];
 
+    // The node's label travels with every run, for a dialog the gate may open.
+    const named = { dialog: { label: 'Go', action: 'press' } };
+
     it("asks the gate to confirm the click's run when the node sets it true", async () => {
       const node = button('b1', 'Go', write);
       const options = gated({ ...node, props: { ...node.props, confirmWrites: true } });
-      await waitFor(() => expect(options).toEqual([{ confirm: true }]));
+      await waitFor(() => expect(options).toEqual([{ confirm: true, ...named }]));
     });
 
-    it('gives the gate no options on a node without it, or with a plain no', async () => {
+    it('asks for no dialog on a node without it, or with a plain no', async () => {
       for (const value of [undefined, false, 'false']) {
         const node = button('b1', 'Go', write);
         const props = value === undefined ? node.props : { ...node.props, confirmWrites: value };
         const options = gated({ ...node, props });
-        await waitFor(() => expect(options).toEqual([undefined]));
+        await waitFor(() => expect(options).toEqual([named]));
         cleanup();
       }
     });
@@ -250,9 +253,195 @@ describe('widget actions', () => {
       for (const value of ['true', 1, 'yes']) {
         const node = button('b1', 'Go', write);
         const options = gated({ ...node, props: { ...node.props, confirmWrites: value } });
-        await waitFor(() => expect(options).toEqual([{ confirm: true }]));
+        await waitFor(() => expect(options).toEqual([{ confirm: true, ...named }]));
         cleanup();
       }
+    });
+  });
+
+  describe('what the dialog says: confirmTitle, confirmText, confirmVerb, confirmKind', () => {
+    /** Renders `nodes` under a gate that records each run's writes and options. */
+    function recorded(nodes: WidgetNode[], macros: ScreenJSON['macros'] = []) {
+      const runs: { writes: WriteRequest[]; options: unknown }[] = [];
+      const gate: WriteGateService = {
+        confirmWrites: () => false,
+        run: async (writes, ...rest) => {
+          runs.push({ writes: [...writes], options: rest[0] });
+          return writes.map(() => ({
+            outcome: 'confirmed' as const,
+            code: null,
+            status: null,
+            detail: 'written',
+            coalesced: false,
+          }));
+        },
+      };
+      render(
+        wrap(
+          <WriteGate.Provider value={gate}>
+            <ScreenRenderer screen={doc('top', nodes, macros)} />
+          </WriteGate.Provider>
+        )
+      );
+      return runs;
+    }
+    const SAID = {
+      confirmTitle: 'Reboot controller RACK1:CTRL1?',
+      confirmText: 'It commands 2 power supplies.',
+      confirmVerb: 'Reboot',
+      confirmKind: 'consequence',
+    };
+    const WORDS = {
+      title: 'Reboot controller RACK1:CTRL1?',
+      text: 'It commands 2 power supplies.',
+      verb: 'Reboot',
+      kind: 'consequence',
+    };
+
+    it("a node's click actions carry the four props and its label to the gate", async () => {
+      const node = button('b1', 'Reboot', [
+        { type: 'write_pv', pvName: 'RACK1:CTRL1:Reboot', value: 0 },
+      ]);
+      const runs = recorded([{ ...node, props: { ...node.props, confirmWrites: true, ...SAID } }]);
+      fireEvent.click(screen.getByRole('button', { name: 'Reboot' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual({
+        writes: [{ pv: 'RACK1:CTRL1:Reboot', value: 0 }],
+        options: { confirm: true, dialog: { ...WORDS, label: 'Reboot', action: 'press' } },
+      });
+    });
+
+    it('the wording asks for no dialog on its own', async () => {
+      const node = button('b1', 'Reboot', [
+        { type: 'write_pv', pvName: 'RACK1:CTRL1:Reboot', value: 0 },
+      ]);
+      const runs = recorded([{ ...node, props: { ...node.props, ...SAID } }]);
+      fireEvent.click(screen.getByRole('button', { name: 'Reboot' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0].options).toEqual({ dialog: { ...WORDS, label: 'Reboot', action: 'press' } });
+    });
+
+    it('macros are substituted in the wording, as in any string of a screen', async () => {
+      const node = button('b1', 'Reboot', [
+        { type: 'write_pv', pvName: '$(DEV):Reboot', value: 0 },
+      ]);
+      const runs = recorded(
+        [{ ...node, props: { ...node.props, confirmTitle: 'Reboot controller $(DEV)?' } }],
+        [{ name: 'DEV', default: 'RACK1:CTRL1' }]
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Reboot' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual({
+        writes: [{ pv: 'RACK1:CTRL1:Reboot', value: 0 }],
+        options: {
+          dialog: { title: 'Reboot controller RACK1:CTRL1?', label: 'Reboot', action: 'press' },
+        },
+      });
+    });
+
+    it('a pick from an action menu is named by the item picked', async () => {
+      const node = button('b1', 'HV ON/OFF', [
+        { type: 'write_pv', pvName: 'DEV:HV:Enable', value: 1, description: 'ON' },
+        { type: 'write_pv', pvName: 'DEV:HV:Enable', value: 0, description: 'OFF' },
+      ]);
+      const runs = recorded([{ ...node, props: { ...node.props, actionsAsMenu: true } }]);
+      fireEvent.click(screen.getByRole('button', { name: 'HV ON/OFF' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'OFF' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual({
+        writes: [{ pv: 'DEV:HV:Enable', value: 0 }],
+        options: { dialog: { label: 'OFF', action: 'press' } },
+      });
+    });
+
+    it('a pv-button carries them from the Screen-IR to its own write', async () => {
+      const runs = recorded([
+        {
+          id: 'pb',
+          type: 'pv-button',
+          props: {
+            pv: 'RACK1:CTRL1:Reboot',
+            label: 'Reboot',
+            pressValue: 0,
+            confirmWrites: true,
+            ...SAID,
+          },
+          geometry: { x: 10, y: 10, width: 100, height: 30 },
+        },
+      ]);
+      fireEvent.click(await screen.findByRole('button', { name: 'Reboot' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual({
+        writes: [{ pv: 'RACK1:CTRL1:Reboot', value: 0 }],
+        options: { confirm: true, dialog: { ...WORDS, label: 'Reboot', action: 'press' } },
+      });
+    });
+
+    it('a pv-text-input carries them from the Screen-IR to its own write', async () => {
+      const runs = recorded([
+        {
+          id: 'pt',
+          type: 'pv-text-input',
+          props: {
+            pv: 'sim://sine',
+            confirmTitle: 'Change the set point?',
+            confirmMessage: 'The supply ramps at once.',
+          },
+          geometry: { x: 10, y: 10, width: 100, height: 30 },
+        },
+      ]);
+      const input = await waitFor(() => {
+        const el = document.querySelector('[data-node-id="pt"] input') as HTMLInputElement;
+        expect(el.disabled).toBe(false);
+        return el;
+      });
+      fireEvent.change(input, { target: { value: '2.5' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0]).toEqual({
+        writes: [{ pv: 'sim://sine', value: 2.5, entered: '2.5' }],
+        options: {
+          dialog: {
+            title: 'Change the set point?',
+            text: 'The supply ramps at once.',
+            action: 'set',
+          },
+        },
+      });
+    });
+
+    it('an Apply node carries them to the staged run, worded as an Apply', async () => {
+      const apply = button('apply', 'Apply', [{ type: 'apply_staged', scope: 'set' }]);
+      const runs = recorded([
+        {
+          id: 'e1',
+          type: 'pv-text-input',
+          props: { pv: 'sim://sine', stage: 'set' },
+          geometry: { x: 10, y: 50, width: 100, height: 30 },
+        },
+        {
+          ...apply,
+          props: { ...apply.props, confirmWrites: true, confirmText: 'Both supplies ramp.' },
+        },
+      ]);
+      const input = await waitFor(() => {
+        const el = document.querySelector('[data-node-id="e1"] input') as HTMLInputElement;
+        expect(el.disabled).toBe(false);
+        return el;
+      });
+      fireEvent.change(input, { target: { value: '2.5' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(runs).toEqual([]);
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(runs).toHaveLength(1));
+      expect(runs[0].writes).toEqual([{ pv: 'sim://sine', value: 2.5, entered: '2.5' }]);
+      expect(runs[0].options).toEqual({
+        nameStopped: true,
+        stopUnlessConfirmed: true,
+        confirm: true,
+        dialog: { text: 'Both supplies ramp.', label: 'Apply', action: 'apply' },
+        check: expect.any(Function),
+      });
     });
   });
 

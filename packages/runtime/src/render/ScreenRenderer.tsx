@@ -54,6 +54,7 @@ import {
   AssetResolverContext,
   CONFIRM_WRITES_PROP,
   asksToConfirm,
+  dialogText,
   PVServiceContext,
   RenderModeContext,
   Staging,
@@ -661,7 +662,12 @@ function MountedNodeView({
   }
   if (ownDevice !== null) style.pointerEvents = 'auto';
   if (clickable) style.cursor = 'pointer';
-  const run = (chosen: readonly RuntimeAction[]) => {
+  // `label`: what was clicked, when it is not the node itself (a menu item).
+  const run = (chosen: readonly RuntimeAction[], label?: string) => {
+    const dialog = dialogText(effective.props, {
+      label: label ?? effective.props.label ?? effective.props.text,
+      action: 'press',
+    });
     void dispatchActions(chosen, {
       ...host,
       macros,
@@ -675,6 +681,8 @@ function MountedNodeView({
       gate,
       // The node asks for the dialog before its click's machine writes.
       confirm: asksToConfirm(effective.props[CONFIRM_WRITES_PROP]),
+      // What the node says in that dialog, and its label for a built title.
+      ...(dialog === undefined ? {} : { dialog }),
       staging,
     }).catch((err: unknown) => {
       host.showError(err instanceof Error ? err.message : String(err));
@@ -707,7 +715,7 @@ function MountedNodeView({
           close={closeMenu}
           items={actions.map((action) => ({
             label: actionName(action, macros),
-            run: () => run([action]),
+            run: () => run([action], actionName(action, macros)),
           }))}
         />
       )}
