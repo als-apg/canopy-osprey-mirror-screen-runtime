@@ -7,7 +7,8 @@ icon: lucide/pencil-line
 A screen can ask the operator to confirm a write, and it can collect several
 typed values and write them together. Four things in a screen document do
 this: the node props `confirmWrites` and `stage`, and the actions
-`apply_staged` and `clear_staged`.
+`apply_staged` and `clear_staged`. Four more node props word the dialog:
+`confirmTitle`, `confirmText`, `confirmVerb` and `confirmKind`.
 
 None of them changes how a value reaches the control system. Every write is
 still one write to one channel through the viewer's write gate, judged there
@@ -38,7 +39,7 @@ itself, or the node whose click carries the actions.
 
 Before anything is written, one dialog lists every channel of the press with
 its current value and the value about to be written. **Cancel** writes
-nothing. **Write** sends the writes in order.
+nothing. The confirm button sends the writes in order.
 
 - The prop only adds a dialog. A deployment that confirms every write, or a
   control session that asks for confirmation, opens the dialog with or
@@ -50,6 +51,98 @@ nothing. **Write** sends the writes in order.
   are confirmed together and sent as one pulse.
 - Without the prop, and where the deployment does not ask, a press writes
   directly, also when it writes several channels.
+
+## What the dialog says
+
+The dialog reads from top to bottom:
+
+1. **What is written to.** The name of the control target, always the first
+   line, with a marker. Where the viewer is told the kind of target, the
+   marker takes its colour and the line says "the machine" or "not the
+   machine"; where it is told only a name, the marker stays grey. A target
+   served from the fallback says so.
+2. **A title that is a question** saying what happens.
+3. **One sentence** from the screen, when it gives one.
+4. **The writes.**
+   - One write is drawn as labelled rows: `channel`, `now`, `writes`. The
+     value about to be written is in bold, with the channel's unit. For a
+     value the operator chose (an entry, a slider, a staged value) the row
+     also shows the step from the current value (`+0.0150`), and a `limits`
+     row shows the channel's control limits. A row whose content is not known
+     is left out.
+   - Several writes are a table with a `now` and a `writes` column, both
+     right-aligned.
+   - `now` is read live while the dialog is open. A channel with no live value
+     reads `not connected`.
+   - A momentary button's press and release are one write on the `writes`
+     row: `1 · then 0 (release)`.
+5. **Cancel** and the **confirm button**, which says the action.
+
+### Wording it from the screen
+
+Set these on the same node as `confirmWrites`. All four are optional, and
+macros are substituted in them.
+
+| Prop           | What it sets                                                                                    |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| `confirmTitle` | The title: a question, for example "Reboot controller RACK1?".                                  |
+| `confirmText`  | One sentence under the title: what happens, or what is not known.                               |
+| `confirmVerb`  | The word on the confirm button, for example "Reboot".                                           |
+| `confirmKind`  | `"consequence"`: the sentence is drawn as a warning and the confirm button in the danger style. |
+
+```json
+{
+  "id": "reboot",
+  "type": "pv-button",
+  "geometry": { "x": 20, "y": 20, "width": 120, "height": 32 },
+  "props": {
+    "pv": "RACK1:CTRL1:Reboot",
+    "label": "Reboot",
+    "pressValue": 0,
+    "confirmWrites": true,
+    "confirmTitle": "Reboot controller RACK1:CTRL1?",
+    "confirmText": "It commands 2 power supplies. Their outputs are off until it is back.",
+    "confirmVerb": "Reboot",
+    "confirmKind": "consequence"
+  }
+}
+```
+
+- These props only word a dialog that opens. None of them opens one: that is
+  `confirmWrites`, the deployment's setting, or the control session.
+- They are read on a writing widget (a button, a text entry, a slider, a
+  toggle, a dropdown, a checkbox, a radio group) and on a node whose click
+  carries `write_pv` or `apply_staged` actions.
+- `confirmMessage`, an older prop of the text entry, is read as `confirmText`
+  where `confirmText` is not set. The older `confirmOnWrite` is not read; use
+  `confirmWrites`.
+
+### Without wording from the screen
+
+The dialog builds the title and the button word from the widget's label and
+the write.
+
+| The run                                  | Title                                       | Button    |
+| ---------------------------------------- | ------------------------------------------- | --------- |
+| A press of a labelled button or node     | `<label>?`                                  | `<label>` |
+| One value set (entry, slider, toggle...) | `Set <label or channel> to <value> <unit>?` | `Set`     |
+| One staged value applied                 | `Set <channel> to <value> <unit>?`          | `Set`     |
+| Several values, no labelled press        | `Apply N changes?`                          | `Apply N` |
+| One write with no label                  | `Write <value> to <channel>?`               | `Write`   |
+
+A label names the press as the screen shows it. Where a label is not an
+action (a button that carries a device name), give the node a `confirmTitle`
+and a `confirmVerb`. A label longer than 24 characters is not used as the
+button word. An Apply node's own `confirmTitle` and `confirmVerb` are used as
+they are written; they cannot carry the count.
+
+### Keys
+
+- Focus starts on **Cancel**. Enter never confirms unless the operator has
+  moved the focus to the confirm button.
+- The Enter that opened the dialog (in a text entry, or on a focused button)
+  does not answer it, held down or not.
+- **Escape** and the close mark cancel.
 
 ## Staging a value: `stage`
 
