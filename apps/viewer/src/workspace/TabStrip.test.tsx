@@ -322,9 +322,11 @@ describe('the screen header of a tile bar (ScreenHeader with tabDetail)', () => 
   it('renders zoom controls when given', () => {
     const zoom = {
       scale: 1,
+      fitWidth: false,
       fit: false,
       onZoomOut: vi.fn(),
       onZoomIn: vi.fn(),
+      onFitWidth: vi.fn(),
       onFit: vi.fn(),
       onActualSize: vi.fn(),
     };

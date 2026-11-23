@@ -1,7 +1,7 @@
-// The zoom context: the app-level provider (one value, /s/ and chrome off)
-// and the workspace's store, one remembered zoom per screen in one
-// localStorage record, read by a keyed provider around each screen and by
-// that screen's tile bar.
+// The zoom context: the display mode remembered once for the viewer, the
+// app-level provider (one value, chrome off) and the workspace's store, one
+// remembered manual zoom per screen in one localStorage record, read by a
+// keyed provider around each screen and by that screen's tile bar.
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   KeyedZoomProvider,
   ZOOM_BY_SCREEN_NAME,
+  ZOOM_MODE_NAME,
   ZoomProvider,
   ZoomStore,
   useKeyedZoom,
@@ -45,6 +46,8 @@ afterEach(() => {
 
 /** The record at the origin root. */
 const RECORD = `${ZOOM_BY_SCREEN_NAME}:/`;
+/** The display mode at the origin root. */
+const MODE = `${ZOOM_MODE_NAME}:/`;
 const record = (key = RECORD) => {
   const raw = localStorage.getItem(key);
   return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
@@ -59,8 +62,14 @@ function Probe({ name }: { name: string }) {
       <button type="button" onClick={() => zoom.setManual(1.5)}>
         {`${name} manual`}
       </button>
+      <button type="button" onClick={() => zoom.setFitWidth()}>
+        {`${name} fit width`}
+      </button>
       <button type="button" onClick={() => zoom.setFit()}>
-        {`${name} fit`}
+        {`${name} fit page`}
+      </button>
+      <button type="button" onClick={() => zoom.latch?.({ mode: 'fit', scale: 1 })}>
+        {`${name} latch fit`}
       </button>
     </div>
   );
@@ -69,12 +78,12 @@ function Probe({ name }: { name: string }) {
 const value = (name: string) => screen.getByTestId(`${name}-value`).textContent;
 
 describe('ZoomStore', () => {
-  it('starts every screen at fit and keeps screens apart', () => {
+  it('starts every screen at fit width and keeps screens apart', () => {
     const store = new ZoomStore();
-    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
     store.set('a/one', { mode: 'manual', scale: 0.9 });
     expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 0.9 });
-    expect(store.get('a/two')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/two')).toEqual({ mode: 'width', scale: 1 });
   });
 
   it('remembers one record keyed category/id in localStorage, read by a new session', () => {
@@ -94,23 +103,85 @@ describe('ZoomStore', () => {
     expect(next.get('bts/knob?Y=3')).toEqual({ mode: 'manual', scale: 2 });
   });
 
-  it('Fit removes the entry, and the record when it empties', () => {
+  it('Fit width removes the entry, and the record when it empties', () => {
     const store = new ZoomStore();
     store.set('a/one', { mode: 'manual', scale: 1.2 });
     store.set('a/two', { mode: 'manual', scale: 0.8 });
-    store.set('a/one', { mode: 'fit', scale: 1 });
+    store.set('a/one', { mode: 'width', scale: 1 });
     expect(record()).toEqual({ 'a/two': { mode: 'manual', scale: 0.8 } });
-    store.set('a/two', { mode: 'fit', scale: 1 });
+    store.set('a/two', { mode: 'width', scale: 1 });
     expect(localStorage.getItem(RECORD)).toBeNull();
-    expect(new ZoomStore().get('a/two')).toEqual({ mode: 'fit', scale: 1 });
+    expect(new ZoomStore().get('a/two')).toEqual({ mode: 'width', scale: 1 });
   });
 
-  it('keeps tool keys at fit and stores nothing for them', () => {
+  it('remembers the display mode once, for every screen, and reads it in a new session', () => {
+    expect(ZOOM_MODE_NAME).toBe('canopy-viewer:zoom-mode');
+    const store = new ZoomStore();
+    store.setMode('a/one', 'fit');
+    expect(localStorage.getItem(MODE)).toBe('fit');
+    expect(localStorage.getItem(RECORD)).toBeNull();
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('b/any')).toEqual({ mode: 'fit', scale: 1 });
+    sessionStorage.clear();
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'fit', scale: 1 });
+    // Actual size is a mode too: every screen at 100%, nothing per screen.
+    store.setMode('a/one', 'actual');
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'manual', scale: 1 });
+    expect(localStorage.getItem(RECORD)).toBeNull();
+    // The default is remembered as no entry.
+    store.setMode('a/one', 'width');
+    expect(localStorage.getItem(MODE)).toBeNull();
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'width', scale: 1 });
+  });
+
+  it("a screen's manual zoom stands ahead of the display mode until a mode is picked on it", () => {
+    const store = new ZoomStore();
+    store.set('a/one', { mode: 'manual', scale: 1.5 });
+    store.setMode('a/two', 'fit');
+    expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 1.5 });
+    expect(store.get('a/two')).toEqual({ mode: 'fit', scale: 1 });
+    store.setMode('a/one', 'fit');
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(localStorage.getItem(RECORD)).toBeNull();
+  });
+
+  it('setting a fit state drops the manual zoom and leaves the display mode alone', () => {
+    const store = new ZoomStore();
+    store.setMode('a/one', 'fit');
+    store.set('a/one', { mode: 'manual', scale: 0.5 });
+    store.set('a/one', { mode: 'width', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(localStorage.getItem(MODE)).toBe('fit');
+  });
+
+  it('reads an unknown stored mode as fit width and scopes the mode to the mount', () => {
+    localStorage.setItem(MODE, 'sideways');
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    new ZoomStore('/u/bob/panel/canopy').setMode('a/one', 'fit');
+    expect(localStorage.getItem(`${ZOOM_MODE_NAME}:/u/bob/panel/canopy`)).toBe('fit');
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+  });
+
+  it("another browser tab's mode arrives through the storage event", () => {
+    const store = new ZoomStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    localStorage.setItem(MODE, 'fit');
+    window.dispatchEvent(new StorageEvent('storage', { key: MODE }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    window.dispatchEvent(new StorageEvent('storage', { key: MODE }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('keeps tool keys at fit width and stores nothing for them', () => {
     const store = new ZoomStore();
     store.set('@trace/2', { mode: 'manual', scale: 2 });
     store.latch('@trace', { mode: 'manual', scale: 2 });
-    expect(store.get('@trace/2')).toEqual({ mode: 'fit', scale: 1 });
-    expect(store.get('@trace')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('@trace/2')).toEqual({ mode: 'width', scale: 1 });
+    expect(store.get('@trace')).toEqual({ mode: 'width', scale: 1 });
     expect(localStorage.getItem(RECORD)).toBeNull();
   });
 
@@ -124,8 +195,11 @@ describe('ZoomStore', () => {
       mode: 'manual',
       scale: 2,
     });
-    expect(new ZoomStore('/u/bob/panel/canopy').get('bts/knob')).toEqual({ mode: 'fit', scale: 1 });
-    expect(new ZoomStore().get('bts/knob')).toEqual({ mode: 'fit', scale: 1 });
+    expect(new ZoomStore('/u/bob/panel/canopy').get('bts/knob')).toEqual({
+      mode: 'width',
+      scale: 1,
+    });
+    expect(new ZoomStore().get('bts/knob')).toEqual({ mode: 'width', scale: 1 });
 
     document.documentElement.setAttribute('data-canopy-storage-scope', 'alice');
     new ZoomStore().set('bts/knob', { mode: 'manual', scale: 3 });
@@ -133,7 +207,7 @@ describe('ZoomStore', () => {
     expect(localStorage.getItem(RECORD)).toBeNull();
   });
 
-  it('reads an invalid stored entry or record as fit', () => {
+  it('reads an invalid stored entry or record as fit width', () => {
     localStorage.setItem(
       RECORD,
       JSON.stringify({
@@ -143,19 +217,19 @@ describe('ZoomStore', () => {
       })
     );
     const store = new ZoomStore();
-    expect(store.get('a/bad')).toEqual({ mode: 'fit', scale: 1 });
-    expect(store.get('a/odd')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/bad')).toEqual({ mode: 'width', scale: 1 });
+    expect(store.get('a/odd')).toEqual({ mode: 'width', scale: 1 });
     expect(store.get('a/ok')).toEqual({ mode: 'manual', scale: 2 });
     localStorage.setItem(RECORD, '{not json');
-    expect(new ZoomStore().get('a/ok')).toEqual({ mode: 'fit', scale: 1 });
+    expect(new ZoomStore().get('a/ok')).toEqual({ mode: 'width', scale: 1 });
     localStorage.setItem(RECORD, '[1]');
-    expect(new ZoomStore().get('a/ok')).toEqual({ mode: 'fit', scale: 1 });
+    expect(new ZoomStore().get('a/ok')).toEqual({ mode: 'width', scale: 1 });
   });
 
   it('refuses an invalid manual scale', () => {
     const store = new ZoomStore();
     store.set('a/one', { mode: 'manual', scale: Number.NaN });
-    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
   });
 
   it('keeps working in memory when storage throws', () => {
@@ -175,7 +249,7 @@ describe('ZoomStore', () => {
       });
     }
     const store = new ZoomStore();
-    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
     store.set('a/one', { mode: 'manual', scale: 1.1 });
     expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 1.1 });
   });
@@ -183,8 +257,8 @@ describe('ZoomStore', () => {
   it('a latch beats the remembered zoom for its tab key only, and is never stored', () => {
     localStorage.setItem(RECORD, JSON.stringify({ 'bts/knob': { mode: 'manual', scale: 2 } }));
     const store = new ZoomStore();
-    store.latch('bts/knob', { mode: 'fit', scale: 1 });
-    expect(store.get('bts/knob')).toEqual({ mode: 'fit', scale: 1 });
+    store.latch('bts/knob', { mode: 'width', scale: 1 });
+    expect(store.get('bts/knob')).toEqual({ mode: 'width', scale: 1 });
     // Another tab of the same screen reads the remembered zoom.
     expect(store.get('bts/knob?X=1')).toEqual({ mode: 'manual', scale: 2 });
     expect(record()).toEqual({ 'bts/knob': { mode: 'manual', scale: 2 } });
@@ -198,9 +272,9 @@ describe('ZoomStore', () => {
     store.latch('bts/knob', { mode: 'manual', scale: 1 });
     const listener = vi.fn();
     store.subscribe(listener);
-    store.set('bts/knob', { mode: 'fit', scale: 1 });
+    store.set('bts/knob', { mode: 'width', scale: 1 });
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(store.get('bts/knob')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('bts/knob')).toEqual({ mode: 'width', scale: 1 });
     store.set('bts/knob', { mode: 'manual', scale: 1.5 });
     expect(record()).toEqual({ 'bts/knob': { mode: 'manual', scale: 1.5 } });
   });
@@ -219,7 +293,7 @@ describe('ZoomStore', () => {
 
   it('refreshes on the storage event and notifies subscribers', () => {
     const store = new ZoomStore();
-    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
     localStorage.setItem(RECORD, JSON.stringify({ 'a/one': { mode: 'manual', scale: 1.4 } }));
@@ -262,6 +336,32 @@ describe('ZoomStore', () => {
   });
 });
 
+describe('ZoomStore: a record written by an older build', () => {
+  const RECORD = `${ZOOM_BY_SCREEN_NAME}:/`;
+
+  it('reads a stored fit as no manual zoom and drops it from the record', () => {
+    localStorage.setItem(
+      RECORD,
+      JSON.stringify({ 'a/one': { mode: 'fit', scale: 1 }, 'a/two': { mode: 'manual', scale: 2 } })
+    );
+    const store = new ZoomStore();
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    expect(store.get('a/two')).toEqual({ mode: 'manual', scale: 2 });
+    expect(JSON.parse(localStorage.getItem(RECORD)!)).toEqual({
+      'a/two': { mode: 'manual', scale: 2 },
+    });
+    // It follows the viewer's mode from then on.
+    store.setMode('b/any', 'actual');
+    expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 1 });
+  });
+
+  it('removes a record that held nothing else', () => {
+    localStorage.setItem(RECORD, JSON.stringify({ 'a/one': { mode: 'fit', scale: 1 } }));
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    expect(localStorage.getItem(RECORD)).toBeNull();
+  });
+});
+
 describe('KeyedZoomProvider', () => {
   it('two screens over one store hold independent scales', () => {
     const store = new ZoomStore();
@@ -279,7 +379,7 @@ describe('KeyedZoomProvider', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'one manual' }));
     expect(value('one')).toBe('manual:1.5');
-    expect(value('two')).toBe('fit:1');
+    expect(value('two')).toBe('width:1');
     expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 1.5 });
     expect(record()).toEqual({ 'a/one': { mode: 'manual', scale: 1.5 } });
     // The app-level value is untouched.
@@ -306,8 +406,8 @@ describe('KeyedZoomProvider', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'bar' }));
     expect(value('one')).toBe('manual:0.8');
-    act(() => store.set('a/one', { mode: 'fit', scale: 1 }));
-    expect(value('one')).toBe('fit:1');
+    act(() => store.set('a/one', { mode: 'width', scale: 1 }));
+    expect(value('one')).toBe('width:1');
   });
 
   it('switches to the new key when its key changes', () => {
@@ -318,7 +418,7 @@ describe('KeyedZoomProvider', () => {
         <Probe name="p" />
       </KeyedZoomProvider>
     );
-    expect(value('p')).toBe('fit:1');
+    expect(value('p')).toBe('width:1');
     rerender(
       <KeyedZoomProvider store={store} zoomKey="a/two">
         <Probe name="p" />
@@ -360,9 +460,61 @@ describe('ZoomProvider (app level)', () => {
     );
   });
 
-  it('is a fixed fit outside every provider', () => {
+  it('starts at fit page whatever display mode is remembered, and never writes it', () => {
+    new ZoomStore().setMode('a/one', 'actual');
+    render(
+      <MemoryRouter>
+        <ZoomProvider>
+          <Probe name="app" />
+        </ZoomProvider>
+      </MemoryRouter>
+    );
+    expect(value('app')).toBe('fit:1');
+    // A mode picked here lasts the session and leaves the viewer's mode alone.
+    fireEvent.click(screen.getByRole('button', { name: 'app fit width' }));
+    expect(value('app')).toBe('width:1');
+    expect(JSON.parse(sessionStorage.getItem('canopy-viewer:zoom:/')!)).toEqual({
+      mode: 'width',
+      scale: 1,
+    });
+    expect(localStorage.getItem(MODE)).toBe('actual');
+    // Fit page, the default, is no entry.
+    fireEvent.click(screen.getByRole('button', { name: 'app manual' }));
+    fireEvent.click(screen.getByRole('button', { name: 'app fit page' }));
+    expect(value('app')).toBe('fit:1');
+    expect(sessionStorage.getItem('canopy-viewer:zoom:/')).toBeNull();
+    expect(localStorage.getItem(MODE)).toBe('actual');
+  });
+
+  it('reads the fit width this session set', () => {
+    sessionStorage.setItem('canopy-viewer:zoom:/', JSON.stringify({ mode: 'width', scale: 1 }));
+    render(
+      <MemoryRouter>
+        <ZoomProvider>
+          <Probe name="app" />
+        </ZoomProvider>
+      </MemoryRouter>
+    );
+    expect(value('app')).toBe('width:1');
+  });
+
+  it('a latched fit is the default: nothing is stored', () => {
+    render(
+      <MemoryRouter>
+        <ZoomProvider>
+          <Probe name="app" />
+        </ZoomProvider>
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'app latch fit' }));
+    expect(value('app')).toBe('fit:1');
+    expect(localStorage.getItem(MODE)).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('is a fixed fit width outside every provider', () => {
     render(<Probe name="none" />);
     fireEvent.click(screen.getByRole('button', { name: 'none manual' }));
-    expect(value('none')).toBe('fit:1');
+    expect(value('none')).toBe('width:1');
   });
 });

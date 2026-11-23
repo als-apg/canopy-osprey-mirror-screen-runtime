@@ -131,9 +131,17 @@ export function ScreenTileHeader({
   relay,
   history,
 }: ScreenTileHeaderProps) {
-  const { mode, scale: manualScale, setFit, setManual } = useKeyedZoom(zoomStore, tileKey);
+  const {
+    mode,
+    scale: manualScale,
+    setFitWidth,
+    setFit,
+    setActual,
+    setManual,
+  } = useKeyedZoom(zoomStore, tileKey);
   const scale = report?.scale ?? (mode === 'manual' ? manualScale : 1);
   const fit = mode === 'fit';
+  const fitWidth = mode === 'width';
   // The URL that reopens this tab: the workspace URL naming it.
   const href = useHref(urlForKey(tileKey));
   const target = report?.screen ?? null;
@@ -142,21 +150,23 @@ export function ScreenTileHeader({
       target
         ? {
             screen: target,
-            zoom: { scale, fit },
+            zoom: { scale, fit, fitWidth },
             config,
             link: new URL(href, window.location.href).href,
             plotInDataBrowser,
           }
         : undefined,
-    [target, scale, fit, config, href, plotInDataBrowser]
+    [target, scale, fit, fitWidth, config, href, plotInDataBrowser]
   );
   const zoom: ScreenZoom = {
     scale,
+    fitWidth,
     fit,
     onZoomOut: () => setManual(stepZoom(scale, -1)),
     onZoomIn: () => setManual(stepZoom(scale, 1)),
+    onFitWidth: setFitWidth,
     onFit: setFit,
-    onActualSize: () => setManual(1),
+    onActualSize: setActual,
   };
   return (
     <ShortcutRelayContext.Provider value={relay}>
@@ -210,7 +220,7 @@ export function ScreenTileRunner({
   const link = useMemo(() => new URL(href, window.location.href).href, [href]);
   const { view, invoke } = useScreenActions({
     screen: report?.screen ?? null,
-    zoom: { scale, fit: mode === 'fit' },
+    zoom: { scale, fit: mode === 'fit', fitWidth: mode === 'width' },
     config,
     link,
     plotInDataBrowser,

@@ -26,6 +26,7 @@ import {
   ZOOM_UNAVAILABLE,
   ZOOMED_100,
   ZOOMED_FIT,
+  ZOOMED_FIT_WIDTH,
   ZOOMED_IN,
   ZOOMED_OUT,
   type HeaderActionContext,
@@ -38,6 +39,7 @@ import {
   MENU_SAVE_COLLECTION,
   MENU_SHOW_SUB_SCREENS,
   MENU_ZOOM_100,
+  MENU_ZOOM_FIT_WIDTH,
   MENU_ZOOM_FIT,
   MENU_ZOOM_IN,
   MENU_ZOOM_OUT,
@@ -96,7 +98,7 @@ function baseFakes() {
     openCollections: vi.fn(() => true),
     history: history(),
     screenVerbs: verbs(),
-    zoom: { zoomIn: vi.fn(), zoomOut: vi.fn(), fit: vi.fn(), actual: vi.fn() },
+    zoom: { zoomIn: vi.fn(), zoomOut: vi.fn(), fitWidth: vi.fn(), fit: vi.fn(), actual: vi.fn() },
     tool: { report: REPORT, invoke: vi.fn<(id: string) => boolean>(() => true) },
   } satisfies HeaderActionContext;
 }
@@ -237,6 +239,7 @@ describe('menu:zoom-*', () => {
   it.each([
     [MENU_ZOOM_IN, 'zoomIn', ZOOMED_IN],
     [MENU_ZOOM_OUT, 'zoomOut', ZOOMED_OUT],
+    [MENU_ZOOM_FIT_WIDTH, 'fitWidth', ZOOMED_FIT_WIDTH],
     [MENU_ZOOM_FIT, 'fit', ZOOMED_FIT],
     [MENU_ZOOM_100, 'actual', ZOOMED_100],
   ] as const)('%s calls %s and toasts', (entry, method, message) => {

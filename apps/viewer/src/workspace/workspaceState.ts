@@ -12,6 +12,8 @@
 //              allowed), holding exactly the reported tabs; null exactly when
 //              no tab is open
 //   zoom       per open screen (`category/id`, macros dropped): fit or a percent
+//              (the hub knows one fit: fit width and fit page both report `fit`;
+//              the 100% display mode reports as a manual 100)
 //   instances  exactly the open tool tabs: tool, n, query (a string), view
 //   toolMru    open tool keys, most recently used first, once each
 //   labels     tab titles of open keys (at most MAX_LABEL characters)

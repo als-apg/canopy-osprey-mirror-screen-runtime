@@ -93,7 +93,7 @@ A tile's header holds its tabs and the showing screen's toolbar. The tabs
 come first: each is 96 to 220 px wide, and when they do not fit they
 scroll sideways. As the tile narrows, the toolbar gives way in this order:
 the screen's path, then its title, then the zoom controls fold into one
-**41 % ▾** button (Fit, 1:1 and the steps inside), then the action buttons
+**41 % ▾** button (the steps and the Fit width, Fit page, 100% switch inside), then the action buttons
 move into one **⋯** menu, and last ◀ ▶ join them there.
 
 ## The 40 px floor

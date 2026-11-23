@@ -70,9 +70,11 @@ function declarations(text: string, selector: string): string[] {
 function zoom(overrides: Partial<ScreenZoom> = {}): ScreenZoom {
   return {
     scale: 1,
+    fitWidth: false,
     fit: false,
     onZoomOut: vi.fn(),
     onZoomIn: vi.fn(),
+    onFitWidth: vi.fn(),
     onFit: vi.fn(),
     onActualSize: vi.fn(),
     ...overrides,
@@ -125,22 +127,51 @@ describe('ScreenHeader zoom buttons', () => {
   it('carry canopy-btn beside screen-header__button', () => {
     render(<ScreenHeader title="GTL" zoom={zoom()} />);
     const buttons = screen.getByRole('group', { name: 'Zoom' }).querySelectorAll('button');
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(5);
     for (const button of buttons) {
       expect(button.classList.contains('canopy-btn')).toBe(true);
       expect(button.classList.contains('screen-header__button')).toBe(true);
     }
   });
 
-  it('keep the text modifier and the pressed state of Fit', () => {
+  it('keep the text modifier and the pressed state of Fit page', () => {
     render(<ScreenHeader title="GTL" zoom={zoom({ fit: true })} />);
-    const fit = screen.getByRole('button', { name: 'Fit' });
+    const fit = screen.getByRole('button', { name: 'Fit page' });
     expect(fit.classList.contains('screen-header__button--text')).toBe(true);
     expect(fit.classList.contains('canopy-btn')).toBe(true);
     expect(fit.getAttribute('aria-pressed')).toBe('true');
-    expect(
-      screen.getByRole('button', { name: 'Actual size' }).classList.contains('canopy-btn')
-    ).toBe(true);
+    expect(screen.getByRole('button', { name: '100%' }).classList.contains('canopy-btn')).toBe(
+      true
+    );
+  });
+
+  it('show the fit switch as one labelled group with exactly the mode in effect pressed', () => {
+    const pressed = () =>
+      [...screen.getByRole('group', { name: 'Fit' }).querySelectorAll('button')].map(
+        (button) => `${button.textContent}:${button.getAttribute('aria-pressed')}`
+      );
+    const { rerender } = render(<ScreenHeader title="GTL" zoom={zoom({ fitWidth: true })} />);
+    expect(pressed()).toEqual(['Fit width:true', 'Fit page:false', '100%:false']);
+    rerender(<ScreenHeader title="GTL" zoom={zoom({ fit: true })} />);
+    expect(pressed()).toEqual(['Fit width:false', 'Fit page:true', '100%:false']);
+    rerender(<ScreenHeader title="GTL" zoom={zoom({ scale: 1 })} />);
+    expect(pressed()).toEqual(['Fit width:false', 'Fit page:false', '100%:true']);
+    // A fit that happens to land on 100% is not the 100% mode, nor is another manual zoom.
+    rerender(<ScreenHeader title="GTL" zoom={zoom({ fitWidth: true, scale: 1 })} />);
+    expect(pressed()).toEqual(['Fit width:true', 'Fit page:false', '100%:false']);
+    rerender(<ScreenHeader title="GTL" zoom={zoom({ scale: 1.5 })} />);
+    expect(pressed()).toEqual(['Fit width:false', 'Fit page:false', '100%:false']);
+  });
+
+  it('route each fit button to its own handler', () => {
+    const z = zoom();
+    render(<ScreenHeader title="GTL" zoom={z} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fit width' }));
+    expect(z.onFitWidth).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Fit page' }));
+    expect(z.onFit).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    expect(z.onActualSize).toHaveBeenCalledTimes(1);
   });
 
   it('are absent without a zoom', () => {
@@ -226,7 +257,7 @@ function SlotHarness({ store }: { store: ZoomStore }) {
   );
   const [next, setNext] = useState(0);
   const key = state.active ?? '';
-  const { mode, scale: manual, setFit, setManual } = useKeyedZoom(store, key);
+  const { mode, scale: manual, setFitWidth, setFit, setManual } = useKeyedZoom(store, key);
   const scale = mode === 'manual' ? manual : 1;
   const entry = state.history?.[key];
   return (
@@ -235,9 +266,11 @@ function SlotHarness({ store }: { store: ZoomStore }) {
         title={key}
         zoom={{
           scale,
+          fitWidth: mode === 'width',
           fit: mode === 'fit',
           onZoomOut: () => setManual(stepZoom(scale, -1)),
           onZoomIn: () => setManual(stepZoom(scale, 1)),
+          onFitWidth: setFitWidth,
           onFit: setFit,
           onActualSize: () => setManual(1),
         }}
@@ -273,25 +306,31 @@ describe('ScreenHeader history in a slot', () => {
     const title = () => screen.getByTestId('screen-header-title').textContent;
     expect(screen.getByRole('button', { name: 'Back' })).toHaveProperty('disabled', true);
     // The operator zooms the first screen past 100%.
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     const zoomed = percent();
     expect(zoomed).not.toBe('100%');
-    // A single click replaces it: the new screen opens at Fit.
+    // A single click replaces it: the new screen opens at fit width.
     fireEvent.click(screen.getByRole('button', { name: 'replace' }));
     expect(title()).toBe('a/two0');
-    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Fit width' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    );
     expect(screen.getByRole('button', { name: 'Forward' })).toHaveProperty('disabled', true);
     // ◀ brings the replaced screen back at the zoom it had.
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(title()).toBe('a/one');
     expect(percent()).toBe(zoomed);
-    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Fit width' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    );
     expect(screen.getByRole('button', { name: 'Back' })).toHaveProperty('disabled', true);
-    // ▶ returns to the replacing screen, still at Fit.
+    // ▶ returns to the replacing screen, still at fit width.
     fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
     expect(title()).toBe('a/two0');
-    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Fit width' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    );
   });
 });
 
@@ -571,7 +610,7 @@ describe('ScreenHeader in a tile bar (the header fits its tile)', () => {
     expect(bar.classList.contains('screen-header--tile')).toBe(true);
   });
 
-  it('puts Fit, 1:1 and the zoom steps behind the "41 % ▾" button', () => {
+  it('puts the fit switch and the zoom steps behind the "41 % ▾" button', () => {
     renderInTile(450);
     cleanup();
     stubTile(450);
@@ -588,11 +627,13 @@ describe('ScreenHeader in a tile bar (the header fits its tile)', () => {
     expect(menu.hidden).toBe(false);
     expect(menu.closest('.cds--g100')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
-    fireEvent.click(screen.getByText('Fit'));
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    fireEvent.click(screen.getByText('Fit page'));
+    fireEvent.click(screen.getByText('Fit width'));
     expect(z.onZoomIn).toHaveBeenCalledTimes(1);
     expect(z.onActualSize).toHaveBeenCalledTimes(1);
     expect(z.onFit).toHaveBeenCalledTimes(1);
+    expect(z.onFitWidth).toHaveBeenCalledTimes(1);
   });
 
   it('moves ◀ ▶ into "⋯" with the actions once even the floor does not fit', () => {

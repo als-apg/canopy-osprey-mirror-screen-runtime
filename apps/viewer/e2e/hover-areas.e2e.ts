@@ -1,8 +1,9 @@
-// Clickable screen areas and Fit. A node with click actions shows a pointer
+// Clickable screen areas and the fit modes. A node with click actions shows a pointer
 // cursor; hovering it draws an accent fill and outline and its hoverLabel; a
 // click opens its target. Its resting outline (`outlineColor`) is tinted by a
 // rule from live data, here served by fixture mode (one snapshot per alarm
-// level). Fit fills a large tile: the screen magnifies above 100%.
+// level). Fit page fills a large tile: the screen magnifies above 100%; fit
+// width stops at 200% and centres the screen.
 
 import { expect, test, type Page } from '@playwright/test';
 import { canopyDefaultFlat, parseFlatScheme } from '@slaclab/canopy-screen-ir';
@@ -111,17 +112,30 @@ test('a text label renders at its authored font size when the text fits its box'
   await expect.poll(() => label.evaluate((el) => getComputedStyle(el).fontSize)).toBe('18px');
 });
 
-test.describe('Fit fills the tile', () => {
+test.describe('Fit page fills the tile', () => {
   test.use({ viewport: { width: 2400, height: 1300 } });
 
   test('a 400 x 200 screen magnifies above 100% at a 2400 x 1300 viewport', async ({ page }) => {
     await page.goto(`${PREFIX}embed/${SCREEN}${await serveAlarm(page, 0)}`);
-    await expect(page.getByRole('button', { name: 'Fit' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Fit width', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
     const percent = page.getByTestId('zoom-percent');
+    const root = page.locator('[data-testid="screen-root"]');
+    // Fit width stops at 200%: the screen is 800 px wide, in the middle of the pane.
+    await expect(percent).toHaveText('200%');
+    const capped = (await root.boundingBox())!;
+    expect(Math.round(capped.width)).toBe(800);
+    const pane = (await page.locator('main').boundingBox())!;
+    const left = capped.x - pane.x;
+    const right = pane.x + pane.width - (capped.x + capped.width);
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(1);
+
+    await page.getByRole('button', { name: 'Fit page', exact: true }).click();
     await expect
       .poll(async () => parseInt((await percent.textContent()) ?? '0', 10))
-      .toBeGreaterThan(100);
-    const root = page.locator('[data-testid="screen-root"]');
+      .toBeGreaterThan(200);
     const box = (await root.boundingBox())!;
     // The width is the tighter axis: the screen spans the area less the padding.
     expect(box.width).toBeGreaterThan(2000);
@@ -132,7 +146,7 @@ test.describe('Fit fills the tile', () => {
     await expect(page.getByText(LABEL)).toBeVisible();
 
     // 100% is still the authored size.
-    await page.getByRole('button', { name: 'Actual size' }).click();
+    await page.getByRole('button', { name: '100%', exact: true }).click();
     await expect(percent).toHaveText('100%');
     await expect.poll(async () => Math.round((await root.boundingBox())!.width)).toBe(400);
   });

@@ -160,6 +160,16 @@ describe('buildState', () => {
     expect(zoomAt(Number.NaN)).toEqual({ mode: 'fit' });
   });
 
+  it('reports fit width and fit page alike as the one fit the hub knows', () => {
+    const zoomIn = (mode: 'width' | 'fit') =>
+      buildState({
+        tabs: tabsOf({ keys: ['a/x'], active: 'a/x' }),
+        zoomOf: () => ({ mode, scale: 1 }),
+      }).zoom['a/x'];
+    expect(zoomIn('width')).toEqual({ mode: 'fit' });
+    expect(zoomIn('fit')).toEqual({ mode: 'fit' });
+  });
+
   it('reports every open tool tab as an instance with a string query and an object view', async () => {
     const state = buildState({
       tabs: tabsOf({
