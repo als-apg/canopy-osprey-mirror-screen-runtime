@@ -14,6 +14,16 @@
 //                branch starts expanded and stays as the operator left it: a
 //                manual toggle holds for the session (ticks and unticks keep
 //                it), never stored; a search opens it while the query lasts.
+//                With a navigation in the manifest (navigation.ts) the branch
+//                is labelled Screens and shows that tree instead: its groups
+//                and leaves in the library's order, a leaf under the label the
+//                library gives it, a group that names a screen opening it from
+//                its row. The folder tree described above then sits unchanged
+//                in a last group "All screens", collapsed until opened or
+//                searched, so every screen stays reachable. An invalid
+//                navigation is ignored with one console warning; screens it
+//                names that the manifest does not list are skipped and listed
+//                in one warning.
 //   Tools        one entry per configured tool, in registry order, with that
 //                tool's saved views beneath it, and an "Other views" group of
 //                the views whose tool is not served here (unknown kinds
@@ -144,6 +154,8 @@ import { instanceShowsMember, screenMemberTabKey, tabKey } from './tabs.js';
 import type { OpenMode, TabsState } from './tabs.js';
 import { MAX_TOOL_INSTANCES, toolKey, toolLabel, toolOf } from './tools.js';
 import { matchEntry, searchable } from './match.js';
+import { parseNavigation, resolveNavigation } from './navigation.js';
+import type { ResolvedEntry } from './navigation.js';
 import { openQuickOpen } from './QuickOpen.js';
 import { SidebarQueryContext } from './WorkspaceSidebar.js';
 import { useHostCapabilities } from './host/hostCapabilities.js';
@@ -181,6 +193,8 @@ export const REORDER_TYPE = 'application/x-canopy-collection-member';
 export interface ScreenTreeProps {
   /** The manifest's screens, unfiltered; null before the first manifest. */
   screens: readonly ManifestScreen[] | null;
+  /** The manifest's `navigation`, as served (navigation.ts validates it). */
+  navigation?: unknown;
   /** The configured tools, in registry order; adds the Tools branch. */
   tools?: readonly ToolEntry[];
   /** Open `key` (a screen) in the active tab ('replace') or a new one ('append'). */
@@ -272,6 +286,11 @@ export const BRANCH_PINNED = 'branch:pinned';
 export const BRANCH_RECENT = 'branch:recent';
 export const BRANCH_TOOLS = 'branch:tools';
 export const BRANCH_SCREENS = 'branch:screens';
+/** The folder tree's group under a library navigation, and its node id prefix for groups. */
+export const NAV_ALL_SCREENS = 'navigation-all';
+const NAV_GROUP_PREFIX = 'navigation-group:';
+/** Stored in the collapsed set once the "All screens" group has been opened (it starts collapsed). */
+export const NAV_ALL_EXPANDED_MARKER = 'navigation-all:expanded';
 const COLLECTION_PREFIX = 'collection:';
 
 /** Member groups (the `<group>` of a member node id). */
@@ -279,6 +298,7 @@ export const GROUP_PINNED = 'pinned';
 export const GROUP_RECENT = 'recent';
 export const GROUP_TOOLS = 'tools';
 export const GROUP_SCREENS = 'screens';
+export const GROUP_NAVIGATION = 'navigation';
 
 /** The node id of `member` in `group`. */
 export function memberNodeId(group: string, key: MemberKey | string): string {
@@ -532,6 +552,7 @@ function collectionNode(
 
 export function ScreenTree({
   screens: manifest,
+  navigation,
   tools = NO_TOOLS,
   onOpen,
   onOpenTool,
@@ -608,13 +629,20 @@ export function ScreenTree({
       setScreensOpen(expanded);
       return;
     }
-    if (compact && id === BRANCH_RECENT) {
-      // Compact RECENT is collapsed by default, so the stored fact is the opening.
+    // Compact RECENT and a navigation's "All screens" are collapsed by default,
+    // so the stored fact is the opening.
+    const opened =
+      compact && id === BRANCH_RECENT
+        ? RECENT_EXPANDED_MARKER
+        : id === NAV_ALL_SCREENS
+          ? NAV_ALL_EXPANDED_MARKER
+          : null;
+    if (opened !== null) {
       setCollapsed((prev) => {
-        if (prev.has(RECENT_EXPANDED_MARKER) === expanded) return prev;
+        if (prev.has(opened) === expanded) return prev;
         const next = new Set(prev);
-        if (expanded) next.add(RECENT_EXPANDED_MARKER);
-        else next.delete(RECENT_EXPANDED_MARKER);
+        if (expanded) next.add(opened);
+        else next.delete(opened);
         writeCollapsed(next);
         return next;
       });
@@ -648,6 +676,37 @@ export function ScreenTree({
     for (const category of fresh) warned.current.add(category);
     console.warn(`ScreenTree: dropping internal categories ${fresh.join(', ')}`);
   }, [dropped]);
+
+  // The library's navigation, against the listed screens. Each distinct fault
+  // warns once for the life of the tree, like the dropped categories.
+  const parsedNavigation = useMemo(() => parseNavigation(navigation), [navigation]);
+  const navigationError =
+    parsedNavigation !== null && 'error' in parsedNavigation ? parsedNavigation.error : null;
+  const resolved = useMemo(
+    () =>
+      manifest !== null && parsedNavigation !== null && 'entries' in parsedNavigation
+        ? resolveNavigation(parsedNavigation.entries, listed)
+        : null,
+    [manifest, parsedNavigation, listed]
+  );
+  const missingScreens = resolved === null ? '' : resolved.missing.join(', ');
+  useEffect(() => {
+    const faults = [
+      navigationError !== null
+        ? `ScreenTree: ignoring the library's navigation (${navigationError})`
+        : null,
+      missingScreens !== ''
+        ? `ScreenTree: the library's navigation names screens that are not listed: ${missingScreens}`
+        : null,
+    ];
+    for (const fault of faults) {
+      if (fault === null || warned.current.has(fault)) continue;
+      warned.current.add(fault);
+      console.warn(fault);
+    }
+  }, [navigationError, missingScreens]);
+  /** The branch shows the library's tree, with the folders in its last group. */
+  const navigated = resolved !== null && resolved.entries.length > 0;
 
   const subScreenCount = useMemo(
     () => listed.filter((entry) => isSubScreen(entry.id)).length,
@@ -839,41 +898,44 @@ export function ScreenTree({
 
   // --- All screens ---
 
-  const screenNodes = ((): NavNode[] => {
-    const leafNode = (leaf: Leaf): NavNode => {
-      const member: Member = { screen: leaf.screen };
-      const key = memberKey(member);
-      const id = memberNodeId(GROUP_SCREENS, key);
-      if (!leaf.disabled) meta.set(id, { group: GROUP_SCREENS, member });
-      const pinned = pinnedKeys.has(key);
-      return {
-        id,
-        label: leaf.title,
-        icon: <Document size={16} />,
-        disabled: leaf.disabled,
-        title: leaf.disabled ? 'code screen — not yet viewable' : leaf.title,
-        className:
-          'screen-tree__leaf' +
-          (leaf.disabled ? ' screen-tree__leaf--disabled' : '') +
-          (pinned ? ' screen-tree__member--pinned' : ''),
-        data: leaf.disabled
-          ? undefined
-          : { 'data-screen-key': leaf.key, 'data-member-key': key, 'data-group': GROUP_SCREENS },
-        onActivate: leaf.disabled
-          ? undefined
-          : ({ newTab }: NavActivation) => openRow(GROUP_SCREENS, member, newTab),
-        onMenu: leaf.disabled
-          ? undefined
-          : (x, y) =>
-              openMenu(x, y, [
-                { label: 'Open in new tab', run: () => openRow(GROUP_SCREENS, member, true) },
-                ...pinItems(member, pinned),
-              ]),
-        hoverAction: leaf.disabled ? undefined : starOf(member, pinned),
-        onDragStart:
-          leaf.disabled || !onDragStart ? undefined : (transfer) => onDragStart(member, transfer),
-      };
+  // A screen's row, in the folder tree or (with `place`) in the library's navigation.
+  const leafNode = (leaf: Leaf, place?: { id: string; label: string }): NavNode => {
+    const group = place ? GROUP_NAVIGATION : GROUP_SCREENS;
+    const member: Member = { screen: leaf.screen };
+    const key = memberKey(member);
+    const id = place?.id ?? memberNodeId(GROUP_SCREENS, key);
+    if (!leaf.disabled) meta.set(id, { group, member });
+    const pinned = pinnedKeys.has(key);
+    return {
+      id,
+      label: place?.label ?? leaf.title,
+      icon: <Document size={16} />,
+      disabled: leaf.disabled,
+      title: leaf.disabled ? 'code screen — not yet viewable' : leaf.title,
+      className:
+        'screen-tree__leaf' +
+        (leaf.disabled ? ' screen-tree__leaf--disabled' : '') +
+        (pinned ? ' screen-tree__member--pinned' : ''),
+      data: leaf.disabled
+        ? undefined
+        : { 'data-screen-key': leaf.key, 'data-member-key': key, 'data-group': group },
+      onActivate: leaf.disabled
+        ? undefined
+        : ({ newTab }: NavActivation) => openRow(group, member, newTab),
+      onMenu: leaf.disabled
+        ? undefined
+        : (x, y) =>
+            openMenu(x, y, [
+              { label: 'Open in new tab', run: () => openRow(group, member, true) },
+              ...pinItems(member, pinned),
+            ]),
+      hoverAction: leaf.disabled ? undefined : starOf(member, pinned),
+      onDragStart:
+        leaf.disabled || !onDragStart ? undefined : (transfer) => onDragStart(member, transfer),
     };
+  };
+
+  const screenNodes = ((): NavNode[] => {
     const children = (folder: Folder, path: string): NavNode[] => [
       ...[...folder.folders.values()]
         .sort((a, b) => byName(a.name, b.name))
@@ -888,12 +950,59 @@ export function ScreenTree({
             children: children(child, here),
           };
         }),
-      ...[...folder.leaves].sort((a, b) => byName(a.title, b.title)).map(leafNode),
+      ...[...folder.leaves].sort((a, b) => byName(a.title, b.title)).map((leaf) => leafNode(leaf)),
     ];
     // Compact (compactSidebar): single-child folder chains fold into breadcrumb
     // rows; `root` is already filtered by Show sub-screens and the query.
     const top = children(root, '');
     return compact ? compactChains(top) : top;
+  })();
+
+  // --- the library's navigation ---
+
+  // In the library's order, never sorted. While searching, a leaf shows when
+  // its label, title or id matches, and a group when anything in it does.
+  const navigationNodes = ((): NavNode[] => {
+    if (!navigated) return [];
+    const walk = (entries: readonly ResolvedEntry[]): NavNode[] =>
+      entries.flatMap((entry): NavNode[] => {
+        const { screen } = entry;
+        const own = screen
+          ? leafNode(
+              {
+                key: tabKey(screen.category, screen.id),
+                screen: `${screen.category}/${screen.id}`,
+                title: screen.title,
+                disabled: screen.kind !== 'ir',
+              },
+              {
+                id:
+                  (entry.children ? NAV_GROUP_PREFIX : `${GROUP_NAVIGATION}:`) +
+                  `${entry.path}:${screen.category}/${screen.id}`,
+                label: entry.label,
+              }
+            )
+          : undefined;
+        const matches = screen
+          ? hit(q, entry.label, [screen.id, screen.title])
+          : hit(q, entry.label);
+        if (entry.children === undefined) return own && matches ? [own] : [];
+        const kids = walk(entry.children);
+        if (kids.length === 0 && (q !== '' ? !(own && matches) : own === undefined)) return [];
+        const id = own?.id ?? NAV_GROUP_PREFIX + entry.path;
+        const open = kids.length > 0 && (q !== '' || !collapsed.has(id));
+        return [
+          {
+            ...own,
+            id,
+            label: entry.label,
+            icon: open ? <FolderOpen size={16} /> : <FolderIcon size={16} />,
+            className: 'screen-tree__folder screen-tree__navigation-group',
+            children: kids.length > 0 ? kids : undefined,
+          },
+        ];
+      });
+    return walk(resolved.entries);
   })();
 
   // --- Tools ---
@@ -1127,14 +1236,32 @@ export function ScreenTree({
       children: toolNodes,
     });
   }
-  if (screenNodes.length > 0) {
+  // With a navigation: its tree, then the folders in one last group.
+  const allOpen = q !== '' || collapsed.has(NAV_ALL_EXPANDED_MARKER);
+  const screensChildren: NavNode[] = !navigated
+    ? screenNodes
+    : [
+        ...navigationNodes,
+        ...(screenNodes.length > 0
+          ? [
+              {
+                id: NAV_ALL_SCREENS,
+                label: ALL_SCREENS_LABEL,
+                icon: allOpen ? <FolderOpen size={16} /> : <FolderIcon size={16} />,
+                className: 'screen-tree__folder screen-tree__navigation-all',
+                children: screenNodes,
+              },
+            ]
+          : []),
+      ];
+  if (screensChildren.length > 0) {
     nodes.push({
       id: BRANCH_SCREENS,
-      label: compact ? SCREENS_LABEL : ALL_SCREENS_LABEL,
+      label: compact || navigated ? SCREENS_LABEL : ALL_SCREENS_LABEL,
       className: 'screen-tree__branch screen-tree__heading screen-tree__screens',
       rowClassName: BRANCH_ROW,
       data: { 'data-branch': 'screens' },
-      children: screenNodes,
+      children: screensChildren,
     });
   }
 
@@ -1160,10 +1287,12 @@ export function ScreenTree({
       const open =
         node.id === BRANCH_SCREENS
           ? screensExpanded
-          : q !== '' ||
-            (compact && node.id === BRANCH_RECENT
-              ? collapsed.has(RECENT_EXPANDED_MARKER)
-              : !collapsed.has(node.id));
+          : node.id === NAV_ALL_SCREENS
+            ? allOpen
+            : q !== '' ||
+              (compact && node.id === BRANCH_RECENT
+                ? collapsed.has(RECENT_EXPANDED_MARKER)
+                : !collapsed.has(node.id));
       if (open) expandedIds.add(node.id);
       walkExpanded(node.children);
     }

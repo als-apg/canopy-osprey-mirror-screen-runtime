@@ -1,0 +1,19 @@
+[
+  { "screen": "drafts/e2e-panel", "label": "Start here" },
+  {
+    "label": "Lines",
+    "screen": "drafts/wide-panel",
+    "children": [
+      { "screen": "lines/line-b/c" },
+      { "screen": "lines/line-a/a", "label": "First of line A" }
+    ]
+  },
+  {
+    "label": "Operations",
+    "children": [
+      { "screen": "ops/ops-panel" },
+      { "label": "Checks", "children": [{ "screen": "drafts/label-fit" }] },
+      { "screen": "drafts/not-in-this-library" }
+    ]
+  }
+]
