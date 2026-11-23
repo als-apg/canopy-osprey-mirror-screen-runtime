@@ -1,7 +1,7 @@
-// The zoom context: the app-level provider (one value, /s/ and chrome off)
-// and the workspace's store, one remembered zoom per screen in one
-// localStorage record, read by a keyed provider around each screen and by
-// that screen's tile bar.
+// The zoom context: the display mode remembered once for the viewer, the
+// app-level provider (one value, chrome off) and the workspace's store, one
+// remembered manual zoom per screen in one localStorage record, read by a
+// keyed provider around each screen and by that screen's tile bar.
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   KeyedZoomProvider,
   ZOOM_BY_SCREEN_NAME,
+  ZOOM_MODE_NAME,
   ZoomProvider,
   ZoomStore,
   useKeyedZoom,
@@ -45,6 +46,8 @@ afterEach(() => {
 
 /** The record at the origin root. */
 const RECORD = `${ZOOM_BY_SCREEN_NAME}:/`;
+/** The display mode at the origin root. */
+const MODE = `${ZOOM_MODE_NAME}:/`;
 const record = (key = RECORD) => {
   const raw = localStorage.getItem(key);
   return raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
@@ -61,6 +64,12 @@ function Probe({ name }: { name: string }) {
       </button>
       <button type="button" onClick={() => zoom.setFitWidth()}>
         {`${name} fit width`}
+      </button>
+      <button type="button" onClick={() => zoom.setFit()}>
+        {`${name} fit page`}
+      </button>
+      <button type="button" onClick={() => zoom.latch?.({ mode: 'fit', scale: 1 })}>
+        {`${name} latch fit`}
       </button>
     </div>
   );
@@ -105,12 +114,66 @@ describe('ZoomStore', () => {
     expect(new ZoomStore().get('a/two')).toEqual({ mode: 'width', scale: 1 });
   });
 
-  it('remembers fit page like a manual zoom, per screen', () => {
+  it('remembers the display mode once, for every screen, and reads it in a new session', () => {
+    expect(ZOOM_MODE_NAME).toBe('canopy-viewer:zoom-mode');
     const store = new ZoomStore();
-    store.set('a/one', { mode: 'fit', scale: 1 });
-    expect(record()).toEqual({ 'a/one': { mode: 'fit', scale: 1 } });
-    expect(new ZoomStore().get('a/one?X=1')).toEqual({ mode: 'fit', scale: 1 });
-    expect(new ZoomStore().get('a/two')).toEqual({ mode: 'width', scale: 1 });
+    store.setMode('a/one', 'fit');
+    expect(localStorage.getItem(MODE)).toBe('fit');
+    expect(localStorage.getItem(RECORD)).toBeNull();
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(store.get('b/any')).toEqual({ mode: 'fit', scale: 1 });
+    sessionStorage.clear();
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'fit', scale: 1 });
+    // Actual size is a mode too: every screen at 100%, nothing per screen.
+    store.setMode('a/one', 'actual');
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'manual', scale: 1 });
+    expect(localStorage.getItem(RECORD)).toBeNull();
+    // The default is remembered as no entry.
+    store.setMode('a/one', 'width');
+    expect(localStorage.getItem(MODE)).toBeNull();
+    expect(new ZoomStore().get('c/new')).toEqual({ mode: 'width', scale: 1 });
+  });
+
+  it("a screen's manual zoom stands ahead of the display mode until a mode is picked on it", () => {
+    const store = new ZoomStore();
+    store.set('a/one', { mode: 'manual', scale: 1.5 });
+    store.setMode('a/two', 'fit');
+    expect(store.get('a/one')).toEqual({ mode: 'manual', scale: 1.5 });
+    expect(store.get('a/two')).toEqual({ mode: 'fit', scale: 1 });
+    store.setMode('a/one', 'fit');
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(localStorage.getItem(RECORD)).toBeNull();
+  });
+
+  it('setting a fit state drops the manual zoom and leaves the display mode alone', () => {
+    const store = new ZoomStore();
+    store.setMode('a/one', 'fit');
+    store.set('a/one', { mode: 'manual', scale: 0.5 });
+    store.set('a/one', { mode: 'width', scale: 1 });
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    expect(localStorage.getItem(MODE)).toBe('fit');
+  });
+
+  it('reads an unknown stored mode as fit width and scopes the mode to the mount', () => {
+    localStorage.setItem(MODE, 'sideways');
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    new ZoomStore('/u/bob/panel/canopy').setMode('a/one', 'fit');
+    expect(localStorage.getItem(`${ZOOM_MODE_NAME}:/u/bob/panel/canopy`)).toBe('fit');
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+  });
+
+  it("another browser tab's mode arrives through the storage event", () => {
+    const store = new ZoomStore();
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    expect(store.get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    localStorage.setItem(MODE, 'fit');
+    window.dispatchEvent(new StorageEvent('storage', { key: MODE }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.get('a/one')).toEqual({ mode: 'fit', scale: 1 });
+    window.dispatchEvent(new StorageEvent('storage', { key: MODE }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it('keeps tool keys at fit width and stores nothing for them', () => {
@@ -369,6 +432,41 @@ describe('ZoomProvider (app level)', () => {
     expect(JSON.parse(sessionStorage.getItem('canopy-viewer:zoom:/u/alice/panel/canopy')!)).toEqual(
       { mode: 'manual', scale: 1.5 }
     );
+  });
+
+  it('shares the display mode with the store: picked here or there, read by both', () => {
+    new ZoomStore().setMode('a/one', 'fit');
+    const first = render(
+      <MemoryRouter>
+        <ZoomProvider>
+          <Probe name="app" />
+        </ZoomProvider>
+      </MemoryRouter>
+    );
+    expect(value('app')).toBe('fit:1');
+    fireEvent.click(screen.getByRole('button', { name: 'app fit width' }));
+    expect(value('app')).toBe('width:1');
+    expect(new ZoomStore().get('a/one')).toEqual({ mode: 'width', scale: 1 });
+    // A manual zoom is this session's; picking a mode ends it.
+    fireEvent.click(screen.getByRole('button', { name: 'app manual' }));
+    fireEvent.click(screen.getByRole('button', { name: 'app fit page' }));
+    expect(sessionStorage.getItem('canopy-viewer:zoom:/')).toBeNull();
+    expect(localStorage.getItem(MODE)).toBe('fit');
+    first.unmount();
+  });
+
+  it('a latched fit shows without being remembered as the display mode', () => {
+    render(
+      <MemoryRouter>
+        <ZoomProvider>
+          <Probe name="app" />
+        </ZoomProvider>
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'app latch fit' }));
+    expect(value('app')).toBe('fit:1');
+    expect(localStorage.getItem(MODE)).toBeNull();
+    expect(sessionStorage.length).toBe(0);
   });
 
   it('is a fixed fit width outside every provider', () => {

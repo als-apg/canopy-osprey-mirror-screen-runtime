@@ -22,7 +22,12 @@ import { ActionHostContext } from '@slaclab/canopy-screen-runtime';
 import type { Manifest } from '../api.js';
 import type { TraceConfig } from '../config.js';
 import { EmbedPage, EmbedThemeContext } from '../pages/EmbedPage.js';
-import { ZOOM_BY_SCREEN_NAME, ZOOM_STORAGE_NAME, ZoomProvider } from '../ZoomContext.js';
+import {
+  ZOOM_BY_SCREEN_NAME,
+  ZOOM_MODE_NAME,
+  ZOOM_STORAGE_NAME,
+  ZoomProvider,
+} from '../ZoomContext.js';
 import { createBackendBadgeStore } from '../backendBadge.js';
 import type { BackendBadgeStore } from '../backendBadge.js';
 import { ServicesContext } from '../services.js';
@@ -413,6 +418,7 @@ function storeRow(keys: readonly string[]): void {
 
 /** The per-screen zoom record at the origin root. */
 const ZOOM_RECORD = `${ZOOM_BY_SCREEN_NAME}:/`;
+const ZOOM_MODE = `${ZOOM_MODE_NAME}:/`;
 
 function zoomRecord(key = ZOOM_RECORD): Record<string, unknown> | null {
   const raw = localStorage.getItem(key);
@@ -846,22 +852,39 @@ describe('WorkspacePage chrome and zoom', () => {
     expect(fitButton().getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('Fit page is remembered for the screen; Fit width forgets it', async () => {
+  it('Fit page is remembered once for the viewer: another screen and a new session open in it', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
     fireEvent.click(fitPageButton());
     expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
     expect(fitButton().getAttribute('aria-pressed')).toBe('false');
-    expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'fit', scale: 1 } });
+    expect(localStorage.getItem(ZOOM_MODE)).toBe('fit');
+    // Nothing per screen.
+    expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
     cleanup();
-    // A new session opens the screen at fit page again, another screen at fit width.
+    // A new session, another screen: fit page.
     sessionStorage.clear();
-    renderAt('/embed/bts/knob');
+    renderAt('/embed/common/magnet');
     await screen.findByTestId('screen-probe');
     expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(fitButton());
     expect(fitButton().getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem(ZOOM_MODE)).toBeNull();
+  });
+
+  it('100% is a display mode too; a stepped zoom stays with its screen', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    expect(localStorage.getItem(ZOOM_MODE)).toBe('actual');
     expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'manual', scale: 1.1 } });
+    cleanup();
+    renderAt('/embed/common/magnet');
+    await screen.findByTestId('screen-probe');
+    expect(screen.getByTestId('zoom-percent').textContent).toBe('100%');
+    expect(screen.getByRole('button', { name: '100%' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('a zoom button remembers the screen; Fit width forgets it', async () => {
@@ -1801,11 +1824,14 @@ describe('storage keyed by the mount', () => {
     renderMounted(ALICE, '/embed/bts/knob');
     await screen.findByTestId('screen-probe');
     fireEvent.click(screen.getByRole('button', { name: '100%' }));
-    expect(screen.getByTestId('zoom-percent').textContent).toBe('100%');
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByTestId('zoom-percent').textContent).toBe('110%');
     expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+    expect(localStorage.getItem(ZOOM_MODE)).toBeNull();
     expect(sessionStorage.getItem(`${ZOOM_STORAGE_NAME}:${ALICE}:bts/knob`)).toBeNull();
+    expect(localStorage.getItem(`${ZOOM_MODE_NAME}:${ALICE}`)).toBe('actual');
     expect(zoomRecord(`${ZOOM_BY_SCREEN_NAME}:${ALICE}`)).toEqual({
-      'bts/knob': { mode: 'manual', scale: 1 },
+      'bts/knob': { mode: 'manual', scale: 1.1 },
     });
   });
 

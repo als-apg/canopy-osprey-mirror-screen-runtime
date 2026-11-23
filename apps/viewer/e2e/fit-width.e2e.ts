@@ -101,13 +101,48 @@ test.describe('fit modes', () => {
     expect((await paneBox(page)).y).toBe(true);
   });
 
-  test('the choice is remembered for the screen across a reload @embed', async ({ page }) => {
+  test('the mode is remembered once for the viewer: every screen, across a reload @embed', async ({
+    page,
+  }) => {
     await open(page, TALL);
     await mode(page, 'Fit page').click();
+    // Another screen opens in it.
+    await page.locator('[data-screen-key="drafts/e2e-panel"]').click();
+    await expect(root(page)).toHaveAttribute('data-screen-id', 'e2e-panel');
+    await expect(mode(page, 'Fit page')).toHaveAttribute('aria-pressed', 'true');
     await page.reload();
     await expect(root(page)).toBeVisible();
     await expect(mode(page, 'Fit page')).toHaveAttribute('aria-pressed', 'true');
+    // The workspace without its chrome reads the same mode: the whole tall screen is in view.
+    await page.goto(`${TALL}?_canopyChrome=0`);
+    await expect(root(page)).toBeVisible();
+    expect(await paneBox(page)).toMatchObject({ x: false, y: false });
+    await expect(page.getByText('Bottom edge', { exact: true })).toBeInViewport();
+
+    await page.goto(TALL);
     await mode(page, 'Fit width').click();
+    await page.reload();
+    await expect(root(page)).toBeVisible();
+    await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
+    await page.goto(`${TALL}?_canopyChrome=0`);
+    await expect(root(page)).toBeVisible();
+    expect(await paneBox(page)).toMatchObject({ x: false, y: true });
+  });
+
+  test('a stepped zoom stays with its screen; picking a mode there ends it @embed', async ({
+    page,
+  }) => {
+    await open(page, TALL);
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    const stepped = (await percent(page).textContent())!;
+    await page.locator('[data-screen-key="drafts/e2e-panel"]').click();
+    await expect(root(page)).toHaveAttribute('data-screen-id', 'e2e-panel');
+    await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('[data-screen-key="drafts/tall-panel"]').click();
+    await expect(root(page)).toHaveAttribute('data-screen-id', 'tall-panel');
+    await expect(percent(page)).toHaveText(stepped);
+    await mode(page, 'Fit width').click();
+    await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
     await page.reload();
     await expect(root(page)).toBeVisible();
     await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');

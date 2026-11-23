@@ -136,6 +136,7 @@ export function ScreenTileHeader({
     scale: manualScale,
     setFitWidth,
     setFit,
+    setActual,
     setManual,
   } = useKeyedZoom(zoomStore, tileKey);
   const scale = report?.scale ?? (mode === 'manual' ? manualScale : 1);
@@ -165,7 +166,7 @@ export function ScreenTileHeader({
     onZoomIn: () => setManual(stepZoom(scale, 1)),
     onFitWidth: setFitWidth,
     onFit: setFit,
-    onActualSize: () => setManual(1),
+    onActualSize: setActual,
   };
   return (
     <ShortcutRelayContext.Provider value={relay}>

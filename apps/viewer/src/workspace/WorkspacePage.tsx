@@ -30,10 +30,11 @@
 //                relays; dock/WindowMenu.tsx: the one ☰ (⌥M), at the right end
 //                of the top-right tile's bar or of the strip row.
 //   zoom         per screen, remembered per user: a ZoomStore owned here
-//                (ZoomContext.tsx) keyed category/id, read by each screen and
-//                its tile's bar. A screen opens at its remembered zoom, else
-//                fit width; the latched ?_canopyZoom applies to the URL-named key
-//                only, for this page view, and is never stored. Chrome off
+//                (ZoomContext.tsx): the display mode once for the viewer and a
+//                manual zoom keyed category/id, read by each screen and
+//                its tile's bar. A screen opens at its manual zoom, else in
+//                the display mode; the latched ?_canopyZoom applies to the
+//                URL-named key only, for this page view, and is never stored. Chrome off
 //                keeps the app-level zoom.
 //   manifest     useWorkspaceManifest.ts: one conditional poll for the page;
 //                every mounted screen reads it through SharedManifestContext.
@@ -451,7 +452,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
 
   // Zoom (chrome): per screen. The latched ?_canopyZoom is latched (in
   // memory, never stored) on the URL-named key before the first render reads
-  // it, ahead of that screen's remembered zoom; other keys read theirs or fit width.
+  // it, ahead of everything remembered; other keys read theirs or the display mode.
   const [zoomStore] = useState(() => {
     const store = new ZoomStore(basename);
     if (chrome && latched.zoom !== null && urlKey !== null) {
@@ -461,13 +462,11 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   });
   // Without chrome: the app-level zoom, latched once before the first paint.
   const appZoom = useZoom();
-  const { setFitWidth: appFitWidth, setFit: appFit, setManual: appManual } = appZoom;
+  const { latch: appLatch } = appZoom;
   useLayoutEffect(() => {
-    if (chrome) return;
-    if (latched.zoom === 'width') appFitWidth();
-    else if (latched.zoom === 'fit') appFit();
-    else if (latched.zoom !== null) appManual(latched.zoom);
-  }, [chrome, latched, appFitWidth, appFit, appManual]);
+    if (chrome || latched.zoom === null) return;
+    appLatch?.(latchedZoom(latched.zoom));
+  }, [chrome, latched, appLatch]);
 
   // Mirror the tabs into sessionStorage (keyed by the mount) and the active
   // tab into the URL.
@@ -1671,7 +1670,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
             zoomOut: () => focusedZoom.setManual(stepZoom(scale, -1)),
             fitWidth: () => focusedZoom.setFitWidth(),
             fit: () => focusedZoom.setFit(),
-            actual: () => focusedZoom.setManual(1),
+            actual: () => focusedZoom.setActual(),
           }
         : null,
     tool:

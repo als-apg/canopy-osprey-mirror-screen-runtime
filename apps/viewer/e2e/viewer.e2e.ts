@@ -260,10 +260,12 @@ test.describe('embed toolbar and zoom', () => {
   test('a screen opened in place of another opens at its own zoom @embed', async ({ page }) => {
     await page.goto(WIDE);
     await expect(root(page)).toBeVisible();
-    await page.getByRole('button', { name: '100%', exact: true }).click();
-    await page.getByRole('button', { name: 'Zoom out' }).click();
-    await expect(percent(page)).toHaveText('90%');
-    // A screen with no remembered zoom opens at fit width, not at the zoom before it.
+    // A stepped zoom is the wide panel's own.
+    const fitted = await percent(page).textContent();
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect(percent(page)).not.toHaveText(fitted!);
+    const stepped = (await percent(page).textContent())!;
+    // A screen with no zoom of its own opens at fit width, not at the zoom before it.
     await page.locator('[data-screen-key="drafts/e2e-panel"]').click();
     await expect(root(page)).toHaveAttribute('data-screen-id', 'e2e-panel');
     await expect(page.getByRole('button', { name: 'Fit width', exact: true })).toHaveAttribute(
@@ -271,10 +273,10 @@ test.describe('embed toolbar and zoom', () => {
       'true'
     );
     expect(await storedZoom(page, SCREEN)).toBeNull();
-    // The wide panel, opened again, has its own 90%.
+    // The wide panel, opened again, has its own zoom.
     await page.locator('[data-screen-key="drafts/wide-panel"]').click();
     await expect(root(page)).toHaveAttribute('data-screen-id', 'wide-panel');
-    await expect(percent(page)).toHaveText('90%');
+    await expect(percent(page)).toHaveText(stepped);
   });
 
   // Per tile: every docked screen has its own zoom.
@@ -304,6 +306,18 @@ test.describe('embed toolbar and zoom', () => {
     await dragToEdge(page, WIDE_KEY, SCREEN, 'right');
     await expect(tileRoot(page, WIDE_KEY)).toBeVisible();
   }
+  /**
+   * Steps `key`'s tile to 100% with − / +: a manual zoom of that screen alone
+   * (the 100% button would pick the display mode of every screen).
+   */
+  async function stepTo100(page: Page, key: string) {
+    for (let i = 0; i < 20; i += 1) {
+      const now = parseInt((await barPercent(page, key).textContent()) ?? '', 10);
+      if (now === 100) return;
+      await (await barZoom(page, key, now < 100 ? 'Zoom in' : 'Zoom out')).click();
+    }
+    throw new Error(`${key} did not reach 100%`);
+  }
   const width = async (page: Page, key: string) =>
     Math.round((await tileRoot(page, key).boundingBox())!.width);
   /** Focuses `key`'s tile through its bar (a focused screen's bar shows its header instead). */
@@ -322,7 +336,7 @@ test.describe('embed toolbar and zoom', () => {
       'true'
     );
     const panelBefore = await width(page, SCREEN);
-    await (await barZoom(page, WIDE_KEY, '100%')).click();
+    await stepTo100(page, WIDE_KEY);
     await expect(barPercent(page, WIDE_KEY)).toHaveText('100%');
     await expect.poll(() => width(page, WIDE_KEY)).toBe(2400);
     expect(await width(page, SCREEN)).toBe(panelBefore);
@@ -330,7 +344,7 @@ test.describe('embed toolbar and zoom', () => {
     // The other tile, focused: its own (fit width) zoom; zooming it leaves the wide one at 100%.
     await focusTile(page, SCREEN);
     await expect(await barZoom(page, SCREEN, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
-    await (await barZoom(page, SCREEN, '100%')).click();
+    await stepTo100(page, SCREEN);
     await (await barZoom(page, SCREEN, 'Zoom out')).click();
     await expect(barPercent(page, SCREEN)).toHaveText('90%');
     expect(await width(page, WIDE_KEY)).toBe(2400);

@@ -269,8 +269,8 @@ function percentOf(state: ZoomState): number | null {
 
 /**
  * The zoom `args` asks for, from `current` (shown at `shown`). The hub knows
- * one fit: its `fit` step leaves a fit mode as it is and takes a manual zoom
- * back to the default, fit width.
+ * one fit: its `fit` step leaves a fit mode as it is and drops a manual zoom,
+ * so the screen shows the viewer's display mode again.
  */
 function zoomTarget(
   args: Readonly<Record<string, unknown>>,
@@ -425,10 +425,11 @@ export async function executeCommand(
       const current = h.zoomOf(key!);
       const shown = current.mode === 'manual' ? current.scale : (h.reportedScale(key!) ?? 1);
       const next = zoomTarget(args, current, shown);
-      const changed = !sameZoom(current, next);
-      if (changed) h.setZoom(key!, next);
+      if (!sameZoom(current, next)) h.setZoom(key!, next);
       await h.settled();
-      const result = changed ? h.zoomOf(key!) : current;
+      // What the screen shows now: a dropped manual zoom gives way to the display mode.
+      const result = h.zoomOf(key!);
+      const changed = !sameZoom(current, result);
       return {
         changed,
         extras: { percent: percentOf(result) },

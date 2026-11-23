@@ -1,33 +1,39 @@
-// Viewer zoom state: fit width (the default: the screen as wide as its pane,
-// the rest scrolls), fit page (the whole screen in view) or a manual scale. Storage
-// failures (blocked, sandboxed, missing) are ignored: the state then lasts for
-// the page's lifetime only. Two shapes:
+// Viewer zoom state. Two things are remembered, per browser profile:
 //
-//   ZoomProvider       one value for the whole app, mirrored to sessionStorage
-//                      under storageKey('canopy-viewer:zoom') (mount plus
-//                      host scope, storageScope.ts), above the routes: used by the
-//                      workspace with chrome off (`?_canopyChrome=0`); /s/ is
-//                      never zoomed. It reads the router basename, so it
-//                      needs a router above it.
-//   ZoomStore          the docked workspace's per-tile zoom, remembered per
-//                      screen per user: ONE localStorage record under
-//                      storageKey('canopy-viewer:zoom-by-screen') (mount plus
-//                      host scope; per browser profile, like a
-//                      browser's per-site zoom), a JSON map keyed
-//                      `category/id`, so every tab of a screen (any macros)
-//                      shares it and it outlives the session. Only a choice
-//                      other than the default is stored (fit page or a manual
-//                      zoom): fit width removes the screen's entry, so an
-//                      unknown screen opens at fit width. A tool key (`@…`) has no
-//                      zoom. Another browser tab's write arrives through the
-//                      `storage` event. `latch` holds the ?_canopyZoom value
-//                      for the URL's tab key in memory only (this page view),
-//                      ahead of the remembered entry, until a zoom is picked
-//                      on that tile. Owned by WorkspacePage, which passes it
-//                      the basename. A KeyedZoomProvider around each screen
-//                      and that screen's tile bar (useKeyedZoom; a bar lives
-//                      in dockview's tab element, a sibling subtree of the
-//                      screen) read and write the same entry.
+//   the display mode   fit width (the default: the screen as wide as its pane,
+//                      the rest scrolls), fit page (the whole screen in view)
+//                      or actual size (100%). ONE value for the viewer, in
+//                      localStorage under storageKey('canopy-viewer:zoom-mode')
+//                      (mount plus host scope, storageScope.ts): picking it on
+//                      one screen picks it for every screen.
+//   a manual zoom      a percentage stepped to with − / +, per screen. It
+//                      stands ahead of the display mode on its screen until a
+//                      mode is picked there.
+//
+// Storage failures (blocked, sandboxed, missing) are ignored: the state then
+// lasts for the page's lifetime only. Two shapes:
+//
+//   ZoomProvider       the workspace with chrome off (`?_canopyChrome=0`),
+//                      above the routes; /s/ is never zoomed. One value for
+//                      the whole app: the remembered display mode, or a manual
+//                      zoom mirrored to sessionStorage under
+//                      storageKey('canopy-viewer:zoom'). It reads the router
+//                      basename, so it needs a router above it.
+//   ZoomStore          the docked workspace's per-tile zoom: the display mode
+//                      and ONE localStorage record of the manual zooms under
+//                      storageKey('canopy-viewer:zoom-by-screen'), a JSON map
+//                      keyed `category/id`, so every tab of a screen (any
+//                      macros) shares it and it outlives the session. A screen
+//                      without an entry shows the display mode. A tool key
+//                      (`@…`) has no zoom. Another browser tab's write arrives
+//                      through the `storage` event. `latch` holds the
+//                      ?_canopyZoom value for the URL's tab key in memory only
+//                      (this page view), ahead of everything remembered, until
+//                      a zoom is picked on that tile. Owned by WorkspacePage,
+//                      which passes it the basename. A KeyedZoomProvider around
+//                      each screen and that screen's tile bar (useKeyedZoom; a
+//                      bar lives in dockview's tab element, a sibling subtree
+//                      of the screen) read and write the same entry.
 //
 // ScreenPage reads either through useZoom(); the innermost provider wins.
 
@@ -48,6 +54,9 @@ import { isValidScale } from './zoom.js';
 /** 'width' fits the pane's width, 'fit' the whole screen (fit page). */
 export type ZoomMode = 'width' | 'fit' | 'manual';
 
+/** The display mode remembered for the viewer. */
+export type DisplayMode = 'width' | 'fit' | 'actual';
+
 export interface ZoomState {
   mode: ZoomMode;
   /** The manual scale; ignored in the two fit modes. */
@@ -55,17 +64,29 @@ export interface ZoomState {
 }
 
 export interface ZoomControl extends ZoomState {
+  /** Pick a display mode, for every screen; this screen's manual zoom goes. */
   setFitWidth(): void;
   setFit(): void;
+  setActual(): void;
+  /** Step this screen to a manual scale. */
   setManual(scale: number): void;
+  /** App level only: show `state` without remembering a display mode. */
+  latch?(state: ZoomState): void;
 }
 
-/** The name of the app-level zoom record (a storageKey name). */
+/** The name of the app-level manual zoom record (a storageKey name). */
 export const ZOOM_STORAGE_NAME = 'canopy-viewer:zoom';
-/** The name of the per-screen zoom record (a storageKey name). */
+/** The name of the per-screen manual zoom record (a storageKey name). */
 export const ZOOM_BY_SCREEN_NAME = 'canopy-viewer:zoom-by-screen';
-const DEFAULT_ZOOM: ZoomState = Object.freeze({ mode: 'width', scale: 1 }) as ZoomState;
-const FIT_PAGE: ZoomState = Object.freeze({ mode: 'fit', scale: 1 }) as ZoomState;
+/** The name of the display mode record (a storageKey name). */
+export const ZOOM_MODE_NAME = 'canopy-viewer:zoom-mode';
+const DEFAULT_MODE: DisplayMode = 'width';
+const MODE_STATES: Readonly<Record<DisplayMode, ZoomState>> = {
+  width: Object.freeze({ mode: 'width', scale: 1 }) as ZoomState,
+  fit: Object.freeze({ mode: 'fit', scale: 1 }) as ZoomState,
+  actual: Object.freeze({ mode: 'manual', scale: 1 }) as ZoomState,
+};
+const DEFAULT_ZOOM = MODE_STATES[DEFAULT_MODE];
 
 function sessionStore(): Storage | undefined {
   try {
@@ -76,27 +97,52 @@ function sessionStore(): Storage | undefined {
   }
 }
 
+/** The remembered display mode; the default when none or unreadable. */
+function readMode(key: string): DisplayMode {
+  try {
+    const raw = browserStorage()?.getItem(key);
+    return raw === 'fit' || raw === 'actual' ? raw : DEFAULT_MODE;
+  } catch {
+    return DEFAULT_MODE;
+  }
+}
+
+/** Remembers `mode`; the default is remembered as no entry. */
+function writeMode(key: string, mode: DisplayMode): void {
+  try {
+    const storage = browserStorage();
+    if (mode === DEFAULT_MODE) storage?.removeItem(key);
+    else storage?.setItem(key, mode);
+  } catch {
+    // Not persisted; the in-memory state still applies.
+  }
+}
+
 /** A valid state, else the default fit width. */
 function normalise(state: Partial<ZoomState> | null | undefined): ZoomState {
   if (state?.mode === 'manual' && isValidScale(state.scale)) {
     return { mode: 'manual', scale: state.scale };
   }
-  return state?.mode === 'fit' ? FIT_PAGE : DEFAULT_ZOOM;
+  return state?.mode === 'fit' ? MODE_STATES.fit : DEFAULT_ZOOM;
 }
 
-function readZoom(key: string): ZoomState {
+/** The session's manual zoom, or null when there is none. */
+function readManual(key: string): ZoomState | null {
   try {
     const raw = sessionStore()?.getItem(key);
-    if (!raw) return DEFAULT_ZOOM;
-    return normalise(JSON.parse(raw) as Partial<ZoomState>);
+    if (!raw) return null;
+    const state = normalise(JSON.parse(raw) as Partial<ZoomState>);
+    return state.mode === 'manual' ? state : null;
   } catch {
-    return DEFAULT_ZOOM;
+    return null;
   }
 }
 
-function writeZoom(key: string, state: ZoomState): void {
+/** Mirrors a manual zoom to the session; any other state clears the entry. */
+function writeManual(key: string, state: ZoomState): void {
   try {
-    sessionStore()?.setItem(key, JSON.stringify(state));
+    if (state.mode === 'manual') sessionStore()?.setItem(key, JSON.stringify(state));
+    else sessionStore()?.removeItem(key);
   } catch {
     // Not persisted; the in-memory state still applies.
   }
@@ -114,7 +160,7 @@ function screenOf(key: string): string | null {
   return path.indexOf('/') > 0 ? path : null;
 }
 
-/** The stored record's valid fit-page and manual entries; anything else reads as absent. */
+/** The stored record's valid manual entries; anything else reads as absent. */
 function readRecord(key: string): Map<string, ZoomState> {
   const out = new Map<string, ZoomState>();
   try {
@@ -124,7 +170,7 @@ function readRecord(key: string): Map<string, ZoomState> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
     for (const [screen, entry] of Object.entries(parsed as Record<string, unknown>)) {
       const state = normalise(entry as Partial<ZoomState> | null);
-      if (state.mode !== 'width') out.set(screen, state);
+      if (state.mode === 'manual') out.set(screen, state);
     }
   } catch {
     // Unreadable: nothing remembered.
@@ -133,22 +179,27 @@ function readRecord(key: string): Map<string, ZoomState> {
 }
 
 /**
- * Zoom per screen, from one localStorage record read on first use, written
- * back on every change and re-read on the `storage` event. Snapshots keep
- * their identity until their value changes, as useSyncExternalStore requires.
+ * The viewer's display mode and the manual zoom per screen, from localStorage:
+ * read on first use, written back on every change and re-read on the `storage`
+ * event. Snapshots keep their identity until their value changes, as
+ * useSyncExternalStore requires.
  */
 export class ZoomStore {
-  /** The remembered fit-page and manual zooms by `category/id`; null until first read. */
+  /** The remembered manual zooms by `category/id`; null until first read. */
   private record: Map<string, ZoomState> | null = null;
+  /** The remembered display mode; null until first read. */
+  private mode: DisplayMode | null = null;
   /** Latched zooms by exact tab key: this page view only. */
   private readonly latched = new Map<string, ZoomState>();
   private readonly listeners = new Set<() => void>();
   private readonly storageKey: string;
+  private readonly modeKey: string;
   private detach: (() => void) | null = null;
 
-  /** `basename` is the router basename the record is scoped by. */
+  /** `basename` is the router basename the records are scoped by. */
   constructor(basename = '/') {
     this.storageKey = storageKey(ZOOM_BY_SCREEN_NAME, basename);
+    this.modeKey = storageKey(ZOOM_MODE_NAME, basename);
   }
 
   private remembered(): Map<string, ZoomState> {
@@ -156,18 +207,24 @@ export class ZoomStore {
     return this.record;
   }
 
-  /** The key's zoom: its latch, else its screen's remembered zoom, else fit width. */
+  /** The display mode in effect on a screen without a manual zoom. */
+  displayMode(): DisplayMode {
+    this.mode ??= readMode(this.modeKey);
+    return this.mode;
+  }
+
+  /** The key's zoom: its latch, else its screen's manual zoom, else the display mode. */
   get(key: string): ZoomState {
     const latched = this.latched.get(key);
     if (latched !== undefined) return latched;
     const screen = screenOf(key);
     if (screen === null) return DEFAULT_ZOOM;
-    return this.remembered().get(screen) ?? DEFAULT_ZOOM;
+    return this.remembered().get(screen) ?? MODE_STATES[this.displayMode()];
   }
 
   /**
    * Latches `key` (the URL's tab key) at `state` for this page view, ahead of
-   * the remembered zoom; nothing is stored. A later `set` on it drops it.
+   * everything remembered; nothing is stored. A later `set` on it drops it.
    */
   latch(key: string, state: ZoomState): void {
     if (screenOf(key) === null) return;
@@ -176,19 +233,41 @@ export class ZoomStore {
   }
 
   /**
-   * Sets the key's screen zoom (an invalid manual scale reads as fit width):
-   * fit page or a manual one is remembered, fit width removes the entry.
-   * Drops the key's latch.
+   * Sets the key's screen zoom: a valid manual one is remembered for its
+   * screen; any other state drops the screen's manual zoom, so it shows the
+   * display mode (which only setMode changes). Drops the key's latch.
    */
   set(key: string, state: ZoomState): void {
     const screen = screenOf(key);
     if (screen === null) return;
     const next = normalise(state);
     const hadLatch = this.latched.delete(key);
-    // Merge into what is stored now: another tab may have written meanwhile.
+    const changed = this.writeRecord((record) => {
+      if (next.mode === 'manual') record.set(screen, next);
+      else record.delete(screen);
+    });
+    if (hadLatch || changed) this.notify();
+  }
+
+  /**
+   * Picks the display mode, for every screen, and drops the key's screen's
+   * manual zoom and the key's latch, so the screen shows the mode.
+   */
+  setMode(key: string, mode: DisplayMode): void {
+    const screen = screenOf(key);
+    if (screen === null) return;
+    const hadLatch = this.latched.delete(key);
+    const modeChanged = this.displayMode() !== mode;
+    this.mode = mode;
+    writeMode(this.modeKey, mode);
+    const changed = this.writeRecord((record) => record.delete(screen));
+    if (hadLatch || modeChanged || changed) this.notify();
+  }
+
+  /** Applies `edit` to what is stored now (another tab may have written meanwhile). */
+  private writeRecord(edit: (record: Map<string, ZoomState>) => void): boolean {
     const record = readRecord(this.storageKey);
-    if (next.mode !== 'width') record.set(screen, next);
-    else record.delete(screen);
+    edit(record);
     const changed = this.adopt(record);
     try {
       const storage = browserStorage();
@@ -197,7 +276,7 @@ export class ZoomStore {
     } catch {
       // Not persisted; the in-memory state still applies.
     }
-    if (hadLatch || changed) this.notify();
+    return changed;
   }
 
   /** Takes `next` as the record, keeping the identity of unchanged entries. */
@@ -219,8 +298,17 @@ export class ZoomStore {
 
   private onStorage = (event: StorageEvent): void => {
     // A null key is a clear() of the whole storage area.
-    if (event.key !== null && event.key !== this.storageKey) return;
-    if (this.adopt(readRecord(this.storageKey))) this.notify();
+    const all = event.key === null;
+    let changed = false;
+    if (all || event.key === this.modeKey) {
+      const mode = readMode(this.modeKey);
+      changed = mode !== this.displayMode();
+      this.mode = mode;
+    }
+    if (all || event.key === this.storageKey) {
+      changed = this.adopt(readRecord(this.storageKey)) || changed;
+    }
+    if (changed) this.notify();
   };
 
   subscribe = (listener: () => void): (() => void) => {
@@ -241,32 +329,53 @@ export class ZoomStore {
 
 const ZoomContext = createContext<ZoomControl | null>(null);
 
-/** The app-level zoom: one value for every screen below it. */
+/** The app-level zoom: the remembered display mode, or this session's manual zoom. */
 export function ZoomProvider({ children }: { children: ReactNode }) {
   // useHref('/') is the router basename (`/` when there is none).
   const basename = useHref('/');
   const key = storageKey(ZOOM_STORAGE_NAME, basename);
-  const [state, setState] = useState<ZoomState>(() => readZoom(key));
+  const modeKey = storageKey(ZOOM_MODE_NAME, basename);
+  const [state, setState] = useState<ZoomState>(
+    () => readManual(key) ?? MODE_STATES[readMode(modeKey)]
+  );
 
-  const update = useCallback(
+  const latch = useCallback(
     (next: ZoomState) => {
-      setState(next);
-      writeZoom(key, next);
+      const valid = normalise(next);
+      setState(valid);
+      writeManual(key, valid);
     },
     [key]
   );
-  const setFitWidth = useCallback(() => update(DEFAULT_ZOOM), [update]);
-  const setFit = useCallback(() => update(FIT_PAGE), [update]);
+  const pick = useCallback(
+    (mode: DisplayMode) => {
+      setState(MODE_STATES[mode]);
+      writeMode(modeKey, mode);
+      writeManual(key, MODE_STATES.width);
+    },
+    [key, modeKey]
+  );
+  const setFitWidth = useCallback(() => pick('width'), [pick]);
+  const setFit = useCallback(() => pick('fit'), [pick]);
+  const setActual = useCallback(() => pick('actual'), [pick]);
   const setManual = useCallback(
     (scale: number) => {
-      if (isValidScale(scale)) update({ mode: 'manual', scale });
+      if (isValidScale(scale)) latch({ mode: 'manual', scale });
     },
-    [update]
+    [latch]
   );
 
   const value = useMemo(
-    () => ({ mode: state.mode, scale: state.scale, setFitWidth, setFit, setManual }),
-    [state, setFitWidth, setFit, setManual]
+    () => ({
+      mode: state.mode,
+      scale: state.scale,
+      setFitWidth,
+      setFit,
+      setActual,
+      setManual,
+      latch,
+    }),
+    [state, setFitWidth, setFit, setActual, setManual, latch]
   );
   return <ZoomContext.Provider value={value}>{children}</ZoomContext.Provider>;
 }
@@ -275,8 +384,9 @@ export function ZoomProvider({ children }: { children: ReactNode }) {
 export function useKeyedZoom(store: ZoomStore, key: string): ZoomControl {
   const getSnapshot = useCallback(() => store.get(key), [store, key]);
   const state = useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
-  const setFitWidth = useCallback(() => store.set(key, DEFAULT_ZOOM), [store, key]);
-  const setFit = useCallback(() => store.set(key, FIT_PAGE), [store, key]);
+  const setFitWidth = useCallback(() => store.setMode(key, 'width'), [store, key]);
+  const setFit = useCallback(() => store.setMode(key, 'fit'), [store, key]);
+  const setActual = useCallback(() => store.setMode(key, 'actual'), [store, key]);
   const setManual = useCallback(
     (scale: number) => {
       if (isValidScale(scale)) store.set(key, { mode: 'manual', scale });
@@ -284,8 +394,8 @@ export function useKeyedZoom(store: ZoomStore, key: string): ZoomControl {
     [store, key]
   );
   return useMemo(
-    () => ({ mode: state.mode, scale: state.scale, setFitWidth, setFit, setManual }),
-    [state, setFitWidth, setFit, setManual]
+    () => ({ mode: state.mode, scale: state.scale, setFitWidth, setFit, setActual, setManual }),
+    [state, setFitWidth, setFit, setActual, setManual]
   );
 }
 
@@ -312,5 +422,6 @@ const FIXED_FIT: ZoomControl = {
   ...DEFAULT_ZOOM,
   setFitWidth: () => {},
   setFit: () => {},
+  setActual: () => {},
   setManual: () => {},
 };
