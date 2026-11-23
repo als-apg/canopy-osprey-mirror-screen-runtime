@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { fitScale, formatPercent, stepZoom, ZOOM_LADDER } from './zoom.js';
+import {
+  FIT_WIDTH_MAX_SCALE,
+  fitScale,
+  fitWidthScale,
+  formatPercent,
+  stepZoom,
+  ZOOM_LADDER,
+} from './zoom.js';
 
 describe('fitScale', () => {
   it('scales a wide panel down to the available width', () => {
@@ -34,6 +41,26 @@ describe('fitScale', () => {
     expect(fitScale(-5, 100, 400, 200)).toBe(1);
     expect(fitScale(800, 600, 0, 200)).toBe(1);
     expect(fitScale(Number.NaN, 600, 400, 200)).toBe(1);
+  });
+});
+
+describe('fitWidthScale', () => {
+  it('draws the panel as wide as the area, whatever its height', () => {
+    expect(fitWidthScale(668, 600)).toBeCloseTo(668 / 600);
+    expect(fitWidthScale(668, 1336)).toBeCloseTo(0.5);
+  });
+
+  it('never magnifies past the cap', () => {
+    expect(FIT_WIDTH_MAX_SCALE).toBe(2);
+    expect(fitWidthScale(2400, 300)).toBe(2);
+    expect(fitWidthScale(600, 300)).toBe(2);
+  });
+
+  it('falls back to 1 for an unmeasured area or a degenerate screen', () => {
+    expect(fitWidthScale(0, 400)).toBe(1);
+    expect(fitWidthScale(-32, 400)).toBe(1);
+    expect(fitWidthScale(800, 0)).toBe(1);
+    expect(fitWidthScale(Number.NaN, 400)).toBe(1);
   });
 });
 

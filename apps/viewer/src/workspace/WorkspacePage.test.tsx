@@ -22,7 +22,12 @@ import { ActionHostContext } from '@slaclab/canopy-screen-runtime';
 import type { Manifest } from '../api.js';
 import type { TraceConfig } from '../config.js';
 import { EmbedPage, EmbedThemeContext } from '../pages/EmbedPage.js';
-import { ZOOM_BY_SCREEN_NAME, ZOOM_STORAGE_NAME, ZoomProvider } from '../ZoomContext.js';
+import {
+  ZOOM_BY_SCREEN_NAME,
+  ZOOM_MODE_NAME,
+  ZOOM_STORAGE_NAME,
+  ZoomProvider,
+} from '../ZoomContext.js';
 import { createBackendBadgeStore } from '../backendBadge.js';
 import type { BackendBadgeStore } from '../backendBadge.js';
 import { ServicesContext } from '../services.js';
@@ -413,6 +418,7 @@ function storeRow(keys: readonly string[]): void {
 
 /** The per-screen zoom record at the origin root. */
 const ZOOM_RECORD = `${ZOOM_BY_SCREEN_NAME}:/`;
+const ZOOM_MODE = `${ZOOM_MODE_NAME}:/`;
 
 function zoomRecord(key = ZOOM_RECORD): Record<string, unknown> | null {
   const raw = localStorage.getItem(key);
@@ -424,9 +430,14 @@ function remember(entries: Record<string, { mode: 'manual'; scale: number }>) {
   localStorage.setItem(ZOOM_RECORD, JSON.stringify(entries));
 }
 
-/** The only screen header's Fit button. */
+/** The only screen header's Fit width button (the default mode). */
 function fitButton(): HTMLElement {
-  return screen.getByRole('button', { name: 'Fit' });
+  return screen.getByRole('button', { name: 'Fit width' });
+}
+
+/** The only screen header's Fit page button. */
+function fitPageButton(): HTMLElement {
+  return screen.getByRole('button', { name: 'Fit page' });
 }
 
 /** Lets the tab adapter's portals settle (it re-applies on a microtask). */
@@ -825,11 +836,11 @@ describe('WorkspacePage chrome and zoom', () => {
     renderAt('/embed/bts/knob?_canopyZoom=fit');
     await screen.findByTestId('screen-probe');
     await waitFor(() => expect(here()).toBe('/embed/bts/knob'));
-    expect(fitButton().getAttribute('aria-pressed')).toBe('true');
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
     expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'manual', scale: 2 } });
   });
 
-  it('opens a screen at its remembered zoom, else Fit', async () => {
+  it('opens a screen at its remembered zoom, else fit width', async () => {
     remember({ 'bts/knob': { mode: 'manual', scale: 2 } });
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
@@ -841,7 +852,42 @@ describe('WorkspacePage chrome and zoom', () => {
     expect(fitButton().getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('a zoom button remembers the screen; Fit forgets it', async () => {
+  it('Fit page is remembered once for the viewer: another screen and a new session open in it', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    fireEvent.click(fitPageButton());
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
+    expect(fitButton().getAttribute('aria-pressed')).toBe('false');
+    expect(localStorage.getItem(ZOOM_MODE)).toBe('fit');
+    // Nothing per screen.
+    expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+    cleanup();
+    // A new session, another screen: fit page.
+    sessionStorage.clear();
+    renderAt('/embed/common/magnet');
+    await screen.findByTestId('screen-probe');
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(fitButton());
+    expect(fitButton().getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem(ZOOM_MODE)).toBeNull();
+  });
+
+  it('100% is a display mode too; a stepped zoom stays with its screen', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    expect(localStorage.getItem(ZOOM_MODE)).toBe('actual');
+    expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'manual', scale: 1.1 } });
+    cleanup();
+    renderAt('/embed/common/magnet');
+    await screen.findByTestId('screen-probe');
+    expect(screen.getByTestId('zoom-percent').textContent).toBe('100%');
+    expect(screen.getByRole('button', { name: '100%' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('a zoom button remembers the screen; Fit width forgets it', async () => {
     renderAt('/embed/bts/knob?X=1');
     await screen.findByTestId('screen-probe');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -868,7 +914,7 @@ describe('WorkspacePage chrome and zoom', () => {
     expect(fitButton().getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('replace from a zoomed tile opens the new screen at Fit when it has no zoom', async () => {
+  it('replace from a zoomed tile opens the new screen at fit width when it has no zoom', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -1777,12 +1823,15 @@ describe('storage keyed by the mount', () => {
   it("remembers a tile's zoom under the mount's record, never the root's", async () => {
     renderMounted(ALICE, '/embed/bts/knob');
     await screen.findByTestId('screen-probe');
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
-    expect(screen.getByTestId('zoom-percent').textContent).toBe('100%');
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByTestId('zoom-percent').textContent).toBe('110%');
     expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+    expect(localStorage.getItem(ZOOM_MODE)).toBeNull();
     expect(sessionStorage.getItem(`${ZOOM_STORAGE_NAME}:${ALICE}:bts/knob`)).toBeNull();
+    expect(localStorage.getItem(`${ZOOM_MODE_NAME}:${ALICE}`)).toBe('actual');
     expect(zoomRecord(`${ZOOM_BY_SCREEN_NAME}:${ALICE}`)).toEqual({
-      'bts/knob': { mode: 'manual', scale: 1 },
+      'bts/knob': { mode: 'manual', scale: 1.1 },
     });
   });
 
@@ -1894,7 +1943,7 @@ describe('WorkspacePage tile bars (phase 1)', () => {
       fireEvent.focus(action);
     }
     // The zoom group's buttons are labelled the same way.
-    for (const name of ['Zoom out', 'Zoom in', 'Actual size']) {
+    for (const name of ['Zoom out', 'Zoom in', '100%']) {
       expect(within(magnet).getByRole('button', { name }).getAttribute('title')).toBeTruthy();
     }
     for (const key of ['bts/knob', 'common/magnet']) {

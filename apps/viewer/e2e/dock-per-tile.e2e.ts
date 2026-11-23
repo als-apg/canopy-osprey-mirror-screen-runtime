@@ -191,6 +191,19 @@ async function expectFocused(page: Page, key: string): Promise<void> {
  * tile's bar, on a visible part of it: in a narrow tile the tab is squeezed and
  * the bar's right actions overlap the rest of its box.
  */
+/**
+ * Steps `key`'s tile to 100% with − / +: a manual zoom of that screen alone
+ * (the 100% button would pick the display mode of every screen).
+ */
+async function stepTo100(page: Page, key: string): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    const now = parseInt((await barPercent(page, key).textContent()) ?? '', 10);
+    if (now === 100) return;
+    await (await barZoom(page, key, now < 100 ? 'Zoom in' : 'Zoom out')).click();
+  }
+  throw new Error(`${key} did not reach 100%`);
+}
+
 async function focusTile(page: Page, key: string): Promise<void> {
   const tab = await tabOf(page, key);
   const visibleX = () =>
@@ -466,13 +479,13 @@ test.describe('per-tile instances', () => {
     // Both bars show their own zoom, focused or not.
     await expect(barPercent(page, PANEL)).toBeVisible();
     await expect(barPercent(page, WIDE)).toBeVisible();
-    await expect(await barZoom(page, WIDE, 'Fit')).toHaveAttribute('aria-pressed', 'true');
+    await expect(await barZoom(page, WIDE, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
     await settledRect(page, PANEL);
     await settledRect(page, WIDE);
 
     // Zoom the focused tile: the unfocused one keeps its scale.
     const panelBefore = await scaleOf(page, PANEL);
-    await (await barZoom(page, WIDE, 'Actual size')).click();
+    await stepTo100(page, WIDE);
     await expect(barPercent(page, WIDE)).toHaveText('100%');
     await expect
       .poll(async () => Math.round((await tileRoot(page, WIDE).boundingBox())!.width))
@@ -487,7 +500,7 @@ test.describe('per-tile instances', () => {
     await expectFocused(page, WIDE);
     const wideBefore = await scaleOf(page, WIDE);
     expect(wideBefore.percent).toBe('100%');
-    await (await barZoom(page, PANEL, 'Actual size')).click();
+    await stepTo100(page, PANEL);
     await expect(barPercent(page, PANEL)).toHaveText('100%');
     await (await barZoom(page, PANEL, 'Zoom out')).click();
     await expect(barPercent(page, PANEL)).toHaveText('90%');
@@ -633,12 +646,14 @@ test.describe('per-tile instances', () => {
     await expectFocused(page, ACTIONS);
 
     // A zoom control of the unfocused tile's bar zooms that tile and not the other.
+    // (100% is the display mode of every screen; the step after it is that tile's own.)
     await focusTile(page, WIDE);
-    await settledRect(page, WIDE);
-    const wideBefore = await scaleOf(page, WIDE);
-    await (await barZoom(page, ACTIONS, 'Actual size')).focus();
+    await (await barZoom(page, ACTIONS, '100%')).focus();
     await page.keyboard.press('Enter');
     await expect(barPercent(page, ACTIONS)).toHaveText('100%');
+    await expect(barPercent(page, WIDE)).toHaveText('100%');
+    await settledRect(page, WIDE);
+    const wideBefore = await scaleOf(page, WIDE);
     await (await barZoom(page, ACTIONS, 'Zoom out')).focus();
     await page.keyboard.press('Space');
     await expect(barPercent(page, ACTIONS)).toHaveText('90%');

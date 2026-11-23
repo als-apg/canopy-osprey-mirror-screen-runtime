@@ -30,11 +30,13 @@
 //                relays; dock/WindowMenu.tsx: the one ☰ (⌥M), at the right end
 //                of the top-right tile's bar or of the strip row.
 //   zoom         per screen, remembered per user: a ZoomStore owned here
-//                (ZoomContext.tsx) keyed category/id, read by each screen and
-//                its tile's bar. A screen opens at its remembered zoom, else
-//                Fit; the latched ?_canopyZoom applies to the URL-named key
-//                only, for this page view, and is never stored. Chrome off
-//                keeps the app-level zoom.
+//                (ZoomContext.tsx): the display mode once for the viewer and a
+//                manual zoom keyed category/id, read by each screen and
+//                its tile's bar. A screen opens at its manual zoom, else in
+//                the display mode; the latched ?_canopyZoom applies to the
+//                URL-named key only, for this page view, and is never stored. Chrome off
+//                keeps the app-level zoom: fit page unless ?_canopyZoom asks
+//                otherwise, whatever display mode is remembered.
 //   manifest     useWorkspaceManifest.ts: one conditional poll for the page;
 //                every mounted screen reads it through SharedManifestContext.
 //   URL          workspaceUrl.ts: the active tab, written with `replace`
@@ -355,8 +357,8 @@ function useBindingGeneration(): number {
 const NO_VIEWS: readonly SavedView[] = [];
 
 /** The zoom state a latched ?_canopyZoom value stands for. */
-function latchedZoom(value: 'fit' | number): ZoomState {
-  return value === 'fit' ? { mode: 'fit', scale: 1 } : { mode: 'manual', scale: value };
+function latchedZoom(value: 'width' | 'fit' | number): ZoomState {
+  return typeof value === 'number' ? { mode: 'manual', scale: value } : { mode: value, scale: 1 };
 }
 
 const NO_BINDINGS: ReadonlyMap<string, ScreenAction> = new Map();
@@ -451,7 +453,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
 
   // Zoom (chrome): per screen. The latched ?_canopyZoom is latched (in
   // memory, never stored) on the URL-named key before the first render reads
-  // it, ahead of that screen's remembered zoom; other keys read theirs or Fit.
+  // it, ahead of everything remembered; other keys read theirs or the display mode.
   const [zoomStore] = useState(() => {
     const store = new ZoomStore(basename);
     if (chrome && latched.zoom !== null && urlKey !== null) {
@@ -461,12 +463,11 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   });
   // Without chrome: the app-level zoom, latched once before the first paint.
   const appZoom = useZoom();
-  const { setFit: appFit, setManual: appManual } = appZoom;
+  const { latch: appLatch } = appZoom;
   useLayoutEffect(() => {
-    if (chrome) return;
-    if (latched.zoom === 'fit') appFit();
-    else if (latched.zoom !== null) appManual(latched.zoom);
-  }, [chrome, latched, appFit, appManual]);
+    if (chrome || latched.zoom === null) return;
+    appLatch?.(latchedZoom(latched.zoom));
+  }, [chrome, latched, appLatch]);
 
   // Mirror the tabs into sessionStorage (keyed by the mount) and the active
   // tab into the URL.
@@ -815,6 +816,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   // The URL that reopens the active tab: the workspace URL naming it.
   const activeHref = useHref(urlForKey(active));
   const fit = zoom.mode === 'fit';
+  const fitWidth = zoom.mode === 'width';
   const ownScreen = activeIsScreen && !missing ? (own?.screen ?? null) : null;
 
   // The document's title (which a shell framing the page shows) follows the
@@ -835,13 +837,13 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
       ownScreen
         ? {
             screen: ownScreen,
-            zoom: { scale, fit },
+            zoom: { scale, fit, fitWidth },
             config,
             link: new URL(activeHref, window.location.href).href,
             plotInDataBrowser,
           }
         : undefined,
-    [ownScreen, scale, fit, config, activeHref, plotInDataBrowser]
+    [ownScreen, scale, fit, fitWidth, config, activeHref, plotInDataBrowser]
   );
 
   // The one shortcut listener: bound to the focused screen's available
@@ -1667,8 +1669,9 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
         ? {
             zoomIn: () => focusedZoom.setManual(stepZoom(scale, 1)),
             zoomOut: () => focusedZoom.setManual(stepZoom(scale, -1)),
+            fitWidth: () => focusedZoom.setFitWidth(),
             fit: () => focusedZoom.setFit(),
-            actual: () => focusedZoom.setManual(1),
+            actual: () => focusedZoom.setActual(),
           }
         : null,
     tool:

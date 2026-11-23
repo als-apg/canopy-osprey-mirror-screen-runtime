@@ -25,7 +25,7 @@
 // its tile instead: the "SCREEN" label is never shown (the tile's tab names the screen), and
 // as the lane the tile leaves it narrows, the controls give way in this order, nothing ever
 // wrapping or clipping mid-glyph: 1. the path (the detail) goes, 2. the title goes, 3. the
-// zoom group becomes one "41 % ▾" menu button (Fit, 1:1 and the steps inside), 4. the actions
+// zoom group becomes one "41 % ▾" menu button (the steps and the fit switch inside), 4. the actions
 // move into one "⋯" menu, 5. ◀ ▶ join them there; only a lane narrower than the zoom button
 // and the "⋯" puts the zoom group into the "⋯" menu too. The header reports its floor (◀ ▶,
 // the zoom button and the "⋯"), which the tile keeps for it beside the tabs.
@@ -50,11 +50,15 @@ export const SCREEN_LABEL = 'SCREEN';
 export const MIN_TITLE_PX = 64;
 
 export interface ScreenZoom {
-  /** The scale in effect (the fit result in fit mode). */
+  /** The scale in effect (the fit result in a fit mode). */
   scale: number;
+  /** Fit width: the screen as wide as its pane, the rest scrolls. */
+  fitWidth: boolean;
+  /** Fit page: the whole screen in view. */
   fit: boolean;
   onZoomOut(): void;
   onZoomIn(): void;
+  onFitWidth(): void;
   onFit(): void;
   onActualSize(): void;
 }
@@ -112,24 +116,35 @@ function ZoomGroup({ zoom }: { zoom: ScreenZoom }) {
       >
         +
       </button>
-      <button
-        type="button"
-        className="canopy-btn screen-header__button screen-header__button--text"
-        aria-pressed={zoom.fit}
-        title="Fit the whole screen in view"
-        onClick={zoom.onFit}
-      >
-        Fit
-      </button>
-      <button
-        type="button"
-        className="canopy-btn screen-header__button screen-header__button--text"
-        aria-label="Actual size"
-        title="Actual size (100%)"
-        onClick={zoom.onActualSize}
-      >
-        1:1
-      </button>
+      <div className="screen-header__fit" role="group" aria-label="Fit">
+        <button
+          type="button"
+          className="canopy-btn screen-header__button screen-header__button--text"
+          aria-pressed={zoom.fitWidth}
+          title="Fit the screen to the width of the pane; scroll for the rest"
+          onClick={zoom.onFitWidth}
+        >
+          Fit width
+        </button>
+        <button
+          type="button"
+          className="canopy-btn screen-header__button screen-header__button--text"
+          aria-pressed={zoom.fit}
+          title="Fit the whole screen in view"
+          onClick={zoom.onFit}
+        >
+          Fit page
+        </button>
+        <button
+          type="button"
+          className="canopy-btn screen-header__button screen-header__button--text"
+          aria-pressed={!zoom.fitWidth && !zoom.fit && zoom.scale === 1}
+          title="Actual size (100%)"
+          onClick={zoom.onActualSize}
+        >
+          100%
+        </button>
+      </div>
     </div>
   );
 }
@@ -375,7 +390,7 @@ function ZoomMenu({ zoom }: { zoom: ScreenZoom }) {
     <HeaderMenu
       className="canopy-btn screen-header__zoom-menu"
       label={`Zoom ${percent}`}
-      title={`Zoom ${percent}: steps, Fit, 1:1`}
+      title={`Zoom ${percent}: steps, Fit width, Fit page, 100%`}
       menuLabel="Zoom controls"
       testId="screen-header-zoom-menu"
       trigger={

@@ -262,12 +262,16 @@ function tabTouches(keys: readonly string[]): Touch[] {
   return keys.map((key) => ({ key, part: 'tab' }));
 }
 
-/** The percent a zoom state reports: its manual scale, null for fit. */
+/** The percent a zoom state reports: its manual scale, null for a fit mode. */
 function percentOf(state: ZoomState): number | null {
   return state.mode === 'manual' ? Math.round(state.scale * 100) : null;
 }
 
-/** The zoom `args` asks for, from `current` (shown at `shown`). */
+/**
+ * The zoom `args` asks for, from `current` (shown at `shown`). The hub knows
+ * one fit: its `fit` step leaves a fit mode as it is and drops a manual zoom,
+ * so the screen shows the viewer's display mode again.
+ */
 function zoomTarget(
   args: Readonly<Record<string, unknown>>,
   current: ZoomState,
@@ -282,13 +286,13 @@ function zoomTarget(
     case 'actual':
       return { mode: 'manual', scale: 1 };
     default:
-      return { mode: 'fit', scale: current.mode === 'fit' ? current.scale : 1 };
+      return current.mode === 'manual' ? { mode: 'width', scale: 1 } : current;
   }
 }
 
 function sameZoom(a: ZoomState, b: ZoomState): boolean {
   if (a.mode !== b.mode) return false;
-  return a.mode === 'fit' || Math.abs(a.scale - b.scale) < 1e-9;
+  return a.mode !== 'manual' || Math.abs(a.scale - b.scale) < 1e-9;
 }
 
 /**
@@ -421,10 +425,11 @@ export async function executeCommand(
       const current = h.zoomOf(key!);
       const shown = current.mode === 'manual' ? current.scale : (h.reportedScale(key!) ?? 1);
       const next = zoomTarget(args, current, shown);
-      const changed = !sameZoom(current, next);
-      if (changed) h.setZoom(key!, next);
+      if (!sameZoom(current, next)) h.setZoom(key!, next);
       await h.settled();
-      const result = changed ? h.zoomOf(key!) : current;
+      // What the screen shows now: a dropped manual zoom gives way to the display mode.
+      const result = h.zoomOf(key!);
+      const changed = !sameZoom(current, result);
       return {
         changed,
         extras: { percent: percentOf(result) },

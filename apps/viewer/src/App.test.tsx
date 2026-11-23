@@ -864,6 +864,8 @@ describe('embed toolbar and zoom', () => {
   }
 
   const percent = () => screen.getByTestId('zoom-percent').textContent;
+  const pressed = (name: string) =>
+    screen.getByRole('button', { name }).getAttribute('aria-pressed');
   const scaled = (container: HTMLElement) =>
     container.querySelector<HTMLElement>('.viewer-zoom__scaled')!;
   const zoomBox = (container: HTMLElement) => container.querySelector<HTMLElement>('.viewer-zoom')!;
@@ -891,7 +893,7 @@ describe('embed toolbar and zoom', () => {
     expect(header.textContent).toContain('SCREEN');
     expect(header.textContent).toContain('Wide Panel');
     expect(header.textContent).toContain('drafts/wide');
-    for (const name of ['Zoom out', 'Zoom in', 'Fit', 'Actual size']) {
+    for (const name of ['Zoom out', 'Zoom in', 'Fit width', 'Fit page', '100%']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
     await waitFor(() =>
@@ -941,45 +943,82 @@ describe('embed toolbar and zoom', () => {
     await waitFor(() => expect(screen.getByTestId('screen-root')).not.toBe(first));
   });
 
-  it('opens in fit mode: the whole panel scaled into the area', async () => {
-    // 432 x 1032 client box - 2 x 16 px canvas padding = 400 x 1000 area.
-    clientBox(232, 1032);
+  it('opens in fit width: the panel as wide as the area, whatever its height', async () => {
+    // 632 x 132 client box - 2 x 16 px canvas padding = 600 x 100 area: the
+    // 400 x 200 panel is drawn 600 wide and 300 high, three areas tall.
+    clientBox(632, 132);
     stubWide();
     const { container } = renderEmbedAt('/embed/drafts/wide');
     await screen.findByTestId('screen-root');
 
-    expect(percent()).toBe('50%');
-    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
-    expect(scaled(container).style.transform).toBe('scale(0.5)');
+    expect(percent()).toBe('150%');
+    expect(pressed('Fit width')).toBe('true');
+    expect(pressed('Fit page')).toBe('false');
+    expect(pressed('100%')).toBe('false');
+    expect(scaled(container).style.transform).toBe('scale(1.5)');
     expect(scaled(container).style.width).toBe('400px');
-    expect(zoomBox(container).style.width).toBe('200px');
-    expect(zoomBox(container).style.height).toBe('100px');
-    expect(container.querySelector('main')!.className).toContain('viewer-content--fit');
+    expect(zoomBox(container).style.width).toBe('600px');
+    expect(zoomBox(container).style.height).toBe('300px');
+    const main = container.querySelector('main')!;
+    expect(main.classList.contains('viewer-content--fit-width')).toBe(true);
+    expect(main.classList.contains('viewer-content--fit')).toBe(false);
   });
 
-  it('fit magnifies a panel smaller than the area to fill it; 1:1 stays authored size', async () => {
+  it('fit page scales the whole panel into the area and does not scroll', async () => {
+    clientBox(632, 132); // fit width 150%, fit page 50% (the height is the tighter axis)
+    stubWide();
+    const { container } = renderEmbedAt('/embed/drafts/wide');
+    await screen.findByTestId('screen-root');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fit page' }));
+    expect(percent()).toBe('50%');
+    expect(pressed('Fit page')).toBe('true');
+    expect(pressed('Fit width')).toBe('false');
+    expect(scaled(container).style.transform).toBe('scale(0.5)');
+    expect(zoomBox(container).style.width).toBe('200px');
+    expect(zoomBox(container).style.height).toBe('100px');
+    const main = container.querySelector('main')!;
+    expect(main.classList.contains('viewer-content--fit')).toBe(true);
+    expect(main.classList.contains('viewer-content--fit-width')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fit width' }));
+    expect(percent()).toBe('150%');
+    expect(main.classList.contains('viewer-content--fit-width')).toBe(true);
+  });
+
+  it('fit width stops at 200% in a pane much wider than the panel; fit page and 100% do not', async () => {
     // 1232 x 1032 client box - 2 x 16 px padding = 1200 x 1000 area; the
-    // 400 x 200 panel may grow 3x in width and 5x in height: the width wins.
+    // 400 x 200 panel would be 3x as wide as drawn: fit width caps at 2x.
     clientBox(1232, 1032);
     stubWide();
     const { container } = renderEmbedAt('/embed/drafts/wide');
     await screen.findByTestId('screen-root');
+    expect(percent()).toBe('200%');
+    expect(scaled(container).style.transform).toBe('scale(2)');
+    expect(zoomBox(container).style.width).toBe('800px');
+    expect(zoomBox(container).style.height).toBe('400px');
+
+    // Fit page fills the area: 3x in width, 5x in height, the width wins.
+    fireEvent.click(screen.getByRole('button', { name: 'Fit page' }));
     expect(percent()).toBe('300%');
-    expect(scaled(container).style.transform).toBe('scale(3)');
     expect(zoomBox(container).style.width).toBe('1200px');
     expect(zoomBox(container).style.height).toBe('600px');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
     expect(percent()).toBe('100%');
+    expect(pressed('100%')).toBe('true');
     expect(scaled(container).style.transform).toBe('scale(1)');
+    const main = container.querySelector('main')!;
+    expect(main.classList.contains('viewer-content--fit')).toBe(false);
+    expect(main.classList.contains('viewer-content--fit-width')).toBe(false);
   });
 
-  it('− / + step the ladder, 1:1 is 100%, Fit re-enters fit mode', async () => {
-    clientBox(232, 1032); // fit = 50%
+  it('− / + step the ladder, 100% is the drawn size, Fit width re-enters fit width', async () => {
+    clientBox(232, 1032); // fit width = 50%
     stubWide();
     const { container } = renderEmbedAt('/embed/drafts/wide');
     await screen.findByTestId('screen-root');
-    const fitButton = screen.getByRole('button', { name: 'Fit' });
+    const fitButton = screen.getByRole('button', { name: 'Fit width' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(percent()).toBe('67%');
@@ -990,7 +1029,7 @@ describe('embed toolbar and zoom', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
     expect(percent()).toBe('33%');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
     expect(percent()).toBe('100%');
     expect(scaled(container).style.transform).toBe('scale(1)');
     expect(zoomBox(container).style.width).toBe('400px');
@@ -1038,7 +1077,7 @@ describe('embed toolbar and zoom', () => {
     expect(await screen.findByText('drafts/other')).toBeTruthy();
   });
 
-  it('opens another screen at Fit, not at the zoom of the screen it replaces', async () => {
+  it('opens another screen at fit width, not at the zoom of the screen it replaces', async () => {
     stubWide();
     renderEmbedAt('/embed/drafts/wide');
     await screen.findByTestId('screen-root');
@@ -1049,11 +1088,25 @@ describe('embed toolbar and zoom', () => {
     fireEvent.click(await screen.findByText('Other Panel'));
     expect(await screen.findByText('drafts/other')).toBeTruthy();
     await screen.findByTestId('screen-root');
-    expect(screen.getByRole('button', { name: 'Fit' }).getAttribute('aria-pressed')).toBe('true');
+    expect(pressed('Fit width')).toBe('true');
+  });
+
+  it('?_canopyZoom=fit opens at fit page, ?_canopyZoom=width at fit width', async () => {
+    clientBox(632, 132); // fit width 150%, fit page 50%
+    stubWide();
+    const first = renderEmbedAt('/embed/drafts/wide?_canopyZoom=fit');
+    await screen.findByTestId('screen-root');
+    expect(percent()).toBe('50%');
+    expect(pressed('Fit page')).toBe('true');
+    first.unmount();
+    renderEmbedAt('/embed/drafts/wide?_canopyZoom=width');
+    await screen.findByTestId('screen-root');
+    expect(percent()).toBe('150%');
+    expect(pressed('Fit width')).toBe('true');
   });
 
   it('?_canopyZoom=100 opens at actual size, and is not a macro', async () => {
-    clientBox(232, 1032); // fit would be 50%
+    clientBox(232, 1032); // fit width would be 50%
     stubWide();
     renderEmbedAt('/embed/drafts/wide?_canopyZoom=100');
     await screen.findByTestId('screen-root');
