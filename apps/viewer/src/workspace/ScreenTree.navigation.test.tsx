@@ -251,6 +251,191 @@ describe('ScreenTree with a library navigation', () => {
   });
 });
 
+const DEEP_SCREENS: ManifestScreen[] = [
+  ...SCREENS,
+  entry('plant', 'unit-4-1', 'Unit 4-1'),
+  entry('plant', 'zone/ab04c-xy1', 'Sensor Row'),
+];
+
+const DEEP = [
+  { screen: 'plant/overview', label: 'Start here' },
+  {
+    label: 'Pumping',
+    screen: 'plant/overview',
+    children: [
+      { screen: 'plant/pumps/p2' },
+      {
+        label: 'Spares',
+        screen: 'plant/tanks/t1',
+        children: [
+          { screen: 'plant/pumps/p1', label: 'First pump' },
+          { label: 'Cold store', children: [{ screen: 'plant/valves/v1' }] },
+        ],
+      },
+    ],
+  },
+  { label: 'Valves', children: [{ screen: 'plant/valves/v1', label: 'Main valve' }] },
+];
+
+const TWO_LEVELS = [
+  'Screens',
+  'Start here',
+  'Pumping',
+  'Pump Two',
+  'Spares',
+  'Valves',
+  'Main valve',
+  'All screens',
+];
+
+const stored = (): string[] =>
+  JSON.parse(globalThis.localStorage.getItem(collapsedStorageKey()) ?? '[]') as string[];
+
+describe('ScreenTree navigation: what is open', () => {
+  it('starts on the top entries and their direct children', () => {
+    render(<ScreenTree screens={DEEP_SCREENS} navigation={DEEP} onOpen={() => {}} />);
+    expect(labels()).toEqual(TWO_LEVELS);
+    expect(item('Pumping').getAttribute('aria-expanded')).toBe('true');
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('false');
+    expect(stored()).toEqual([]);
+  });
+
+  it('remembers what was opened and collapsed across a remount', () => {
+    const first = render(<ScreenTree screens={DEEP_SCREENS} navigation={DEEP} onOpen={() => {}} />);
+    fireEvent.click(chevron('Spares'));
+    fireEvent.click(screen.getByText('Valves'));
+    const after = [
+      'Screens',
+      'Start here',
+      'Pumping',
+      'Pump Two',
+      'Spares',
+      'First pump',
+      'Cold store',
+      'Valves',
+      'All screens',
+    ];
+    expect(labels()).toEqual(after);
+    first.unmount();
+    render(<ScreenTree screens={DEEP_SCREENS} navigation={DEEP} onOpen={() => {}} />);
+    expect(labels()).toEqual(after);
+    // Collapsing the deep group again leaves no entry for it.
+    fireEvent.click(chevron('Spares'));
+    expect(stored().some((id) => id.endsWith(':expanded'))).toBe(false);
+  });
+
+  it('opens the path to the open screen and marks it; the path can be collapsed again', () => {
+    const view = render(
+      <ScreenTree
+        screens={DEEP_SCREENS}
+        navigation={DEEP}
+        activeKey="plant/pumps/p1"
+        onOpen={() => {}}
+      />
+    );
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('true');
+    expect(item('First pump').getAttribute('aria-selected')).toBe('true');
+    expect(item('Cold store').getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chevron('Spares'));
+    // A new manifest of the same screens does not open it again.
+    view.rerender(
+      <ScreenTree
+        screens={[...DEEP_SCREENS]}
+        navigation={DEEP}
+        activeKey="plant/pumps/p1"
+        onOpen={() => {}}
+      />
+    );
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('false');
+    // Another screen becomes the open one: its path opens, through a collapsed top group too.
+    fireEvent.click(chevron('Pumping'));
+    view.rerender(
+      <ScreenTree
+        screens={DEEP_SCREENS}
+        navigation={DEEP}
+        activeKey="plant/pumps/p2"
+        onOpen={() => {}}
+      />
+    );
+    expect(item('Pump Two').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('leaves the tree alone when the open screen already shows somewhere', () => {
+    // Valve One shows under Valves; its deeper entry under Cold store stays closed.
+    render(
+      <ScreenTree
+        screens={DEEP_SCREENS}
+        navigation={DEEP}
+        activeKey="plant/valves/v1"
+        onOpen={() => {}}
+      />
+    );
+    expect(labels()).toEqual(TWO_LEVELS);
+    expect(item('Main valve').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('a group that names a screen opens it and itself from its name; its arrow only toggles', () => {
+    const onOpen = vi.fn();
+    render(<ScreenTree screens={DEEP_SCREENS} navigation={DEEP} onOpen={onOpen} />);
+    fireEvent.click(chevron('Spares'));
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(chevron('Spares'));
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('false');
+    expect(onOpen).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Spares'));
+    expect(onOpen).toHaveBeenLastCalledWith('plant/tanks/t1', 'replace');
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('true');
+    // The name opens, it never collapses.
+    fireEvent.click(screen.getByText('Spares'));
+    expect(item('Spares').getAttribute('aria-expanded')).toBe('true');
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ScreenTree filter: separators', () => {
+  const found = (query: string): string[] => {
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: query } });
+    return labels().filter((label) => label === 'Unit 4-1' || label === 'Sensor Row');
+  };
+
+  it.each(['unit-4-1', 'UNIT_4_1', 'Unit.4.1', 'unit 4 1', 'unit/4:1', 'Unit_4'])(
+    'finds a screen by its id typed as %s, without a navigation',
+    (query) => {
+      render(<ScreenTree screens={DEEP_SCREENS} onOpen={() => {}} />);
+      expect(found(query)).toEqual(['Unit 4-1']);
+    }
+  );
+
+  it.each(['AB04C:XY1', 'ab04c_xy1', 'AB04C-XY1', 'zone/ab04c-xy1', 'XY1'])(
+    'finds a screen by its id typed as %s',
+    (query) => {
+      render(<ScreenTree screens={DEEP_SCREENS} onOpen={() => {}} />);
+      expect(found(query)).toEqual(['Sensor Row']);
+    }
+  );
+
+  it('folds the title and a navigation label the same way', () => {
+    const navigation = [
+      { screen: 'plant/zone/ab04c-xy1', label: 'Row_7:North' },
+      { label: 'Units', children: [{ screen: 'plant/unit-4-1' }] },
+    ];
+    render(<ScreenTree screens={DEEP_SCREENS} navigation={navigation} onOpen={() => {}} />);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'row-7 north' } });
+    expect(labels()).toEqual(['Screens', 'Row_7:North']);
+    fireEvent.change(box, { target: { value: 'UNIT_4_1' } });
+    expect(labels()).toEqual(['Screens', 'Units', 'Unit 4-1', 'All screens', 'plant', 'Unit 4-1']);
+  });
+
+  it('still matches from the start of a part only, and nothing on separators alone', () => {
+    render(<ScreenTree screens={DEEP_SCREENS} onOpen={() => {}} />);
+    expect(found('nit_4_1')).toEqual([]);
+    expect(found('4c_xy1')).toEqual([]);
+    expect(found('_:_')).toEqual([]);
+  });
+});
+
 describe('ScreenTree without a usable navigation', () => {
   const plain = () => {
     const { unmount } = render(<ScreenTree screens={SCREENS} onOpen={() => {}} />);

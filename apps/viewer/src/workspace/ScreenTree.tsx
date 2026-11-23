@@ -20,7 +20,13 @@
 //                library gives it, a group that names a screen opening it from
 //                its row. The folder tree described above then sits unchanged
 //                in a last group "All screens", collapsed until opened or
-//                searched, so every screen stays reachable. An invalid
+//                searched, so every screen stays reachable. The navigation
+//                opens on its top entries and their direct children: deeper
+//                groups start collapsed, the path to the open screen is
+//                opened when that screen becomes the open one, and every
+//                toggle is remembered in the collapsed set. A group that
+//                names a screen opens it, and itself, from its row; its arrow
+//                only toggles. An invalid
 //                navigation is ignored with one console warning; screens it
 //                names that the manifest does not list are skipped and listed
 //                in one warning.
@@ -291,6 +297,48 @@ export const NAV_ALL_SCREENS = 'navigation-all';
 const NAV_GROUP_PREFIX = 'navigation-group:';
 /** Stored in the collapsed set once the "All screens" group has been opened (it starts collapsed). */
 export const NAV_ALL_EXPANDED_MARKER = 'navigation-all:expanded';
+/**
+ * Appended to the id of a navigation group below the top level, and stored in
+ * the collapsed set once it has been opened: such a group starts collapsed.
+ */
+export const NAV_OPENED_SUFFIX = ':expanded';
+
+/** The node id of a navigation entry: a leaf's, or a group's (with or without a screen). */
+function navigationNodeId(entry: ResolvedEntry): string {
+  const prefix = entry.children ? NAV_GROUP_PREFIX : `${GROUP_NAVIGATION}:`;
+  return entry.screen
+    ? `${prefix}${entry.path}:${entry.screen.category}/${entry.screen.id}`
+    : NAV_GROUP_PREFIX + entry.path;
+}
+
+/**
+ * The groups to open so the screen `key` shows in the navigation: the
+ * ancestors of its first entry, top down. Empty when it has no entry, or one
+ * of its entries already shows (`isOpen` says whether a group is open).
+ */
+function navigationPathTo(
+  entries: readonly ResolvedEntry[],
+  key: string,
+  isOpen: (id: string, top: boolean) => boolean
+): string[] {
+  let first: string[] | null = null;
+  let shown = false;
+  const walk = (list: readonly ResolvedEntry[], above: string[], visible: boolean): void => {
+    for (const entry of list) {
+      if (shown) return;
+      if (entry.screen && tabKey(entry.screen.category, entry.screen.id) === key) {
+        if (visible) shown = true;
+        else first ??= above;
+      }
+      if (entry.children) {
+        const id = navigationNodeId(entry);
+        walk(entry.children, [...above, id], visible && isOpen(id, above.length === 0));
+      }
+    }
+  };
+  walk(entries, [], true);
+  return shown ? [] : (first ?? []);
+}
 const COLLECTION_PREFIX = 'collection:';
 
 /** Member groups (the `<group>` of a member node id). */
@@ -338,9 +386,29 @@ function folderIn(folders: Map<string, Folder>, name: string): Folder {
   return folder;
 }
 
-/** True when `q` is blank or matches `label` (or a keyword) by match.ts. */
+/** `text` in lower case, every run of non-alphanumerics (`_ : - . /`, spaces) as one space. */
+export function foldSeparators(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * True when `q` is blank or matches `label` (or a keyword): by match.ts, as
+ * typed or with its separators folded, or as a run of the folded label or
+ * keyword that starts one of its parts, so a name typed with other separators
+ * than it is written with (`unit_4_1` for `unit-4-1`) still finds it.
+ */
 function hit(q: string, label: string, keywords?: readonly string[]): boolean {
-  return q === '' || matchEntry(q, { label, keywords }) !== null;
+  if (q === '' || matchEntry(q, { label, keywords }) !== null) return true;
+  const folded = foldSeparators(q);
+  if (folded === '') return false;
+  if (folded !== q && matchEntry(folded, { label, keywords }) !== null) return true;
+  // From the start of a separator-delimited part, as match.ts matches prefixes.
+  return [label, ...(keywords ?? [])].some((text) =>
+    ` ${foldSeparators(text)}`.includes(` ${folded}`)
+  );
 }
 
 /** A member's filter keywords: its screen id (without the category) or tool label. */
@@ -592,6 +660,8 @@ export function ScreenTree({
   /** The member group the user last activated a row from. */
   const [lastGroup, setLastGroup] = useState<string | null>(null);
   const warned = useRef(new Set<string>());
+  /** The open screen whose navigation path was last opened. */
+  const revealed = useRef<string | null>(null);
   const inRecent = useRef(false);
   const { anchorRef } = useContext(EmbedThemeContext);
 
@@ -629,14 +699,16 @@ export function ScreenTree({
       setScreensOpen(expanded);
       return;
     }
-    // Compact RECENT and a navigation's "All screens" are collapsed by default,
-    // so the stored fact is the opening.
+    // Compact RECENT, a navigation's "All screens" and its groups below the
+    // top level are collapsed by default, so the stored fact is the opening.
     const opened =
       compact && id === BRANCH_RECENT
         ? RECENT_EXPANDED_MARKER
         : id === NAV_ALL_SCREENS
           ? NAV_ALL_EXPANDED_MARKER
-          : null;
+          : navigationDeep.has(id)
+            ? id + NAV_OPENED_SUFFIX
+            : null;
     if (opened !== null) {
       setCollapsed((prev) => {
         if (prev.has(opened) === expanded) return prev;
@@ -707,6 +779,42 @@ export function ScreenTree({
   }, [navigationError, missingScreens]);
   /** The branch shows the library's tree, with the folders in its last group. */
   const navigated = resolved !== null && resolved.entries.length > 0;
+  // The navigation shows its top entries and their direct children: a top
+  // group starts open (stored when collapsed), a group below it starts
+  // collapsed (stored, with NAV_OPENED_SUFFIX, when opened).
+  const navigationDeep = useMemo(() => {
+    const deep = new Set<string>();
+    const walk = (entries: readonly ResolvedEntry[], top: boolean): void => {
+      for (const entry of entries) {
+        if (!entry.children) continue;
+        if (!top) deep.add(navigationNodeId(entry));
+        walk(entry.children, false);
+      }
+    };
+    walk(resolved?.entries ?? [], true);
+    return deep;
+  }, [resolved]);
+  const navigationOpen = (id: string, top: boolean): boolean =>
+    top ? !collapsed.has(id) : collapsed.has(id + NAV_OPENED_SUFFIX);
+  // The path to the open screen is opened once for each screen that becomes
+  // the open one (also on load), and stays the operator's to collapse again.
+  useEffect(() => {
+    if (activeKey === null || resolved === null || revealed.current === activeKey) return;
+    revealed.current = activeKey;
+    setCollapsed((prev) => {
+      const path = navigationPathTo(resolved.entries, activeKey, (id, top) =>
+        top ? !prev.has(id) : prev.has(id + NAV_OPENED_SUFFIX)
+      );
+      if (path.length === 0) return prev;
+      const next = new Set(prev);
+      path.forEach((id, depth) => {
+        if (depth === 0) next.delete(id);
+        else next.add(id + NAV_OPENED_SUFFIX);
+      });
+      writeCollapsed(next);
+      return next;
+    });
+  }, [activeKey, resolved]);
 
   const subScreenCount = useMemo(
     () => listed.filter((entry) => isSubScreen(entry.id)).length,
@@ -964,9 +1072,10 @@ export function ScreenTree({
   // its label, title or id matches, and a group when anything in it does.
   const navigationNodes = ((): NavNode[] => {
     if (!navigated) return [];
-    const walk = (entries: readonly ResolvedEntry[]): NavNode[] =>
+    const walk = (entries: readonly ResolvedEntry[], top: boolean): NavNode[] =>
       entries.flatMap((entry): NavNode[] => {
         const { screen } = entry;
+        const id = navigationNodeId(entry);
         const own = screen
           ? leafNode(
               {
@@ -975,25 +1084,27 @@ export function ScreenTree({
                 title: screen.title,
                 disabled: screen.kind !== 'ir',
               },
-              {
-                id:
-                  (entry.children ? NAV_GROUP_PREFIX : `${GROUP_NAVIGATION}:`) +
-                  `${entry.path}:${screen.category}/${screen.id}`,
-                label: entry.label,
-              }
+              { id, label: entry.label }
             )
           : undefined;
         const matches = screen
           ? hit(q, entry.label, [screen.id, screen.title])
           : hit(q, entry.label);
         if (entry.children === undefined) return own && matches ? [own] : [];
-        const kids = walk(entry.children);
+        const kids = walk(entry.children, false);
         if (kids.length === 0 && (q !== '' ? !(own && matches) : own === undefined)) return [];
-        const id = own?.id ?? NAV_GROUP_PREFIX + entry.path;
-        const open = kids.length > 0 && (q !== '' || !collapsed.has(id));
+        const open = kids.length > 0 && (q !== '' || navigationOpen(id, top));
+        // A group that names a screen: its row opens the screen and the group.
+        const activate = own?.onActivate;
         return [
           {
             ...own,
+            onActivate: activate
+              ? (modifiers: NavActivation) => {
+                  activate(modifiers);
+                  setExpanded(id, true);
+                }
+              : undefined,
             id,
             label: entry.label,
             icon: open ? <FolderOpen size={16} /> : <FolderIcon size={16} />,
@@ -1002,7 +1113,7 @@ export function ScreenTree({
           },
         ];
       });
-    return walk(resolved.entries);
+    return walk(resolved.entries, true);
   })();
 
   // --- Tools ---
@@ -1292,7 +1403,9 @@ export function ScreenTree({
             : q !== '' ||
               (compact && node.id === BRANCH_RECENT
                 ? collapsed.has(RECENT_EXPANDED_MARKER)
-                : !collapsed.has(node.id));
+                : node.id.startsWith(NAV_GROUP_PREFIX)
+                  ? navigationOpen(node.id, !navigationDeep.has(node.id))
+                  : !collapsed.has(node.id));
       if (open) expandedIds.add(node.id);
       walkExpanded(node.children);
     }

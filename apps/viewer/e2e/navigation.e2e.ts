@@ -60,9 +60,10 @@ test.describe('library navigation', () => {
       'Operations',
       'Ops Panel',
       'Checks',
-      'Label Fit',
       'All screens',
     ]);
+    // Two levels show: a group below the top level starts collapsed.
+    await expect(item(page, 'Checks')).toHaveAttribute('aria-expanded', 'false');
     await expect(item(page, 'All screens')).toHaveAttribute('aria-expanded', 'false');
     // The id the library names without listing it: skipped, in one warning.
     await page.waitForTimeout(2_500); // two manifest polls later
@@ -86,6 +87,42 @@ test.describe('library navigation', () => {
     await expect(item(page, 'Lines')).toHaveAttribute('aria-expanded', 'false');
     await expect(item(page, 'Beta C')).toHaveCount(0);
     await expect(screenRoot(page)).toHaveAttribute('data-screen-id', 'wide-panel');
+  });
+
+  test('opens the path to the open screen; what is opened and collapsed survives a reload @embed', async ({
+    page,
+  }) => {
+    await withNavigation(page);
+    await seedTabs(page, { keys: [], active: null });
+    // The open screen sits in a group that starts collapsed: its path is opened and it is marked.
+    await page.goto(`${PREFIX}embed/drafts/label-fit`);
+    await expect(item(page, 'Checks')).toHaveAttribute('aria-expanded', 'true');
+    await expect(
+      item(page, 'Checks').getByRole('treeitem', { name: 'Label Fit', exact: true })
+    ).toHaveAttribute('aria-selected', 'true');
+
+    await row(page, 'Lines').getByTestId('nav-tree-chevron').click();
+    await expect(item(page, 'Lines')).toHaveAttribute('aria-expanded', 'false');
+    await page.reload();
+    await expect(item(page, 'Checks')).toHaveAttribute('aria-expanded', 'true');
+    await expect(item(page, 'Lines')).toHaveAttribute('aria-expanded', 'false');
+    // The path stays the operator's to collapse; a load opens it again.
+    await row(page, 'Checks').click();
+    await expect(item(page, 'Checks')).toHaveAttribute('aria-expanded', 'false');
+    await page.reload();
+    await expect(item(page, 'Checks')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('the filter finds a name typed with other separators @embed', async ({ page }) => {
+    await withNavigation(page);
+    await openWorkspace(page);
+    const box = tree(page).getByRole('searchbox');
+    for (const query of ['line_a/a', 'LINE.A:A', 'first_of-line']) {
+      await box.fill(query);
+      expect(await screenRows(page), query).toContain('First of line A');
+    }
+    await box.fill('ine_a');
+    expect(await screenRows(page)).not.toContain('First of line A');
   });
 
   test('All screens holds the folder tree; search finds a screen the navigation leaves out @embed', async ({
