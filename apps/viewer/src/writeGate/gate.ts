@@ -62,6 +62,12 @@
 //                 otherwise), stays while held (hovered or focused), and is one
 //                 of at most TOAST_CAP: a newer one drops the oldest.
 //   dialogs       one slot per gate: further runs queue FIFO, never stacked.
+//                 The dialog state carries what the view words it with: the
+//                 target's name, its kind and notice where the backend states
+//                 them, and what the run says (its `dialog` option: the
+//                 screen's title, sentence, button word and kind, the
+//                 widget's label). None of it decides whether a dialog opens
+//                 or what is sent.
 //   serialising   multi-write runs (more than one write, or a tail) run one
 //                 at a time per screen; a single write goes straight to the
 //                 SDK, whose per-PV slot coalesces it.
@@ -88,6 +94,7 @@ import type {
   WriteOutcome as SdkWriteOutcome,
 } from '@slaclab/canopy-client';
 import type {
+  WriteDialogText,
   WriteGateService,
   WriteOutcome,
   WriteOutcomeKind,
@@ -124,17 +131,62 @@ export interface WriteBackend {
   confirmWrites(): boolean;
   /** The machine the writes go to, for the dialog (DATA's label), or null. */
   machineLabel(): string | null;
+  /**
+   * What kind of target that is, for the dialog's marker; null, or a backend
+   * without it, where only the name is known.
+   */
+  targetKind?(): WriteTargetKind | null;
+  /** Why the target is not served as configured (the heartbeat's notice), or null. */
+  targetNotice?(): WriteTargetNotice;
+  /** The control limits the channel states, or null where it states none. */
+  controlLimits?(pv: string): ControlLimits | null;
   /** The write statement; a backend without it makes none (every socket reads legacy). */
   writes?(): WritesStatement;
   /** Statement changes (a new statement, a close clearing it). Returns an unsubscribe. */
   onWrites?(listener: () => void): () => void;
 }
 
+/**
+ * What a write target is: the real machine, a simulation of it, or a test
+ * target (a bench, a stand-in).
+ */
+export type WriteTargetKind = 'machine' | 'simulation' | 'test';
+
+/** The heartbeat's notice on a target that is not served as configured. */
+export type WriteTargetNotice = 'fallback' | 'unservable' | null;
+
+/** The range of values a channel accepts, as the channel states it. */
+export interface ControlLimits {
+  readonly low: number;
+  readonly high: number;
+}
+
+/**
+ * The control limits a channel's metadata states, or null where it states
+ * none: both bounds are numbers and the low one is below the high one (a
+ * channel with no limits set reads 0 and 0).
+ */
+export function statedLimits(
+  meta: { controlLow?: number | null; controlHigh?: number | null } | null | undefined
+): ControlLimits | null {
+  const low = meta?.controlLow;
+  const high = meta?.controlHigh;
+  if (typeof low !== 'number' || typeof high !== 'number') return null;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low >= high) return null;
+  return { low, high };
+}
+
 /** The open confirmation dialog. */
 export interface WriteDialogState {
   readonly id: number;
   readonly writes: readonly WriteRequest[];
+  /** The target's name, or null where it has none. */
   readonly machine: string | null;
+  /** The target's kind, or null where only its name is known. */
+  readonly targetKind: WriteTargetKind | null;
+  readonly targetNotice: WriteTargetNotice;
+  /** What the run says in the dialog, or null. */
+  readonly say: WriteDialogText | null;
 }
 
 /**
@@ -172,6 +224,8 @@ export interface ScreenWriteGate extends WriteGateService {
   getSnapshot(): WriteGateState;
   /** An open or queued dialog, or a multi-write run in flight. */
   isBusy(): boolean;
+  /** The control limits `pv` states, or null: for the dialog's limits row. */
+  controlLimits(pv: string): ControlLimits | null;
   /** Answer the open dialog `id` (a stale id is ignored). */
   confirm(id: number): void;
   decline(id: number): void;
@@ -282,6 +336,7 @@ type DialogAnswer =
 
 interface QueuedDialog {
   writes: readonly WriteRequest[];
+  say: WriteDialogText | null;
   resolve(answer: DialogAnswer): void;
 }
 
@@ -546,13 +601,23 @@ export function createWriteGate(
     };
     setState({
       ...state,
-      dialog: { id: d.id, writes: d.writes, machine: backend.machineLabel() },
+      dialog: {
+        id: d.id,
+        writes: d.writes,
+        machine: backend.machineLabel(),
+        targetKind: backend.targetKind?.() ?? null,
+        targetNotice: backend.targetNotice?.() ?? null,
+        say: d.say,
+      },
     });
   }
 
-  function askFirst(writes: readonly WriteRequest[]): Promise<DialogAnswer> {
+  function askFirst(
+    writes: readonly WriteRequest[],
+    say: WriteDialogText | null
+  ): Promise<DialogAnswer> {
     return new Promise((resolve) => {
-      queue.push({ writes, resolve });
+      queue.push({ writes, say, resolve });
       pump();
     });
   }
@@ -694,7 +759,7 @@ export function createWriteGate(
     try {
       let binding: string | null;
       if (dialog) {
-        const answer = await askFirst(listed);
+        const answer = await askFirst(listed, options?.dialog ?? null);
         if (!multi) {
           held = false;
           hold(-1);
@@ -789,6 +854,13 @@ export function createWriteGate(
     },
     getSnapshot: () => state,
     isBusy: () => busy,
+    controlLimits(pv) {
+      try {
+        return backend.controlLimits?.(pv) ?? null;
+      } catch {
+        return null;
+      }
+    },
     confirm(id) {
       const d = open;
       if (d === null || d.id !== id) return;

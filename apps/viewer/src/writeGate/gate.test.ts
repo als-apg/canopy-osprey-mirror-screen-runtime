@@ -16,7 +16,7 @@ import type {
   WriteOutcomeKind,
 } from '@slaclab/canopy-client';
 import type { WriteRequest } from '@slaclab/canopy-screen-widgets';
-import { createWriteGate, summarize } from './gate.js';
+import { createWriteGate, statedLimits, summarize } from './gate.js';
 import type { WriteBackend } from './gate.js';
 import { GUARD_MS, GUARD_NOTICE, createWriteGuard } from './guard.js';
 
@@ -95,6 +95,128 @@ const ORIGIN = { screen: 'sr/overview', rev: 'r7' };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const w = (pv: string, value: number | string, release?: boolean): WriteRequest =>
   release ? { pv, value, release } : { pv, value };
+
+describe('gate.run — what the dialog is worded with', () => {
+  const SAY = {
+    title: 'Reboot controller RACK1:CTRL1?',
+    text: 'It commands 2 power supplies.',
+    verb: 'Reboot',
+    kind: 'consequence',
+    label: 'Reboot',
+    action: 'press',
+  } as const;
+
+  it("carries the run's wording and the target's name into the dialog state", async () => {
+    const f = fakeBackend();
+    const gate = createWriteGate(f.backend, ORIGIN);
+    void gate.run([w('RACK1:CTRL1:Reboot', 0)], { dialog: SAY });
+    await tick();
+    const dialog = gate.getSnapshot().dialog!;
+    expect(dialog.say).toEqual(SAY);
+    expect(dialog.machine).toBe('VA');
+    // This backend states only a name: no kind, no notice.
+    expect(dialog.targetKind).toBeNull();
+    expect(dialog.targetNotice).toBeNull();
+    gate.decline(dialog.id);
+  });
+
+  it('a run that says nothing has no wording', async () => {
+    const f = fakeBackend();
+    const gate = createWriteGate(f.backend, ORIGIN);
+    void gate.run([w('A', 1)]);
+    await tick();
+    expect(gate.getSnapshot().dialog!.say).toBeNull();
+  });
+
+  it("carries the target's kind and notice where the backend states them", async () => {
+    const f = fakeBackend();
+    f.backend.targetKind = () => 'simulation';
+    f.backend.targetNotice = () => 'fallback';
+    const gate = createWriteGate(f.backend, ORIGIN);
+    void gate.run([w('A', 1)]);
+    await tick();
+    const dialog = gate.getSnapshot().dialog!;
+    expect(dialog.targetKind).toBe('simulation');
+    expect(dialog.targetNotice).toBe('fallback');
+  });
+
+  it('the wording opens no dialog: with nothing asking, the write goes straight out', async () => {
+    const f = fakeBackend({ confirm: false });
+    f.st.answers = [outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const result = await gate.run([w('RACK1:CTRL1:Reboot', 0)], { dialog: SAY });
+    expect(gate.getSnapshot().dialog).toBeNull();
+    expect(f.sent.map((s) => [s.pv, s.value])).toEqual([['RACK1:CTRL1:Reboot', 0]]);
+    expect(f.sent[0].options.confirmed).toBeUndefined();
+    expect(result).toEqual([outcome('confirmed')]);
+  });
+
+  it('a worded dialog is asked under the same rule, and its decline sends nothing', async () => {
+    const f = fakeBackend({ confirm: false });
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('RACK1:CTRL1:Reboot', 0)], { confirm: true, dialog: SAY });
+    await tick();
+    gate.decline(gate.getSnapshot().dialog!.id);
+    expect(await p).toBe('declined');
+    expect(f.sent).toEqual([]);
+    expect(gate.getSnapshot().toasts).toEqual([]);
+  });
+
+  it('a momentary press under a worded dialog is still one pulse', async () => {
+    const f = fakeBackend();
+    f.st.answers = [outcome('confirmed'), outcome('confirmed')];
+    const gate = createWriteGate(f.backend, ORIGIN);
+    const p = gate.run([w('P', 1), w('P', 0, true)], {
+      dialog: { label: 'Fire', action: 'press' },
+    });
+    await tick();
+    const dialog = gate.getSnapshot().dialog!;
+    expect(dialog.writes).toEqual([w('P', 1), w('P', 0, true)]);
+    gate.confirm(dialog.id);
+    await p;
+    expect(f.sent.map((s) => [s.pv, s.value])).toEqual([
+      ['P', 1],
+      ['P', 0],
+    ]);
+    expect(f.sent.map((s) => s.options.confirmed)).toEqual([true, true]);
+  });
+
+  it('answers the control limits a channel states, and null where the backend states none', () => {
+    const f = fakeBackend();
+    const bare = createWriteGate(f.backend, ORIGIN);
+    expect(bare.controlLimits('A')).toBeNull();
+    f.backend.controlLimits = (pv) => (pv === 'A' ? { low: -10, high: 10 } : null);
+    const gate = createWriteGate(f.backend, ORIGIN);
+    expect(gate.controlLimits('A')).toEqual({ low: -10, high: 10 });
+    expect(gate.controlLimits('B')).toBeNull();
+    f.backend.controlLimits = () => {
+      throw new Error('no metadata');
+    };
+    expect(gate.controlLimits('A')).toBeNull();
+  });
+});
+
+describe('statedLimits', () => {
+  it('reads the limits a channel states', () => {
+    expect(statedLimits({ controlLow: -10, controlHigh: 10 })).toEqual({ low: -10, high: 10 });
+  });
+
+  it('reads none from a channel that states none', () => {
+    for (const meta of [
+      undefined,
+      null,
+      {},
+      { controlLow: null, controlHigh: null },
+      { controlLow: 0, controlHigh: 0 },
+      { controlLow: 5, controlHigh: 1 },
+      { controlLow: -1, controlHigh: null },
+      { controlLow: Number.NaN, controlHigh: 1 },
+      { controlLow: 0, controlHigh: Number.POSITIVE_INFINITY },
+    ]) {
+      expect(statedLimits(meta)).toBeNull();
+    }
+  });
+});
 
 describe('gate.run — the dialog', () => {
   it('opens one dialog listing the writes before any write, then sends them in order', async () => {
