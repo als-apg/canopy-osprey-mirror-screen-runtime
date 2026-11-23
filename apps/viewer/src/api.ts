@@ -21,6 +21,11 @@ export interface ManifestScreen {
 
 export interface Manifest {
   screens: ManifestScreen[];
+  /**
+   * The library's own navigation tree, when it supplies one; unvalidated here
+   * (workspace/navigation.ts parses it).
+   */
+  navigation?: unknown;
 }
 
 async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {

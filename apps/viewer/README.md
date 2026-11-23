@@ -24,6 +24,42 @@ values recoloured with EDM's alarm colours, EDM's disconnected outline, flush
 text — on Carbon widget chrome; `carbon` shows severity pills and Carbon
 paddings.
 
+## A library's own navigation (`navigation` in `manifest.json`)
+
+The sidebar's Screens section is a folder tree by default: the manifest
+`category` of each screen, then the `/` segments of its id. A manifest may
+carry an optional `navigation` instead, a list of entries shown in the order
+given:
+
+```json
+{
+  "screens": [],
+  "navigation": [
+    { "screen": "plant/overview", "label": "Start here" },
+    {
+      "label": "Pumps",
+      "screen": "plant/pumps/summary",
+      "children": [{ "screen": "plant/pumps/p1" }, { "screen": "plant/pumps/p2" }]
+    }
+  ]
+}
+```
+
+- A leaf is `{ "screen": "<category>/<id>" }`, with an optional `label`
+  (default: the screen's title).
+- A group is `{ "label", "children" }`; with a `screen` of its own, a click on
+  its name opens that screen and its chevron expands it. Groups nest up to 8
+  deep; one navigation holds at most 2000 entries; a label has at most 120
+  characters; no other key is allowed.
+- The folder tree stays reachable in a last group, **All screens**, collapsed
+  until opened, and search finds every screen whether the navigation names it
+  or not.
+- A screen the navigation names that the manifest does not list is skipped; a
+  group left with nothing is not shown. The skipped ids are listed in one
+  console warning.
+- An invalid `navigation` is ignored as a whole, with one console warning, and
+  the folder tree shows as it does without one.
+
 ## Configuration (`config.json`)
 
 The viewer reads its configuration at runtime from `config.json`, fetched

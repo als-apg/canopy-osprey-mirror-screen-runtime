@@ -2025,6 +2025,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
                     >
                       <ScreenTree
                         screens={manifest?.screens ?? []}
+                        navigation={manifest?.navigation}
                         tools={toolEntries}
                         onOpen={onOpen}
                         onOpenTool={onOpenTool}
