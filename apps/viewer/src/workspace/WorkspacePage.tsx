@@ -35,7 +35,8 @@
 //                its tile's bar. A screen opens at its manual zoom, else in
 //                the display mode; the latched ?_canopyZoom applies to the
 //                URL-named key only, for this page view, and is never stored. Chrome off
-//                keeps the app-level zoom.
+//                keeps the app-level zoom: fit page unless ?_canopyZoom asks
+//                otherwise, whatever display mode is remembered.
 //   manifest     useWorkspaceManifest.ts: one conditional poll for the page;
 //                every mounted screen reads it through SharedManifestContext.
 //   URL          workspaceUrl.ts: the active tab, written with `replace`

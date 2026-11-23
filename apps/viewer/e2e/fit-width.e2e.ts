@@ -113,18 +113,31 @@ test.describe('fit modes', () => {
     await page.reload();
     await expect(root(page)).toBeVisible();
     await expect(mode(page, 'Fit page')).toHaveAttribute('aria-pressed', 'true');
-    // The workspace without its chrome reads the same mode: the whole tall screen is in view.
+
+    await mode(page, 'Fit width').click();
+    await page.reload();
+    await expect(root(page)).toBeVisible();
+    await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('the frame without a header shows the whole screen unless its host asks otherwise @embed', async ({
+    page,
+  }) => {
+    // The viewer's remembered mode is fit width (the default), then 100%: neither reaches the frame.
     await page.goto(`${TALL}?_canopyChrome=0`);
     await expect(root(page)).toBeVisible();
     expect(await paneBox(page)).toMatchObject({ x: false, y: false });
     await expect(page.getByText('Bottom edge', { exact: true })).toBeInViewport();
 
-    await page.goto(TALL);
-    await mode(page, 'Fit width').click();
-    await page.reload();
-    await expect(root(page)).toBeVisible();
-    await expect(mode(page, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
+    await open(page, TALL);
+    await mode(page, '100%').click();
     await page.goto(`${TALL}?_canopyChrome=0`);
+    await expect(root(page)).toBeVisible();
+    expect(await paneBox(page)).toMatchObject({ x: false, y: false });
+    await expect(page.getByText('Bottom edge', { exact: true })).toBeInViewport();
+
+    // The host asks for fit width: the frame scrolls down, never sideways.
+    await page.goto(`${TALL}?_canopyChrome=0&_canopyZoom=width`);
     await expect(root(page)).toBeVisible();
     expect(await paneBox(page)).toMatchObject({ x: false, y: true });
   });

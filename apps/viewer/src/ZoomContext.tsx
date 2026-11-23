@@ -15,16 +15,21 @@
 //
 //   ZoomProvider       the workspace with chrome off (`?_canopyChrome=0`),
 //                      above the routes; /s/ is never zoomed. One value for
-//                      the whole app: the remembered display mode, or a manual
-//                      zoom mirrored to sessionStorage under
-//                      storageKey('canopy-viewer:zoom'). It reads the router
-//                      basename, so it needs a router above it.
+//                      the whole app, mirrored to sessionStorage under
+//                      storageKey('canopy-viewer:zoom'). It starts at fit page
+//                      and neither reads nor writes the remembered display
+//                      mode: a frame without a header has no switch, so only
+//                      its host (`?_canopyZoom`) changes how it shows. It
+//                      reads the router basename, so it needs a router above
+//                      it.
 //   ZoomStore          the docked workspace's per-tile zoom: the display mode
 //                      and ONE localStorage record of the manual zooms under
 //                      storageKey('canopy-viewer:zoom-by-screen'), a JSON map
 //                      keyed `category/id`, so every tab of a screen (any
 //                      macros) shares it and it outlives the session. A screen
-//                      without an entry shows the display mode. A tool key
+//                      without an entry shows the display mode; an entry that
+//                      is not a manual zoom (an older build stored fit there)
+//                      reads as none and is dropped from the record. A tool key
 //                      (`@…`) has no zoom. Another browser tab's write arrives
 //                      through the `storage` event. `latch` holds the
 //                      ?_canopyZoom value for the URL's tab key in memory only
@@ -64,17 +69,20 @@ export interface ZoomState {
 }
 
 export interface ZoomControl extends ZoomState {
-  /** Pick a display mode, for every screen; this screen's manual zoom goes. */
+  /**
+   * Pick a display mode; this screen's manual zoom goes. In the workspace it
+   * is picked for every screen and remembered; at app level it lasts the session.
+   */
   setFitWidth(): void;
   setFit(): void;
   setActual(): void;
   /** Step this screen to a manual scale. */
   setManual(scale: number): void;
-  /** App level only: show `state` without remembering a display mode. */
+  /** App level only: show `state` for this session. */
   latch?(state: ZoomState): void;
 }
 
-/** The name of the app-level manual zoom record (a storageKey name). */
+/** The name of the app-level session zoom record (a storageKey name). */
 export const ZOOM_STORAGE_NAME = 'canopy-viewer:zoom';
 /** The name of the per-screen manual zoom record (a storageKey name). */
 export const ZOOM_BY_SCREEN_NAME = 'canopy-viewer:zoom-by-screen';
@@ -126,23 +134,31 @@ function normalise(state: Partial<ZoomState> | null | undefined): ZoomState {
   return state?.mode === 'fit' ? MODE_STATES.fit : DEFAULT_ZOOM;
 }
 
-/** The session's manual zoom, or null when there is none. */
-function readManual(key: string): ZoomState | null {
+/** A valid state of any mode, else null. */
+function validState(state: Partial<ZoomState> | null | undefined): ZoomState | null {
+  if (state?.mode === 'width') return MODE_STATES.width;
+  if (state?.mode === 'fit') return MODE_STATES.fit;
+  return state?.mode === 'manual' && isValidScale(state.scale)
+    ? { mode: 'manual', scale: state.scale }
+    : null;
+}
+
+/** The session's zoom of the frame without a header; fit page when there is none. */
+function readSession(key: string): ZoomState {
   try {
     const raw = sessionStore()?.getItem(key);
-    if (!raw) return null;
-    const state = normalise(JSON.parse(raw) as Partial<ZoomState>);
-    return state.mode === 'manual' ? state : null;
+    if (!raw) return MODE_STATES.fit;
+    return validState(JSON.parse(raw) as Partial<ZoomState>) ?? MODE_STATES.fit;
   } catch {
-    return null;
+    return MODE_STATES.fit;
   }
 }
 
-/** Mirrors a manual zoom to the session; any other state clears the entry. */
-function writeManual(key: string, state: ZoomState): void {
+/** Mirrors `state` to the session; fit page, the frame's default, is no entry. */
+function writeSession(key: string, state: ZoomState): void {
   try {
-    if (state.mode === 'manual') sessionStore()?.setItem(key, JSON.stringify(state));
-    else sessionStore()?.removeItem(key);
+    if (state.mode === 'fit') sessionStore()?.removeItem(key);
+    else sessionStore()?.setItem(key, JSON.stringify(state));
   } catch {
     // Not persisted; the in-memory state still applies.
   }
@@ -160,17 +176,32 @@ function screenOf(key: string): string | null {
   return path.indexOf('/') > 0 ? path : null;
 }
 
-/** The stored record's valid manual entries; anything else reads as absent. */
-function readRecord(key: string): Map<string, ZoomState> {
+/**
+ * The stored record's valid manual entries; anything else reads as absent.
+ * With `prune`, a record that holds anything else is written back without it.
+ */
+function readRecord(key: string, prune = false): Map<string, ZoomState> {
   const out = new Map<string, ZoomState>();
   try {
-    const raw = browserStorage()?.getItem(key);
+    const storage = browserStorage();
+    const raw = storage?.getItem(key);
     if (!raw) return out;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
-    for (const [screen, entry] of Object.entries(parsed as Record<string, unknown>)) {
+    let entries: [string, unknown][] | null = null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        entries = Object.entries(parsed as Record<string, unknown>);
+      }
+    } catch {
+      // Not JSON: nothing remembered.
+    }
+    for (const [screen, entry] of entries ?? []) {
       const state = normalise(entry as Partial<ZoomState> | null);
       if (state.mode === 'manual') out.set(screen, state);
+    }
+    if (prune && out.size !== entries?.length) {
+      if (out.size === 0) storage?.removeItem(key);
+      else storage?.setItem(key, JSON.stringify(Object.fromEntries(out)));
     }
   } catch {
     // Unreadable: nothing remembered.
@@ -203,7 +234,8 @@ export class ZoomStore {
   }
 
   private remembered(): Map<string, ZoomState> {
-    this.record ??= readRecord(this.storageKey);
+    // The first read also drops what an older build left in the record.
+    this.record ??= readRecord(this.storageKey, true);
     return this.record;
   }
 
@@ -329,32 +361,22 @@ export class ZoomStore {
 
 const ZoomContext = createContext<ZoomControl | null>(null);
 
-/** The app-level zoom: the remembered display mode, or this session's manual zoom. */
+/** The zoom of the frame without a header: fit page, or what this session set. */
 export function ZoomProvider({ children }: { children: ReactNode }) {
   // useHref('/') is the router basename (`/` when there is none).
   const basename = useHref('/');
   const key = storageKey(ZOOM_STORAGE_NAME, basename);
-  const modeKey = storageKey(ZOOM_MODE_NAME, basename);
-  const [state, setState] = useState<ZoomState>(
-    () => readManual(key) ?? MODE_STATES[readMode(modeKey)]
-  );
+  const [state, setState] = useState<ZoomState>(() => readSession(key));
 
   const latch = useCallback(
     (next: ZoomState) => {
-      const valid = normalise(next);
+      const valid = validState(next) ?? MODE_STATES.fit;
       setState(valid);
-      writeManual(key, valid);
+      writeSession(key, valid);
     },
     [key]
   );
-  const pick = useCallback(
-    (mode: DisplayMode) => {
-      setState(MODE_STATES[mode]);
-      writeMode(modeKey, mode);
-      writeManual(key, MODE_STATES.width);
-    },
-    [key, modeKey]
-  );
+  const pick = useCallback((mode: DisplayMode) => latch(MODE_STATES[mode]), [latch]);
   const setFitWidth = useCallback(() => pick('width'), [pick]);
   const setFit = useCallback(() => pick('fit'), [pick]);
   const setActual = useCallback(() => pick('actual'), [pick]);
