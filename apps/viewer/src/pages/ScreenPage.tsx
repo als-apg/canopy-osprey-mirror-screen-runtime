@@ -2,7 +2,7 @@
 // screen id is the splat, so nested ids ("CBXFEL/Landing") match.
 //
 // The workspace renders it with chrome={false} (no page header), explicit
-// `category`/`id`/`macros` (its tab, not the route) and `zoomable` (fit-to-view
+// `category`/`id`/`macros` (its tab, not the route) and `zoomable` (fit width
 // by default, see zoom.ts / ZoomContext.tsx), and takes the title and the
 // zoom scale back through `onTitle`/`onZoom` for its tile bar, and the open
 // screen (document URL, displayed element, reload) through `onScreen` for
@@ -68,17 +68,17 @@ import {
 import type { WriteToastHost } from '../writeGate/toastHost.js';
 import { TargetBadge } from '../workspace/TargetBadge.js';
 import { useZoom } from '../ZoomContext.js';
-import { fitScale } from '../zoom.js';
+import { fitScale, fitWidthScale } from '../zoom.js';
 
 /** .viewer-canvas padding (index.css, 1rem) — the fit area excludes it on each side. */
 const CANVAS_PADDING = 16;
 
-/** Reserved query parameter (`_canopy*`, never a macro): `fit` or a percentage. */
+/** Reserved query parameter (`_canopy*`, never a macro): `width`, `fit` (fit page) or a percentage. */
 export const ZOOM_PARAM = '_canopyZoom';
 
-/** A `?_canopyZoom` value: 'fit', a scale (percent / 100), or null when unusable. */
-export function zoomFromParam(value: string | null): 'fit' | number | null {
-  if (value === 'fit') return 'fit';
+/** A `?_canopyZoom` value: 'width', 'fit', a scale (percent / 100), or null when unusable. */
+export function zoomFromParam(value: string | null): 'width' | 'fit' | number | null {
+  if (value === 'width' || value === 'fit') return value;
   if (value !== null && /^\d+(\.\d+)?$/.test(value)) return Number(value) / 100;
   return null;
 }
@@ -368,14 +368,17 @@ export function ScreenPage({
 
   // Zoom (zoomable pages only). The fit area is the scroll container's client
   // box less the canvas padding; it depends only on the page layout, never on
-  // the scaled screen, and in fit mode the container does not scroll (so no
-  // scrollbar can appear, shrink the area, and re-trigger a fit).
+  // the scaled screen: in fit-page mode the container does not scroll, and in
+  // fit-width mode it keeps its vertical scrollbar's room whether or not the
+  // bar shows (index.css), so no scrollbar can appear, shrink the area, and
+  // re-trigger a fit.
   const zoom = useZoom();
   const zoomed = !chrome && zoomable;
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
   const area = useClientSize(zoomed ? scroller : null);
   const screenSize = state.status === 'ready' ? state.screen.metadata.size : undefined;
   const fitting = zoom.mode === 'fit';
+  const fittingWidth = zoom.mode === 'width';
   const scale = !zoomed
     ? 1
     : fitting
@@ -385,7 +388,14 @@ export function ScreenPage({
           screenSize?.width ?? 0,
           screenSize?.height ?? 0
         )
-      : zoom.scale;
+      : fittingWidth
+        ? fitWidthScale(area.width - 2 * CANVAS_PADDING, screenSize?.width ?? 0)
+        : zoom.scale;
+  // A screen opened in this tab (a link followed, Back, Forward) starts at its
+  // top-left corner, not where the screen before it was scrolled to.
+  useLayoutEffect(() => {
+    scroller?.scrollTo?.(0, 0);
+  }, [scroller, category, id]);
 
   const readyTitle = state.status === 'ready' ? title : undefined;
   useEffect(() => {
@@ -488,7 +498,8 @@ export function ScreenPage({
         ref={zoomed ? setScroller : undefined}
         className={
           'viewer-content viewer-content--screen' +
-          (zoomed && fitting ? ' viewer-content--fit' : '')
+          (zoomed && fitting ? ' viewer-content--fit' : '') +
+          (zoomed && fittingWidth ? ' viewer-content--fit-width' : '')
         }
       >
         {state.status === 'loading' && <p className="viewer-loading">Loading screen…</p>}

@@ -1,5 +1,5 @@
-// Zoom arithmetic for the embed toolbar: the fit-to-view scale, the manual
-// zoom ladder, and the percentage label. Pure functions; ZoomContext.tsx holds
+// Zoom arithmetic for the embed toolbar: the fit-width and fit-page scales,
+// the manual zoom ladder, and the percentage label. Pure functions; ZoomContext.tsx holds
 // the state and ScreenPage applies the scale as a CSS transform.
 
 /** Manual zoom rungs, ascending. `−`/`+` move between neighbours. */
@@ -26,6 +26,21 @@ export function fitScale(
   const dims = [availableWidth, availableHeight, screenWidth, screenHeight];
   if (dims.some((d) => !Number.isFinite(d) || d <= 0)) return 1;
   return Math.min(availableWidth / screenWidth, availableHeight / screenHeight);
+}
+
+/** Fit width never magnifies past this: a narrow screen in a wide pane is centred instead. */
+export const FIT_WIDTH_MAX_SCALE = 2;
+
+/**
+ * The scale that draws a `screenWidth` wide panel exactly `availableWidth`
+ * wide, whatever its height (the rest scrolls), capped at
+ * FIT_WIDTH_MAX_SCALE. An unmeasured area or a degenerate screen falls back
+ * to 1.
+ */
+export function fitWidthScale(availableWidth: number, screenWidth: number): number {
+  const dims = [availableWidth, screenWidth];
+  if (dims.some((d) => !Number.isFinite(d) || d <= 0)) return 1;
+  return Math.min(availableWidth / screenWidth, FIT_WIDTH_MAX_SCALE);
 }
 
 /**

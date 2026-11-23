@@ -16,7 +16,7 @@ import type { ViewerConfig } from '../config.js';
 import type { ScreenHistory } from '../ScreenHeader.js';
 import { SCREEN_ACTIONS, availableActions } from './actions.js';
 import type { ShortcutRelay } from './ScreenActionBar.js';
-import type { ScreenAction, ScreenActionContext, ScreenTarget } from './types.js';
+import type { ScreenAction, ScreenActionContext, ScreenTarget, ZoomView } from './types.js';
 
 /** How long a status message stays up. */
 export const STATUS_MS = 2000;
@@ -34,7 +34,7 @@ export interface ScreenVerbView {
   canGoBack: boolean;
   canGoForward: boolean;
   verbs: readonly { id: string; available: boolean }[];
-  zoom: { scale: number; fit: boolean };
+  zoom: ZoomView;
   download: { available: boolean };
 }
 
@@ -42,8 +42,8 @@ export interface ScreenVerbView {
 export interface ScreenActionTile {
   /** The open screen, or null before it reports (no verb is available). */
   screen: ScreenTarget | null;
-  /** The scale in effect and whether it is the fit-to-view scale. */
-  zoom: { scale: number; fit: boolean };
+  /** The scale in effect and which fit, if any, it is. */
+  zoom: ZoomView;
   config?: Readonly<Partial<ViewerConfig>>;
   /** Absolute URL that reopens exactly this screen. */
   link?: string;
@@ -80,7 +80,7 @@ export interface ScreenActions {
 export function useScreenActions(tile: ScreenActionTile): ScreenActions {
   const {
     screen,
-    zoom: { scale, fit },
+    zoom: { scale, fit, fitWidth },
     config,
     link,
     plotInDataBrowser,
@@ -90,8 +90,11 @@ export function useScreenActions(tile: ScreenActionTile): ScreenActions {
     notify,
   } = tile;
   const ctx = useMemo<ScreenActionContext | undefined>(
-    () => (screen ? { screen, zoom: { scale, fit }, config, link, plotInDataBrowser } : undefined),
-    [screen, scale, fit, config, link, plotInDataBrowser]
+    () =>
+      screen
+        ? { screen, zoom: { scale, fit, fitWidth }, config, link, plotInDataBrowser }
+        : undefined,
+    [screen, scale, fit, fitWidth, config, link, plotInDataBrowser]
   );
   const available = useMemo(() => (ctx ? availableActions(ctx, actions) : []), [ctx, actions]);
 
@@ -163,10 +166,10 @@ export function useScreenActions(tile: ScreenActionTile): ScreenActions {
       canGoBack,
       canGoForward,
       verbs: actions.map((a) => ({ id: a.id, available: ids.has(a.id) })),
-      zoom: { scale, fit },
+      zoom: { scale, fit, fitWidth },
       download: { available: ids.has(DOWNLOAD_ACTION_ID) },
     };
-  }, [available, actions, canGoBack, canGoForward, scale, fit]);
+  }, [available, actions, canGoBack, canGoForward, scale, fit, fitWidth]);
 
   return { ctx, available, view, invoke, run, status };
 }

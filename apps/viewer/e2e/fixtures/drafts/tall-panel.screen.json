@@ -1,0 +1,297 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "tall-panel",
+  "metadata": {
+    "title": "Tall Panel",
+    "source": {
+      "type": "hand-authored"
+    },
+    "size": {
+      "width": 600,
+      "height": 1800
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "w-001",
+    "type": "absolute-canvas",
+    "props": {
+      "width": 600,
+      "height": 1800
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 600,
+      "height": 1800
+    },
+    "children": [
+      {
+        "id": "w-002",
+        "type": "text-label",
+        "props": {
+          "text": "Top edge"
+        },
+        "geometry": {
+          "x": 10,
+          "y": 10,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-003",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 60,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-004",
+        "type": "text-label",
+        "props": {
+          "text": "Section 1"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 70,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-005",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 340,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-006",
+        "type": "text-label",
+        "props": {
+          "text": "Section 2"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 350,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-007",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 620,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-008",
+        "type": "text-label",
+        "props": {
+          "text": "Section 3"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 630,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-009",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 900,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-010",
+        "type": "text-label",
+        "props": {
+          "text": "Section 4"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 910,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-011",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 1180,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-012",
+        "type": "text-label",
+        "props": {
+          "text": "Section 5"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 1190,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-013",
+        "type": "rectangle",
+        "props": {
+          "fill": false,
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1
+        },
+        "geometry": {
+          "x": 10,
+          "y": 1460,
+          "width": 580,
+          "height": 260
+        }
+      },
+      {
+        "id": "w-014",
+        "type": "text-label",
+        "props": {
+          "text": "Section 6"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 1470,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-015",
+        "type": "pv-label",
+        "props": {
+          "pv": "TALL:READBACK",
+          "precision": "fromPV"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 70,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-016",
+        "type": "pv-text-input",
+        "props": {
+          "pv": "TALL:SETPOINT"
+        },
+        "geometry": {
+          "x": 240,
+          "y": 1190,
+          "width": 200,
+          "height": 30
+        }
+      },
+      {
+        "id": "w-017",
+        "type": "regular-button",
+        "props": {
+          "label": "Open E2E Panel",
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "e2e-panel.screen.json",
+              "target": "replace"
+            }
+          ]
+        },
+        "geometry": {
+          "x": 380,
+          "y": 1490,
+          "width": 200,
+          "height": 60
+        }
+      },
+      {
+        "id": "w-018",
+        "type": "text-label",
+        "props": {
+          "text": "Bottom edge"
+        },
+        "geometry": {
+          "x": 10,
+          "y": 1750,
+          "width": 200,
+          "height": 30
+        }
+      }
+    ]
+  }
+}

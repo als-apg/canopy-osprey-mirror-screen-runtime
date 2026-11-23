@@ -424,9 +424,14 @@ function remember(entries: Record<string, { mode: 'manual'; scale: number }>) {
   localStorage.setItem(ZOOM_RECORD, JSON.stringify(entries));
 }
 
-/** The only screen header's Fit button. */
+/** The only screen header's Fit width button (the default mode). */
 function fitButton(): HTMLElement {
-  return screen.getByRole('button', { name: 'Fit' });
+  return screen.getByRole('button', { name: 'Fit width' });
+}
+
+/** The only screen header's Fit page button. */
+function fitPageButton(): HTMLElement {
+  return screen.getByRole('button', { name: 'Fit page' });
 }
 
 /** Lets the tab adapter's portals settle (it re-applies on a microtask). */
@@ -825,11 +830,11 @@ describe('WorkspacePage chrome and zoom', () => {
     renderAt('/embed/bts/knob?_canopyZoom=fit');
     await screen.findByTestId('screen-probe');
     await waitFor(() => expect(here()).toBe('/embed/bts/knob'));
-    expect(fitButton().getAttribute('aria-pressed')).toBe('true');
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
     expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'manual', scale: 2 } });
   });
 
-  it('opens a screen at its remembered zoom, else Fit', async () => {
+  it('opens a screen at its remembered zoom, else fit width', async () => {
     remember({ 'bts/knob': { mode: 'manual', scale: 2 } });
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
@@ -841,7 +846,25 @@ describe('WorkspacePage chrome and zoom', () => {
     expect(fitButton().getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('a zoom button remembers the screen; Fit forgets it', async () => {
+  it('Fit page is remembered for the screen; Fit width forgets it', async () => {
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    fireEvent.click(fitPageButton());
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
+    expect(fitButton().getAttribute('aria-pressed')).toBe('false');
+    expect(zoomRecord()).toEqual({ 'bts/knob': { mode: 'fit', scale: 1 } });
+    cleanup();
+    // A new session opens the screen at fit page again, another screen at fit width.
+    sessionStorage.clear();
+    renderAt('/embed/bts/knob');
+    await screen.findByTestId('screen-probe');
+    expect(fitPageButton().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(fitButton());
+    expect(fitButton().getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
+  });
+
+  it('a zoom button remembers the screen; Fit width forgets it', async () => {
     renderAt('/embed/bts/knob?X=1');
     await screen.findByTestId('screen-probe');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -868,7 +891,7 @@ describe('WorkspacePage chrome and zoom', () => {
     expect(fitButton().getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('replace from a zoomed tile opens the new screen at Fit when it has no zoom', async () => {
+  it('replace from a zoomed tile opens the new screen at fit width when it has no zoom', async () => {
     renderAt('/embed/bts/knob');
     await screen.findByTestId('screen-probe');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -1777,7 +1800,7 @@ describe('storage keyed by the mount', () => {
   it("remembers a tile's zoom under the mount's record, never the root's", async () => {
     renderMounted(ALICE, '/embed/bts/knob');
     await screen.findByTestId('screen-probe');
-    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }));
+    fireEvent.click(screen.getByRole('button', { name: '100%' }));
     expect(screen.getByTestId('zoom-percent').textContent).toBe('100%');
     expect(localStorage.getItem(ZOOM_RECORD)).toBeNull();
     expect(sessionStorage.getItem(`${ZOOM_STORAGE_NAME}:${ALICE}:bts/knob`)).toBeNull();
@@ -1894,7 +1917,7 @@ describe('WorkspacePage tile bars (phase 1)', () => {
       fireEvent.focus(action);
     }
     // The zoom group's buttons are labelled the same way.
-    for (const name of ['Zoom out', 'Zoom in', 'Actual size']) {
+    for (const name of ['Zoom out', 'Zoom in', '100%']) {
       expect(within(magnet).getByRole('button', { name }).getAttribute('title')).toBeTruthy();
     }
     for (const key of ['bts/knob', 'common/magnet']) {

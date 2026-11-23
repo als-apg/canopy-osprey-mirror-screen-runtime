@@ -66,11 +66,31 @@ body,
 }
 
 /* Zoom (embed route): the outer box has the scaled size, the inner one the
-   authored size scaled from its top-left corner. In fit mode the scroll
+   authored size scaled from its top-left corner. In fit-page mode the scroll
    container never scrolls, so a scrollbar cannot shrink the fit area and
    trigger a re-fit. */
 .viewer-content--fit {
   overflow: hidden;
+}
+
+/* Fit width: the screen is as wide as the pane and the rest scrolls
+   vertically, never sideways. The vertical scrollbar's room is always kept,
+   so the fit area is the same with and without the bar. A screen held at the
+   magnification cap is narrower than the pane and sits in its middle. */
+.viewer-content--fit-width {
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+
+@supports (scrollbar-gutter: stable) {
+  .viewer-content--fit-width {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+.viewer-content--fit-width .viewer-zoom {
+  margin-inline: auto;
 }
 
 .viewer-zoom {

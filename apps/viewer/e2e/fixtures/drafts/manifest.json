@@ -25,6 +25,14 @@
       "schemaVersion": "1.0"
     },
     {
+      "id": "tall-panel",
+      "kind": "ir",
+      "title": "Tall Panel",
+      "category": "drafts",
+      "path": "tall-panel.screen.json",
+      "schemaVersion": "1.0"
+    },
+    {
       "id": "embedded/_sub",
       "kind": "ir",
       "title": "Sub Screen",

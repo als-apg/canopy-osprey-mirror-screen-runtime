@@ -279,7 +279,8 @@ describe('composeHeader — screen tabs', () => {
           { id: 'menu:download-screen', label: 'Download screen ⌘S', disabled: false },
           { id: 'menu:zoom-in', label: 'Zoom in · 100%' },
           { id: 'menu:zoom-out', label: 'Zoom out · 100%' },
-          { id: 'menu:zoom-fit', label: 'Fit', checked: false },
+          { id: 'menu:zoom-fit-width', label: 'Fit width', checked: false },
+          { id: 'menu:zoom-fit', label: 'Fit page', checked: false },
           { id: 'menu:zoom-100', label: '100%', checked: true },
           { id: 'menu:reset-layout', label: 'Reset layout', disabled: false },
           { id: 'menu:show-sub-screens', label: 'Show sub-screens', checked: true },
@@ -341,23 +342,37 @@ describe('composeHeader — screen tabs', () => {
     ]);
   });
 
-  it('zoom labels carry the current percentage; Fit and 100% check when active', () => {
+  it('zoom labels carry the current percentage; the fit in effect or 100% is checked', () => {
     const zoomed = more(
       composeHeader(
         screenInput(undefined, { screenView: view({ zoom: { scale: 0.8, fit: false } }) })
       )
     );
-    expect(zoomed.items.slice(2, 6)).toEqual([
+    expect(zoomed.items.slice(2, 7)).toEqual([
       { id: 'menu:zoom-in', label: 'Zoom in · 80%' },
       { id: 'menu:zoom-out', label: 'Zoom out · 80%' },
-      { id: 'menu:zoom-fit', label: 'Fit', checked: false },
+      { id: 'menu:zoom-fit-width', label: 'Fit width', checked: false },
+      { id: 'menu:zoom-fit', label: 'Fit page', checked: false },
       { id: 'menu:zoom-100', label: '100%', checked: false },
     ]);
     const fit = more(
       composeHeader(screenInput(undefined, { screenView: view({ zoom: { scale: 1, fit: true } }) }))
     );
-    expect(fit.items.slice(4, 6)).toEqual([
-      { id: 'menu:zoom-fit', label: 'Fit', checked: true },
+    expect(fit.items.slice(4, 7)).toEqual([
+      { id: 'menu:zoom-fit-width', label: 'Fit width', checked: false },
+      { id: 'menu:zoom-fit', label: 'Fit page', checked: true },
+      { id: 'menu:zoom-100', label: '100%', checked: false },
+    ]);
+    const width = more(
+      composeHeader(
+        screenInput(undefined, {
+          screenView: view({ zoom: { scale: 1, fit: false, fitWidth: true } }),
+        })
+      )
+    );
+    expect(width.items.slice(4, 7)).toEqual([
+      { id: 'menu:zoom-fit-width', label: 'Fit width', checked: true },
+      { id: 'menu:zoom-fit', label: 'Fit page', checked: false },
       { id: 'menu:zoom-100', label: '100%', checked: false },
     ]);
     const odd = more(

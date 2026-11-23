@@ -466,13 +466,13 @@ test.describe('per-tile instances', () => {
     // Both bars show their own zoom, focused or not.
     await expect(barPercent(page, PANEL)).toBeVisible();
     await expect(barPercent(page, WIDE)).toBeVisible();
-    await expect(await barZoom(page, WIDE, 'Fit')).toHaveAttribute('aria-pressed', 'true');
+    await expect(await barZoom(page, WIDE, 'Fit width')).toHaveAttribute('aria-pressed', 'true');
     await settledRect(page, PANEL);
     await settledRect(page, WIDE);
 
     // Zoom the focused tile: the unfocused one keeps its scale.
     const panelBefore = await scaleOf(page, PANEL);
-    await (await barZoom(page, WIDE, 'Actual size')).click();
+    await (await barZoom(page, WIDE, '100%')).click();
     await expect(barPercent(page, WIDE)).toHaveText('100%');
     await expect
       .poll(async () => Math.round((await tileRoot(page, WIDE).boundingBox())!.width))
@@ -487,7 +487,7 @@ test.describe('per-tile instances', () => {
     await expectFocused(page, WIDE);
     const wideBefore = await scaleOf(page, WIDE);
     expect(wideBefore.percent).toBe('100%');
-    await (await barZoom(page, PANEL, 'Actual size')).click();
+    await (await barZoom(page, PANEL, '100%')).click();
     await expect(barPercent(page, PANEL)).toHaveText('100%');
     await (await barZoom(page, PANEL, 'Zoom out')).click();
     await expect(barPercent(page, PANEL)).toHaveText('90%');
@@ -636,7 +636,7 @@ test.describe('per-tile instances', () => {
     await focusTile(page, WIDE);
     await settledRect(page, WIDE);
     const wideBefore = await scaleOf(page, WIDE);
-    await (await barZoom(page, ACTIONS, 'Actual size')).focus();
+    await (await barZoom(page, ACTIONS, '100%')).focus();
     await page.keyboard.press('Enter');
     await expect(barPercent(page, ACTIONS)).toHaveText('100%');
     await (await barZoom(page, ACTIONS, 'Zoom out')).focus();

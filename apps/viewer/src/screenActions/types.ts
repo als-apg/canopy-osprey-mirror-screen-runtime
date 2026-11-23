@@ -34,10 +34,16 @@ export interface ScreenTarget {
 }
 
 /** Everything an action may read. */
+/** The scale in effect, and whether it is the fit-page (`fit`) or the fit-width scale. */
+export interface ZoomView {
+  scale: number;
+  fit: boolean;
+  fitWidth?: boolean;
+}
+
 export interface ScreenActionContext {
   screen: ScreenTarget;
-  /** The scale in effect and whether it is the fit-to-view scale. */
-  zoom: { scale: number; fit: boolean };
+  zoom: ZoomView;
   /** The viewer config, when the host has one. */
   config?: Readonly<Partial<ViewerConfig>>;
   /** Absolute URL that reopens exactly this screen with its macros. */

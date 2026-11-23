@@ -53,6 +53,17 @@
   font-size: 0.8125rem;
 }
 
+/* The three-way fit switch (Fit width, Fit page, 100%): one framed row, the
+   mode in effect pressed. */
+.screen-header__fit {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: 0.25rem;
+  border: 1px solid var(--canopy-border);
+  white-space: nowrap;
+}
+
 /* ◀ ▶ are a sibling of the title block and never shrink: in a narrow bar the
    title gives way, not the buttons. */
 .screen-header__history {

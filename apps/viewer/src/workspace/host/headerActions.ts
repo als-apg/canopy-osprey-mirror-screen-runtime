@@ -27,6 +27,7 @@ import {
   MENU_SHOW_SUB_SCREENS,
   MENU_ZOOM_100,
   MENU_ZOOM_FIT,
+  MENU_ZOOM_FIT_WIDTH,
   MENU_ZOOM_IN,
   MENU_ZOOM_OUT,
   MORE_ID,
@@ -57,7 +58,8 @@ export const SUB_SCREENS_SHOWN = 'Sub-screens shown';
 export const SUB_SCREENS_HIDDEN = 'Sub-screens hidden';
 export const ZOOMED_IN = 'Zoomed in';
 export const ZOOMED_OUT = 'Zoomed out';
-export const ZOOMED_FIT = 'Zoomed to fit';
+export const ZOOMED_FIT_WIDTH = 'Zoomed to fit the width';
+export const ZOOMED_FIT = 'Zoomed to fit the page';
 export const ZOOMED_100 = 'Zoomed to 100%';
 export const ZOOM_UNAVAILABLE = 'Zoom is unavailable';
 
@@ -82,6 +84,7 @@ export function toolDoneMessage(
 export interface HeaderZoomControls {
   zoomIn(): void;
   zoomOut(): void;
+  fitWidth(): void;
   fit(): void;
   actual(): void;
 }
@@ -235,6 +238,9 @@ export function dispatchHeaderAction(
       return;
     case MENU_ZOOM_OUT:
       runZoom((z) => z.zoomOut(), ZOOMED_OUT, ctx);
+      return;
+    case MENU_ZOOM_FIT_WIDTH:
+      runZoom((z) => z.fitWidth(), ZOOMED_FIT_WIDTH, ctx);
       return;
     case MENU_ZOOM_FIT:
       runZoom((z) => z.fit(), ZOOMED_FIT, ctx);

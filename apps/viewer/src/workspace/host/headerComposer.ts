@@ -22,7 +22,8 @@
 // `<state> · <fragment>` on a screen. Never a control-target name.
 //
 // ⋯: [Save open tabs as collection…] + the tool's reported actions (tool tab)
-// or [Download screen ⌘S, Zoom in · N%, Zoom out · N%, Fit, 100%] (screen tab)
+// or [Download screen ⌘S, Zoom in · N%, Zoom out · N%, Fit width, Fit page,
+// 100%] (screen tab)
 // + [Reset layout, Show sub-screens ✓, Collections…]; over the host's 12-entry
 // cap the bottom of that order is dropped, never the top. Menu entries carry
 // their shortcut in the label (the host has no shortcut column) and a boolean
@@ -57,6 +58,7 @@ export const MENU_SAVE_COLLECTION = 'menu:save-collection';
 export const MENU_DOWNLOAD_SCREEN = 'menu:download-screen';
 export const MENU_ZOOM_IN = 'menu:zoom-in';
 export const MENU_ZOOM_OUT = 'menu:zoom-out';
+export const MENU_ZOOM_FIT_WIDTH = 'menu:zoom-fit-width';
 export const MENU_ZOOM_FIT = 'menu:zoom-fit';
 export const MENU_ZOOM_100 = 'menu:zoom-100';
 export const MENU_RESET_LAYOUT = 'menu:reset-layout';
@@ -85,7 +87,8 @@ export const SAVE_COLLECTION_LABEL = 'Save open tabs as collection…';
 export const DOWNLOAD_SCREEN_LABEL = 'Download screen';
 export const ZOOM_IN_LABEL = 'Zoom in';
 export const ZOOM_OUT_LABEL = 'Zoom out';
-export const ZOOM_FIT_LABEL = 'Fit';
+export const ZOOM_FIT_WIDTH_LABEL = 'Fit width';
+export const ZOOM_FIT_LABEL = 'Fit page';
 export const ZOOM_100_LABEL = '100%';
 export const RESET_LAYOUT_LABEL = 'Reset layout';
 export const SHOW_SUB_SCREENS_LABEL = 'Show sub-screens';
@@ -226,6 +229,7 @@ function toolEntries(report: ToolActionsReport | null, mac: boolean): HeaderMenu
 function screenEntries(view: ScreenVerbView | null, mac: boolean): HeaderMenuEntry[] {
   if (!view) return [];
   const percent = zoomPercent(view.zoom.scale);
+  const fitWidth = view.zoom.fitWidth === true;
   return [
     {
       id: MENU_DOWNLOAD_SCREEN,
@@ -234,8 +238,13 @@ function screenEntries(view: ScreenVerbView | null, mac: boolean): HeaderMenuEnt
     },
     { id: MENU_ZOOM_IN, label: `${ZOOM_IN_LABEL}${SUBTITLE_SEPARATOR}${percent}` },
     { id: MENU_ZOOM_OUT, label: `${ZOOM_OUT_LABEL}${SUBTITLE_SEPARATOR}${percent}` },
+    { id: MENU_ZOOM_FIT_WIDTH, label: ZOOM_FIT_WIDTH_LABEL, checked: fitWidth },
     { id: MENU_ZOOM_FIT, label: ZOOM_FIT_LABEL, checked: view.zoom.fit },
-    { id: MENU_ZOOM_100, label: ZOOM_100_LABEL, checked: !view.zoom.fit && view.zoom.scale === 1 },
+    {
+      id: MENU_ZOOM_100,
+      label: ZOOM_100_LABEL,
+      checked: !fitWidth && !view.zoom.fit && view.zoom.scale === 1,
+    },
   ];
 }
 
