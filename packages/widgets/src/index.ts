@@ -116,6 +116,9 @@ export {
   CarbonPVByteIndicator,
 } from './pv-wrappers/CarbonWidgets.js';
 
+// How a text readout formats a channel's value (precision, units, enum labels).
+export { displayText, widgetPrecision } from './pv-wrappers/pvText.js';
+
 export { ArcWidget } from './drawing/ArcWidget.js';
 export { LineWidget } from './drawing/LineWidget.js';
 export { MIN_HIT_WIDTH, readHitShape, shapeContains, shapeLabelPoint } from './drawing/shapeHit.js';
