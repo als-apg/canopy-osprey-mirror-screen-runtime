@@ -118,6 +118,8 @@ export {
 
 export { ArcWidget } from './drawing/ArcWidget.js';
 export { LineWidget } from './drawing/LineWidget.js';
+export { MIN_HIT_WIDTH, readHitShape, shapeContains, shapeLabelPoint } from './drawing/shapeHit.js';
+export type { HitShape, ShapePoint } from './drawing/shapeHit.js';
 export { ScreenImageWidget } from './drawing/ScreenImageWidget.js';
 export { WaveformPlot } from './charts/WaveformPlot.js';
 export { XYPlot } from './charts/XYPlot.js';

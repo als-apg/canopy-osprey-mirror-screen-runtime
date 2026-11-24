@@ -195,6 +195,166 @@ describe('clickable areas', () => {
   });
 });
 
+describe('a polygon met on its shape (hitArea: "shape")', () => {
+  // A band bent round a corner: its box is 200 x 100, the band 30 wide.
+  const BAND = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 100 },
+    { x: 170, y: 100 },
+    { x: 170, y: 30 },
+    { x: 0, y: 30 },
+  ];
+
+  function shapeArea(props: Record<string, unknown>): WidgetNode {
+    return {
+      id: 'area',
+      type: 'polygon',
+      props: { points: BAND, ...props } as Record<string, PropertyValue>,
+      geometry: { x: 20, y: 30, width: 200, height: 100 },
+    };
+  }
+
+  const target = (wrapper: HTMLElement) => wrapper.querySelector<SVGElement>('[data-canopy-hit]');
+
+  it('without hitArea is met on its box, as before', () => {
+    const { wrapper } = renderDoc([shapeArea({ actions: OPEN_BOOSTER, hoverLabel: 'Open' })]);
+    expect(wrapper.style.pointerEvents).toBe('auto');
+    expect(target(wrapper)).toBeNull();
+    fireEvent.mouseEnter(wrapper);
+    expect(hoverLayer(wrapper)!.dataset.canopyHover).toBe('');
+    expect(hoverLayer(wrapper)!.style.outline).not.toBe('');
+  });
+
+  it('leaves its box to what lies under it; the shape takes the pointer', () => {
+    const { wrapper } = renderDoc([shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape' })]);
+    expect(wrapper.style.pointerEvents).toBe('none');
+    expect(wrapper.style.cursor).toBe('pointer');
+    expect(target(wrapper)!.style.pointerEvents).toBe('all');
+  });
+
+  it('highlights the shape itself while hovered, with one label', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape', hoverLabel: 'Open ${SECTION} →' }),
+    ]);
+    expect(hoverLayer(wrapper)).toBeNull();
+
+    fireEvent.mouseOver(target(wrapper)!);
+    expect(wrapper.querySelectorAll('[data-canopy-hover]')).toHaveLength(1);
+    const layer = hoverLayer(wrapper)!;
+    expect(layer.dataset.canopyHover).toBe('shape');
+    expect(layer.style.pointerEvents).toBe('none');
+    // No box: the layer draws the shape's own points, in the accent.
+    expect(layer.style.outline).toBe('');
+    const fill = layer.querySelector<SVGElement>('[data-canopy-hover-fill]')!;
+    expect(fill.tagName).toBe('polygon');
+    expect(fill.getAttribute('points')).toBe('0,0 200,0 200,100 170,100 170,30 0,30');
+    expect(fill.getAttribute('fill')).toContain('var(--cr-7, #0f62fe)');
+    expect(fill.getAttribute('stroke')).toContain('var(--cr-7, #0f62fe)');
+    expect(Number(fill.getAttribute('fill-opacity'))).toBeLessThan(0.5);
+    expect(screen.getAllByText('Open Booster →')).toHaveLength(1);
+    expect(screen.getByText('Open Booster →').style.pointerEvents).toBe('none');
+
+    fireEvent.mouseOut(target(wrapper)!);
+    expect(hoverLayer(wrapper)).toBeNull();
+    expect(screen.queryByText('Open Booster →')).toBeNull();
+  });
+
+  it('centres the label on a point inside the shape, not on the middle of its box', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape', hoverLabel: 'Open' }),
+    ]);
+    fireEvent.mouseEnter(wrapper);
+    const label = screen.getByText('Open');
+    const x = parseFloat(label.style.left);
+    const y = parseFloat(label.style.top);
+    // In the 30-wide band: the top run or the right-hand run.
+    expect((y > 0 && y < 30 && x > 0 && x < 200) || (x > 170 && x < 200 && y < 100)).toBe(true);
+    expect(label.style.transform).toContain('translate(-50%, -50%)');
+  });
+
+  it('centres the label on hoverLabelAt when it names a point', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({
+        actions: OPEN_BOOSTER,
+        hitArea: 'shape',
+        hoverLabel: 'Open',
+        hoverLabelAt: [40, 15],
+      }),
+    ]);
+    fireEvent.mouseEnter(wrapper);
+    expect(screen.getByText('Open').style.left).toBe('40px');
+    expect(screen.getByText('Open').style.top).toBe('15px');
+  });
+
+  it('keeps the label upright on a turned node', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape', hoverLabel: 'Open', rotation: 40 }),
+    ]);
+    expect(wrapper.style.transform).toBe('rotate(40deg)');
+    fireEvent.mouseEnter(wrapper);
+    expect(screen.getByText('Open').style.transform).toContain('rotate(-40deg)');
+  });
+
+  it('highlights an open line along its path, at its hit width', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({
+        actions: OPEN_BOOSTER,
+        hitArea: 'shape',
+        closed: false,
+        hitWidth: 18,
+        hoverLabel: 'Open',
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+          { x: 100, y: 100 },
+        ],
+      }),
+    ]);
+    expect(target(wrapper)!.style.pointerEvents).toBe('stroke');
+    fireEvent.mouseEnter(wrapper);
+    const fill = hoverLayer(wrapper)!.querySelector<SVGElement>('[data-canopy-hover-fill]')!;
+    expect(fill.tagName).toBe('polyline');
+    expect(fill.getAttribute('fill')).toBe('none');
+    expect(fill.getAttribute('stroke-width')).toBe('18');
+    // The label sits half way along the path.
+    expect(screen.getByText('Open').style.left).toBe('100px');
+    expect(screen.getByText('Open').style.top).toBe('0px');
+  });
+
+  it('runs the node actions on a click on the shape', async () => {
+    const host = makeHost();
+    const { wrapper } = renderDoc([shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape' })], host);
+    fireEvent.click(target(wrapper)!);
+    await vi.waitFor(() => expect(host.navigate).toHaveBeenCalledTimes(1));
+  });
+
+  it('takes no pointer at all without actions', () => {
+    const { wrapper } = renderDoc([shapeArea({ hitArea: 'shape', hoverLabel: 'Open' })]);
+    expect(wrapper.style.pointerEvents).toBe('none');
+    expect(target(wrapper)).toBeNull();
+    fireEvent.mouseEnter(wrapper);
+    expect(hoverLayer(wrapper)).toBeNull();
+  });
+
+  it('is met on its box when its points draw no shape', () => {
+    const { wrapper } = renderDoc([
+      shapeArea({ actions: OPEN_BOOSTER, hitArea: 'shape', points: BAND.slice(0, 2) }),
+    ]);
+    expect(wrapper.style.pointerEvents).toBe('auto');
+    expect(target(wrapper)).toBeNull();
+    fireEvent.mouseEnter(wrapper);
+    expect(hoverLayer(wrapper)!.dataset.canopyHover).toBe('');
+  });
+
+  it('is a polygon prop: another node type keeps its box', () => {
+    const { wrapper } = renderDoc([area({ actions: OPEN_BOOSTER, hitArea: 'shape' })]);
+    expect(wrapper.style.pointerEvents).toBe('auto');
+    fireEvent.mouseEnter(wrapper);
+    expect(hoverLayer(wrapper)!.dataset.canopyHover).toBe('');
+  });
+});
+
 describe('resting outline', () => {
   it('draws outlineColor inside the box at outlineWidth (default 2)', () => {
     const { wrapper } = renderDoc([area({ outlineColor: '#24a148' })]);

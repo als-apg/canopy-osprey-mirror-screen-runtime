@@ -24,6 +24,24 @@ What the renderer does:
 - **Widgets** — instantiated through the `@slaclab/canopy-screen-widgets`
   registry via an IR→registry mapping; unknown/unregistered types become
   labeled placeholder boxes; every widget sits in its own error boundary.
+- **Clickable areas** — a node carrying `actions` runs them on a click. It
+  shows a pointer cursor and, while hovered, an accent tint and outline with
+  its optional `hoverLabel`. The pointer meets the node on its box (the box
+  turned by `rotation`, if any). A `polygon` can be met on its drawn shape
+  instead, so that a band along an arc or a bent line is one area, not a row
+  of boxes:
+
+  | Polygon prop   | Value                                                                                                                                                                                                                        |
+  | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `hitArea`      | `"shape"`: a closed polygon is met over its inside and its outline, an open one (`closed: false`) along its path. The node's box takes no pointer events, so what lies under its corners stays reachable. Absent: the box.   |
+  | `hitWidth`     | Open polygons: the width of the path the pointer meets, in authored px, round at ends and bends. Default: `lineWidth`, at least 12. Never less than `lineWidth`.                                                             |
+  | `hoverLabelAt` | `[x, y]` in the node's own coordinates (as `points`): where the hover label is centred. Default: half way along an open path; the centroid of a convex polygon; else a point well inside the shape, at the middle of a band. |
+
+  Hovering such a node highlights the shape itself and shows one label, kept
+  upright whatever turns the node and kept inside the screen. Where shapes
+  overlap, the later node in `children` is met. A polygon with `hitArea` but
+  no `actions` (and no `device`) takes no pointer events at all.
+
 - **Embedded screens** — resolved through the caller's `resolveScreen`, with
   a depth cap and a ref-chain cycle guard; schema-version-gated.
 - **Rules** — compiled client-side to Formula Engine `FormulaSpec`s at
