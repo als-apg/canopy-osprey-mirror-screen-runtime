@@ -159,8 +159,9 @@ export function pvRoleOf(type: string): ScreenPVRole {
 // per array item), `readbackPV`, `controlPV`, ...
 const CHANNEL_KEY = /^(pv|pvName|channel|[A-Za-z0-9]+_channels?|[a-z][A-Za-z0-9]*(Channel|PV))$/;
 // Props never read for channels: actions write, rules are read separately,
-// an embed's macros are values for the child, not PVs of this screen.
-const SKIPPED_PROPS = new Set(['actions', 'macros', 'rules']);
+// an embed's macros are values for the child, not PVs of this screen, and the
+// channels of a hover label are subscribed only while the label shows.
+const SKIPPED_PROPS = new Set(['actions', 'macros', 'rules', 'hoverLabelLines']);
 
 const EMBED_TYPE = 'embedded-display';
 const UNKNOWN_TYPE = 'unknown-widget';
