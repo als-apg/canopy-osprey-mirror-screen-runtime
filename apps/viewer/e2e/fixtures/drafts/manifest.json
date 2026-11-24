@@ -80,6 +80,14 @@
       "schemaVersion": "1.0"
     },
     {
+      "id": "hover-groups",
+      "kind": "ir",
+      "title": "Hover Groups",
+      "category": "drafts",
+      "path": "hover-groups.screen.json",
+      "schemaVersion": "1.0"
+    },
+    {
       "id": "plot-panel",
       "kind": "ir",
       "title": "Plot Panel",

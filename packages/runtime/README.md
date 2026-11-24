@@ -42,6 +42,91 @@ What the renderer does:
   overlap, the later node in `children` is met. A polygon with `hitArea` but
   no `actions` (and no `device`) takes no pointer events at all.
 
+- **Hover groups** — one thing drawn as many nodes (a coil as two polygons,
+  an ellipse and a row in a list) hovers as one. Three props, on any node
+  type:
+
+  | Prop              | Value                                                                                                                                                                                                                                                                                                                          |
+  | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `hoverGroups`     | `string[]`, group names from narrow to wide: `["coil-4", "circuit-main"]`. While the pointer is on such a node, every node whose `hoverGroups` holds its **first** name is highlighted as a hovered clickable area is, and every other node that holds one of its **further** names gets the same highlight at lower strength. |
+  | `hoverDimGroup`   | `string`, the name of the drawing the node is a part of. While the hovered node carries `hoverGroups` and the same `hoverDimGroup`, the nodes of that drawing with neither highlight are drawn at reduced opacity. Absent: nothing is dimmed.                                                                                  |
+  | `hoverLabelLines` | A list of short lines for the hover label, under the `hoverLabel` if there is one. A line is `{ "text": "…" }` or `{ "label": "Current", "pv": "DEV:1:Current", "precision": 2 }`: the channel's live value, as `label: value`. `label`, `precision` and `showUnits` are optional.                                             |
+
+  A node with `hoverGroups` takes the pointer whether it has `actions` or
+  not: on its box, or a polygon with `hitArea: "shape"` on its shape. Only a
+  node with `actions` shows the pointer cursor, and a click runs the actions
+  of the node it lands on, as before. The highlight follows the node: the
+  shape of a polygon met on its shape, the ellipse of an `ellipse`, else the
+  box, which on a `text-label` tints the row. One label shows, that of the
+  node the pointer is on. Names are matched over the whole rendered screen,
+  embedded screens included, after macro substitution: a macro in a name
+  (`"${DEV}-coil"`) keeps the instances of an embedded screen apart. Put
+  `hoverDimGroup` on the parts, not on a container around them: a dimmed
+  container dims everything in it.
+
+  A value line is formatted as a text readout formats it: with `precision`,
+  that many decimals and the channel's unit (`"showUnits": false` leaves the
+  unit out); without, the channel's own text (its precision, unit or enum
+  label). A channel that is not connected shows `---`. The channels of a
+  label are subscribed only while the label shows, starting from the value
+  the screen already holds; they are no part of the node's own channels (no
+  `data-pv`, no disconnected cue, not in `collectScreenPVs`). The lines show
+  on a node that hovers: one with `actions` or with `hoverGroups` (a group
+  of one will do). Such a label is drawn over the nodes that follow its own
+  and is kept inside the screen. On a polygon met on its shape a tall label
+  covers the part unless `hoverLabelAt` moves it; the point may lie outside
+  the shape.
+
+  ```json
+  [
+    {
+      "id": "coil-4-upper",
+      "type": "polygon",
+      "geometry": { "x": 80, "y": 60, "width": 100, "height": 40 },
+      "props": {
+        "points": [
+          { "x": 0, "y": 0 },
+          { "x": 100, "y": 0 },
+          { "x": 100, "y": 40 },
+          { "x": 0, "y": 40 }
+        ],
+        "hitArea": "shape",
+        "hoverGroups": ["coil-4", "circuit-main"],
+        "hoverDimGroup": "magnet",
+        "hoverLabel": "Coil 4",
+        "hoverLabelAt": [50, -50],
+        "hoverLabelLines": [
+          { "text": "Main circuit" },
+          { "label": "Current", "pv": "DEV:1:Current", "precision": 2 },
+          { "label": "State", "pv": "DEV:1:State" }
+        ]
+      }
+    },
+    {
+      "id": "coil-4-lower",
+      "type": "polygon",
+      "geometry": { "x": 80, "y": 180, "width": 100, "height": 40 },
+      "props": {
+        "points": [
+          { "x": 0, "y": 0 },
+          { "x": 100, "y": 0 },
+          { "x": 100, "y": 40 },
+          { "x": 0, "y": 40 }
+        ],
+        "hitArea": "shape",
+        "hoverGroups": ["coil-4", "circuit-main"],
+        "hoverDimGroup": "magnet"
+      }
+    },
+    {
+      "id": "coil-4-row",
+      "type": "text-label",
+      "geometry": { "x": 400, "y": 60, "width": 200, "height": 24 },
+      "props": { "text": "Coil 4", "hoverGroups": ["coil-4", "circuit-main"] }
+    }
+  ]
+  ```
+
 - **Embedded screens** — resolved through the caller's `resolveScreen`, with
   a depth cap and a ref-chain cycle guard; schema-version-gated.
 - **Rules** — compiled client-side to Formula Engine `FormulaSpec`s at

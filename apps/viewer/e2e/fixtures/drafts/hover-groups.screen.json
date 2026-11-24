@@ -1,0 +1,333 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "screen",
+  "id": "hover-groups",
+  "metadata": {
+    "title": "Hover Groups",
+    "source": {
+      "type": "screen-builder",
+      "savedAt": "2026-11-24T00:00:00Z"
+    },
+    "size": {
+      "width": 640,
+      "height": 300
+    }
+  },
+  "macros": [],
+  "root": {
+    "id": "w-001",
+    "type": "absolute-canvas",
+    "props": {
+      "width": 640,
+      "height": 300
+    },
+    "geometry": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 300
+    },
+    "children": [
+      {
+        "id": "yoke",
+        "type": "rectangle",
+        "props": {
+          "fill": true,
+          "fillColor": "#e0e0e0",
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1,
+          "hoverDimGroup": "magnet"
+        },
+        "geometry": {
+          "x": 40,
+          "y": 40,
+          "width": 300,
+          "height": 220
+        }
+      },
+      {
+        "id": "coil-a-upper",
+        "type": "polygon",
+        "props": {
+          "points": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 100,
+              "y": 0
+            },
+            {
+              "x": 100,
+              "y": 60
+            },
+            {
+              "x": 60,
+              "y": 60
+            },
+            {
+              "x": 60,
+              "y": 25
+            },
+            {
+              "x": 0,
+              "y": 25
+            }
+          ],
+          "closed": true,
+          "fill": true,
+          "fillColor": "#f1c21b",
+          "lineColor": "#8e6a00",
+          "lineWidth": 1,
+          "hitArea": "shape",
+          "hoverGroups": ["coil-a", "circuit-main"],
+          "hoverDimGroup": "magnet",
+          "hoverLabel": "Coil A",
+          "hoverLabelLines": [
+            {
+              "text": "Main circuit"
+            },
+            {
+              "label": "Current",
+              "pv": "DEV:1:Current",
+              "precision": 2
+            },
+            {
+              "label": "Field",
+              "pv": "DEV:1:Field"
+            },
+            {
+              "label": "Flow",
+              "pv": "DEV:1:Flow"
+            }
+          ],
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "e2e-panel.screen.json",
+              "target": "replace"
+            }
+          ]
+        },
+        "geometry": {
+          "x": 80,
+          "y": 60,
+          "width": 100,
+          "height": 60
+        }
+      },
+      {
+        "id": "coil-a-lower",
+        "type": "polygon",
+        "props": {
+          "points": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 100,
+              "y": 0
+            },
+            {
+              "x": 100,
+              "y": 60
+            },
+            {
+              "x": 0,
+              "y": 60
+            }
+          ],
+          "closed": true,
+          "fill": true,
+          "fillColor": "#f1c21b",
+          "lineColor": "#8e6a00",
+          "lineWidth": 1,
+          "hitArea": "shape",
+          "hoverGroups": ["coil-a", "circuit-main"],
+          "hoverDimGroup": "magnet",
+          "actions": [
+            {
+              "type": "open_display",
+              "file": "e2e-panel.screen.json",
+              "target": "replace"
+            }
+          ]
+        },
+        "geometry": {
+          "x": 80,
+          "y": 180,
+          "width": 100,
+          "height": 60
+        }
+      },
+      {
+        "id": "coil-a-lead",
+        "type": "ellipse",
+        "props": {
+          "fill": true,
+          "fillColor": "#f1c21b",
+          "lineColor": "#8e6a00",
+          "lineWidth": 1,
+          "hoverGroups": ["coil-a", "circuit-main"],
+          "hoverDimGroup": "magnet"
+        },
+        "geometry": {
+          "x": 190,
+          "y": 135,
+          "width": 30,
+          "height": 30
+        }
+      },
+      {
+        "id": "coil-b",
+        "type": "polygon",
+        "props": {
+          "points": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 80,
+              "y": 0
+            },
+            {
+              "x": 80,
+              "y": 60
+            },
+            {
+              "x": 0,
+              "y": 60
+            }
+          ],
+          "closed": true,
+          "fill": true,
+          "fillColor": "#f1c21b",
+          "lineColor": "#8e6a00",
+          "lineWidth": 1,
+          "hitArea": "shape",
+          "hoverGroups": ["coil-b", "circuit-main"],
+          "hoverDimGroup": "magnet",
+          "hoverLabel": "Coil B"
+        },
+        "geometry": {
+          "x": 230,
+          "y": 60,
+          "width": 80,
+          "height": 60
+        }
+      },
+      {
+        "id": "trim",
+        "type": "rectangle",
+        "props": {
+          "fill": true,
+          "fillColor": "#78a9ff",
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1,
+          "hoverGroups": ["trim"],
+          "hoverDimGroup": "magnet",
+          "hoverLabel": "Trim"
+        },
+        "geometry": {
+          "x": 230,
+          "y": 180,
+          "width": 80,
+          "height": 60
+        }
+      },
+      {
+        "id": "coil-a-row",
+        "type": "text-label",
+        "props": {
+          "fontSize": 14,
+          "foregroundColor": {
+            "$role": "Text",
+            "fallback": "#161616",
+            "fallbackDark": "#f4f4f4"
+          },
+          "text": "Coil A",
+          "hoverGroups": ["coil-a", "circuit-main"],
+          "hoverLabel": "Coil A in the list",
+          "hoverLabelPlacement": "bottom-right"
+        },
+        "geometry": {
+          "x": 400,
+          "y": 60,
+          "width": 200,
+          "height": 24
+        }
+      },
+      {
+        "id": "coil-b-row",
+        "type": "text-label",
+        "props": {
+          "fontSize": 14,
+          "foregroundColor": {
+            "$role": "Text",
+            "fallback": "#161616",
+            "fallbackDark": "#f4f4f4"
+          },
+          "text": "Coil B",
+          "hoverGroups": ["coil-b", "circuit-main"]
+        },
+        "geometry": {
+          "x": 400,
+          "y": 90,
+          "width": 200,
+          "height": 24
+        }
+      },
+      {
+        "id": "legend",
+        "type": "text-label",
+        "props": {
+          "fontSize": 14,
+          "foregroundColor": {
+            "$role": "Text",
+            "fallback": "#161616",
+            "fallbackDark": "#f4f4f4"
+          },
+          "text": "Legend"
+        },
+        "geometry": {
+          "x": 400,
+          "y": 130,
+          "width": 200,
+          "height": 24
+        }
+      },
+      {
+        "id": "pump",
+        "type": "rectangle",
+        "props": {
+          "fill": true,
+          "fillColor": "#a7f0ba",
+          "lineColor": {
+            "$role": "Grid",
+            "fallback": "#c6c6c6",
+            "fallbackDark": "#757575"
+          },
+          "lineWidth": 1,
+          "hoverDimGroup": "pump"
+        },
+        "geometry": {
+          "x": 400,
+          "y": 180,
+          "width": 80,
+          "height": 60
+        }
+      }
+    ]
+  }
+}

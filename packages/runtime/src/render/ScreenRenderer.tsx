@@ -81,13 +81,17 @@ import { usePVLinkState } from '../pv/usePVLinkState.js';
 import type { PVLinkState } from '../pv/usePVLinkState.js';
 import { combineLinkStates, drawsCue, nodeLinkChannels, ruleLinkState } from './linkState.js';
 import {
+  DIMMED_OPACITY,
   HoverLayer,
   ShapeHoverLayer,
-  hoverLabel,
+  hoverLabelContent,
+  hoverLabelLines,
   hoverLabelPlacement,
   nodeHitShape,
   restingOutline,
 } from './hover.js';
+import type { HoverLevel } from './hover.js';
+import { HoverGroupStore, HoverGroupStoreContext, useHoverGroup } from './hoverGroups.js';
 import { reportOf, useFormulaChannelReport, vectorInputsText } from './vectorInputs.js';
 import { mapIRWidget } from './irMap.js';
 import { ScreenPVScope } from './ScreenPVScope.js';
@@ -557,6 +561,9 @@ function MountedNodeView({
   const formulaReport = reportOf(rulesLink, useFormulaChannelReport(linkChannels.channels));
   const effective = applyRuleOutputs(irProps, node.geometry, node.rules, outputs);
   const deviceHover = useDeviceHover(ownDevice, effective.visible);
+  // Hover groups: the node's part in what the pointer is on, anywhere on the
+  // screen (hoverGroups.ts).
+  const hoverGroup = useHoverGroup(effective.props, effective.visible);
   // A node carrying a staging action (in its rule-patched props, as its
   // click reads them) follows the store: it is inert while its scopes hold
   // nothing or are being written, and shows how many values they hold.
@@ -624,14 +631,26 @@ function MountedNodeView({
   // A polygon met on its shape (`hitArea: 'shape'`) leaves its box to what
   // lies under it: the widget's own target takes the pointer, and its events
   // reach this wrapper as a box's do. A shape with nothing to click or link
-  // takes no pointer at all.
-  const takesPointer = actions.length > 0 || ownDevice !== null;
+  // takes no pointer at all. A node with hover groups takes the pointer as a
+  // node with actions does, clickable or not.
+  const grouped = hoverGroup.pointer !== null;
+  const takesPointer = actions.length > 0 || ownDevice !== null || grouped;
   const hitShape = takesPointer ? nodeHitShape(node.type, effective.props) : null;
-  if (actions.length > 0 && hitShape === null) style.pointerEvents = 'auto';
+  if ((actions.length > 0 || grouped) && hitShape === null) style.pointerEvents = 'auto';
   // A clickable node: pointer cursor, and a highlight layer while hovered.
   // The link cue outranks the hover outline, which outranks the resting one.
   const clickable = actions.length > 0 && inertReason === null;
-  const showHover = clickable && hovered;
+  // A node with hover groups is highlighted with its group, wherever the
+  // pointer is on it; the node the pointer is on alone shows the label.
+  const isHovered = grouped ? hoverGroup.role === 'hovered' : clickable && hovered;
+  const hoverLevel: HoverLevel | null =
+    isHovered || hoverGroup.role === 'member'
+      ? 'strong'
+      : hoverGroup.role === 'related'
+        ? 'related'
+        : null;
+  const showHover = hoverLevel !== null;
+  if (hoverGroup.role === 'dimmed') attrs['data-canopy-hover-dimmed'] = '';
   const resting = restingOutline(effective.props);
   if (drawsCue(pvState)) {
     // On a no-state fill the cue takes the theme's text colour: the
@@ -651,14 +670,16 @@ function MountedNodeView({
         onContextMenu?: (e: MouseEvent<HTMLDivElement>) => void;
       }
     | undefined;
-  if (clickable || deviceHover !== null) {
+  if (clickable || deviceHover !== null || grouped) {
     pointerHandlers = {
       onMouseEnter: () => {
-        if (clickable) setHovered(true);
+        if (clickable && !grouped) setHovered(true);
+        hoverGroup.pointer?.enter();
         deviceHover?.enter();
       },
       onMouseLeave: () => {
-        if (clickable) setHovered(false);
+        if (clickable && !grouped) setHovered(false);
+        hoverGroup.pointer?.leave();
         deviceHover?.leave();
       },
     };
@@ -710,21 +731,30 @@ function MountedNodeView({
   }
   // Carrier props the wrapper applies (parity with the builder's preview).
   const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
+  const label = isHovered ? hoverLabelContent(effective.props) : null;
+  // A label of a group or with live lines is lifted over the nodes drawn
+  // after its own: it is larger than its part, and must stay readable.
+  const raised = grouped || hoverLabelLines(effective.props).length > 0;
   const hoverLayer = (
     <>
-      {showHover && hitShape !== null && (
+      {hoverLevel !== null && hitShape !== null && (
         <ShapeHoverLayer
           shape={hitShape}
-          label={hoverLabel(effective.props)}
+          label={label}
           labelAt={effective.props.hoverLabelAt}
           rotation={rotation}
+          level={hoverLevel}
+          raised={raised}
           flat={flat}
         />
       )}
-      {showHover && hitShape === null && (
+      {hoverLevel !== null && hitShape === null && (
         <HoverLayer
-          label={hoverLabel(effective.props)}
+          label={label}
           placement={hoverLabelPlacement(effective.props)}
+          level={hoverLevel}
+          round={grouped && node.type === 'ellipse'}
+          raised={raised}
           flat={flat}
         />
       )}
@@ -749,6 +779,8 @@ function MountedNodeView({
   const transparency = Math.min(100, Math.max(0, Number(effective.props.opacity ?? 0) || 0));
   if (rotation) style.transform = `rotate(${rotation}deg)`;
   style.opacity = 1 - transparency / 100;
+  // A part of the hovered drawing with no highlight steps back.
+  if (hoverGroup.role === 'dimmed') style.opacity *= DIMMED_OPACITY;
 
   // The IR root container: a chrome-less positioned box; children only.
   // The converter carries the EDM screen background on the canvas so the page
@@ -1054,10 +1086,16 @@ export function ScreenRenderer({
   // The scheme's stylesheet, scoped to this root by data-scheme; the mode is
   // mirrored onto data-theme imperatively, so a mode flip renders nothing.
   useSchemeStyleSheet(colorScheme);
-  // One device store per screen document: a screen opened in place of this one
-  // starts with no focus or menu left over from it.
-  const [devices, setDevices] = useState(() => ({ screen, store: new DeviceStore() }));
-  if (devices.screen !== screen) setDevices({ screen, store: new DeviceStore() });
+  // One device store and one hover-group store per screen document: a screen
+  // opened in place of this one starts with no focus, menu or hover left over.
+  const [devices, setDevices] = useState(() => ({
+    screen,
+    store: new DeviceStore(),
+    hoverGroups: new HoverGroupStore(),
+  }));
+  if (devices.screen !== screen) {
+    setDevices({ screen, store: new DeviceStore(), hoverGroups: new HoverGroupStore() });
+  }
   const deviceStore = devices.store;
   const stagingStore = useStagingInstance(screen, effectiveMacros);
   const host = useContext(ActionHostContext);
@@ -1079,32 +1117,34 @@ export function ScreenRenderer({
       <SchemeContext.Provider value={colorScheme}>
         <EmbedContext.Provider value={embed}>
           <DeviceStoreContext.Provider value={deviceStore}>
-            <Staging.Provider value={stagingStore}>
-              <div
-                ref={rootRef}
-                className="canopy-screen"
-                data-testid="screen-root"
-                data-screen-id={screen.id}
-                data-scheme={colorScheme.meta.flatHash}
-                data-render-mode={mode}
-                style={{
-                  position: 'relative',
-                  width: screen.metadata.size.width,
-                  height: screen.metadata.size.height,
-                  overflow: 'hidden',
-                }}
-              >
-                <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
-                  <WidgetNodeView
-                    node={screen.root}
-                    macros={effectiveMacros}
-                    formulas={screen.formulas}
-                    idChain={[]}
-                  />
-                  {host.plotPVs !== undefined && <DeviceMenu plotPVs={host.plotPVs} />}
-                </ScreenPVScope>
-              </div>
-            </Staging.Provider>
+            <HoverGroupStoreContext.Provider value={devices.hoverGroups}>
+              <Staging.Provider value={stagingStore}>
+                <div
+                  ref={rootRef}
+                  className="canopy-screen"
+                  data-testid="screen-root"
+                  data-screen-id={screen.id}
+                  data-scheme={colorScheme.meta.flatHash}
+                  data-render-mode={mode}
+                  style={{
+                    position: 'relative',
+                    width: screen.metadata.size.width,
+                    height: screen.metadata.size.height,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <ScreenPVScope formulas={screen.formulas} macros={effectiveMacros}>
+                    <WidgetNodeView
+                      node={screen.root}
+                      macros={effectiveMacros}
+                      formulas={screen.formulas}
+                      idChain={[]}
+                    />
+                    {host.plotPVs !== undefined && <DeviceMenu plotPVs={host.plotPVs} />}
+                  </ScreenPVScope>
+                </div>
+              </Staging.Provider>
+            </HoverGroupStoreContext.Provider>
           </DeviceStoreContext.Provider>
         </EmbedContext.Provider>
       </SchemeContext.Provider>
