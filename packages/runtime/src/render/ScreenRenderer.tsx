@@ -80,7 +80,14 @@ import { dispatchActions } from '../actions/dispatch.js';
 import { usePVLinkState } from '../pv/usePVLinkState.js';
 import type { PVLinkState } from '../pv/usePVLinkState.js';
 import { combineLinkStates, drawsCue, nodeLinkChannels, ruleLinkState } from './linkState.js';
-import { HoverLayer, hoverLabel, hoverLabelPlacement, restingOutline } from './hover.js';
+import {
+  HoverLayer,
+  ShapeHoverLayer,
+  hoverLabel,
+  hoverLabelPlacement,
+  nodeHitShape,
+  restingOutline,
+} from './hover.js';
 import { reportOf, useFormulaChannelReport, vectorInputsText } from './vectorInputs.js';
 import { mapIRWidget } from './irMap.js';
 import { ScreenPVScope } from './ScreenPVScope.js';
@@ -614,7 +621,13 @@ function MountedNodeView({
     attrs.title = inertReason;
   }
   let onClick: ((e: { clientX: number; clientY: number }) => void) | undefined;
-  if (actions.length > 0) style.pointerEvents = 'auto';
+  // A polygon met on its shape (`hitArea: 'shape'`) leaves its box to what
+  // lies under it: the widget's own target takes the pointer, and its events
+  // reach this wrapper as a box's do. A shape with nothing to click or link
+  // takes no pointer at all.
+  const takesPointer = actions.length > 0 || ownDevice !== null;
+  const hitShape = takesPointer ? nodeHitShape(node.type, effective.props) : null;
+  if (actions.length > 0 && hitShape === null) style.pointerEvents = 'auto';
   // A clickable node: pointer cursor, and a highlight layer while hovered.
   // The link cue outranks the hover outline, which outranks the resting one.
   const clickable = actions.length > 0 && inertReason === null;
@@ -660,7 +673,7 @@ function MountedNodeView({
       e.stopPropagation();
     };
   }
-  if (ownDevice !== null) style.pointerEvents = 'auto';
+  if (ownDevice !== null && hitShape === null) style.pointerEvents = 'auto';
   if (clickable) style.cursor = 'pointer';
   // `label`: what was clicked, when it is not the node itself (a menu item).
   const run = (chosen: readonly RuntimeAction[], label?: string) => {
@@ -695,9 +708,20 @@ function MountedNodeView({
   if (clickable) {
     onClick = asMenu ? (e) => setMenuAt({ x: e.clientX, y: e.clientY }) : () => run(actions);
   }
+  // Carrier props the wrapper applies (parity with the builder's preview).
+  const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
   const hoverLayer = (
     <>
-      {showHover && (
+      {showHover && hitShape !== null && (
+        <ShapeHoverLayer
+          shape={hitShape}
+          label={hoverLabel(effective.props)}
+          labelAt={effective.props.hoverLabelAt}
+          rotation={rotation}
+          flat={flat}
+        />
+      )}
+      {showHover && hitShape === null && (
         <HoverLayer
           label={hoverLabel(effective.props)}
           placement={hoverLabelPlacement(effective.props)}
@@ -722,8 +746,6 @@ function MountedNodeView({
     </>
   );
 
-  // Carrier props the wrapper applies (parity with the builder's preview).
-  const rotation = typeof effective.props.rotation === 'number' ? effective.props.rotation : 0;
   const transparency = Math.min(100, Math.max(0, Number(effective.props.opacity ?? 0) || 0));
   if (rotation) style.transform = `rotate(${rotation}deg)`;
   style.opacity = 1 - transparency / 100;
@@ -784,6 +806,12 @@ function MountedNodeView({
   }
 
   const WidgetComponent = definition.component;
+  let widgetProps = mapped.props;
+  if (inertReason !== null) widgetProps = { ...widgetProps, [WRITES_INERT_PROP]: inertReason };
+  // A polygon with nothing to click or link draws no pointer target.
+  if (node.type === 'polygon' && !takesPointer && widgetProps.hitArea !== undefined) {
+    widgetProps = { ...widgetProps, hitArea: undefined };
+  }
   const rendered = renderChildren(node, macros, formulas, chain);
   const children =
     ownDevice !== null && rendered !== undefined ? (
@@ -806,11 +834,7 @@ function MountedNodeView({
             width: effective.geometry.width,
             height: effective.geometry.height,
           }}
-          props={
-            inertReason === null
-              ? mapped.props
-              : { ...mapped.props, [WRITES_INERT_PROP]: inertReason }
-          }
+          props={widgetProps}
           isSelected={false}
           isEditing={false}
         >

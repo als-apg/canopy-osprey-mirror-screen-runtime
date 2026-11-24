@@ -72,6 +72,14 @@
       "schemaVersion": "1.0"
     },
     {
+      "id": "shape-areas",
+      "kind": "ir",
+      "title": "Shape Areas",
+      "category": "drafts",
+      "path": "shape-areas.screen.json",
+      "schemaVersion": "1.0"
+    },
+    {
       "id": "plot-panel",
       "kind": "ir",
       "title": "Plot Panel",

@@ -1,7 +1,14 @@
 // Closed polygon (PyDMDrawingIrregularPolygon) / open polygon (polyline) render.
 // Vertex editing lives in the builder; this is the render-only runtime widget.
+//
+// The drawn shape takes no pointer events. With `hitArea: 'shape'` the widget
+// adds an invisible copy that does: the pointer then meets the node on its
+// shape (shapeHit.ts) and not on its box. A closed polygon is met over its
+// inside and its outline; an open one along its path, widened to `hitWidth`
+// (authored px; default the line width, at least MIN_HIT_WIDTH).
 import { useMemo } from 'react';
 import type { WidgetRendererProps } from '../registry/WidgetRegistry.js';
+import { readHitShape } from './shapeHit.js';
 
 interface Point {
   x: number;
@@ -29,6 +36,7 @@ export function PolygonWidget({ layout, props, isSelected }: WidgetRendererProps
   }, [rawPoints, layout.width, layout.height]);
 
   const pointsAttr = useMemo(() => points.map((p) => `${p.x},${p.y}`).join(' '), [points]);
+  const hitShape = readHitShape(props);
 
   const dashArray = useMemo(() => {
     switch (lineStyle) {
@@ -51,6 +59,18 @@ export function PolygonWidget({ layout, props, isSelected }: WidgetRendererProps
     strokeLinecap: 'round' as const,
     style: { pointerEvents: 'none' as const },
   };
+  // The pointer target: unpainted, so it shows nowhere (print and export
+  // included), and met by the pointer where the shape would be painted.
+  const hitProps = hitShape && {
+    'data-canopy-hit': '',
+    points: pointsAttr,
+    fill: 'none',
+    stroke: 'none',
+    strokeWidth: hitShape.strokeWidth,
+    strokeLinejoin: 'round' as const,
+    strokeLinecap: 'round' as const,
+    style: { pointerEvents: closed ? ('all' as const) : ('stroke' as const) },
+  };
 
   return (
     <svg
@@ -61,6 +81,7 @@ export function PolygonWidget({ layout, props, isSelected }: WidgetRendererProps
       style={{ overflow: 'visible', outline: isSelected ? '2px solid #0f62fe' : 'none' }}
     >
       {closed ? <polygon {...shapeProps} /> : <polyline {...shapeProps} />}
+      {hitProps && (closed ? <polygon {...hitProps} /> : <polyline {...hitProps} />)}
     </svg>
   );
 }
