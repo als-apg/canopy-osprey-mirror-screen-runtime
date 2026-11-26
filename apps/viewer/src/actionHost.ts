@@ -12,10 +12,11 @@
 // gateway-bound `formula://` channel on a navigated-to screen renders disconnected
 // by design (phase-1 behaviour); only `hare` mode connects them.
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useHref, useLocation, useNavigate } from 'react-router-dom';
 import type { Location, NavigateFunction } from 'react-router-dom';
-import type { ActionHost } from '@slaclab/canopy-screen-runtime';
+import type { ActionHost, CorrelationHost, PVInfo } from '@slaclab/canopy-screen-runtime';
+import { ServicesContext } from './services.js';
 import type { Manifest, ManifestScreen } from './api.js';
 import { directoryOf, fetchManifest } from './api.js';
 
@@ -38,6 +39,14 @@ export interface ActionHostDeps {
   openTab?(url: string): boolean;
   /** Plot PVs in the data browser (Trace); absent without a workspace. */
   plotPVs?(pvs: readonly string[]): void;
+  /** Add one PV to the data browser's plot; absent where `plotPVs` is. */
+  addToPlot?(pv: string): void;
+  /** The correlation plot; absent where that tool is not served. */
+  correlation?: CorrelationHost;
+  /** Open the page about one PV; absent where the config names none. */
+  pvDetails?(pv: string): void;
+  /** What the PV source states about a PV; absent without a live source. */
+  pvInfo?(pv: string): PVInfo | null;
 }
 
 /** The two routes a screen renders under. */
@@ -161,6 +170,10 @@ export function createActionHost(deps: ActionHostDeps): ActionHost {
     close: () => deps.close(),
     showError: (message) => deps.showError(message),
     ...(deps.plotPVs ? { plotPVs: (pvs: readonly string[]) => deps.plotPVs?.(pvs) } : {}),
+    ...(deps.addToPlot ? { addToPlot: deps.addToPlot } : {}),
+    ...(deps.correlation ? { correlation: deps.correlation } : {}),
+    ...(deps.pvDetails ? { pvDetails: deps.pvDetails } : {}),
+    ...(deps.pvInfo ? { pvInfo: deps.pvInfo } : {}),
   };
 }
 
@@ -207,6 +220,30 @@ export interface WorkspaceTabs {
   currentPathname?(): string | undefined;
   /** Plot PVs in the data browser, as "Plot in Data Browser" does. */
   plotPVs?(pvs: readonly string[]): void;
+  /** Add one PV to what the data browser plots. */
+  addToPlot?(pv: string): void;
+  /** The correlation plot's X pick and its plot. */
+  correlation?: CorrelationHost;
+}
+
+/** What a PV's right-click menu reaches beyond the screen, fixed per page. */
+export interface PVMenuFeatures {
+  /** The data browser is served: plot a PV's history, add one to the plot. */
+  plot?: boolean;
+  /** The correlation tool is served. */
+  correlation?: boolean;
+  /** `pvDetails.url` of the config: the page about one PV, `{pv}` its name. */
+  detailsUrl?: string | undefined;
+}
+
+/** The page about `pv` under `template`, or null when it is not an http(s) page. */
+export function pvDetailsUrl(template: string, pv: string): string | null {
+  try {
+    const url = new URL(template.replaceAll('{pv}', encodeURIComponent(pv)), document.baseURI);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -235,7 +272,9 @@ function routerActionHost(
   basename: string,
   router: () => RouterSnapshot,
   raise: (error: RaisedError) => void,
-  tabs: () => WorkspaceTabs | undefined
+  tabs: () => WorkspaceTabs | undefined,
+  features: PVMenuFeatures,
+  pvInfo: ((pv: string) => PVInfo | null) | undefined
 ): ActionHost {
   return createActionHost({
     basename,
@@ -253,7 +292,33 @@ function routerActionHost(
       workspace.open(url, 'append');
       return true;
     },
-    plotPVs: (pvs) => tabs()?.plotPVs?.(pvs),
+    // The plot hooks exist only where their tool is served, so a menu never
+    // offers a plot that cannot open.
+    ...(features.plot
+      ? {
+          plotPVs: (pvs: readonly string[]) => tabs()?.plotPVs?.(pvs),
+          addToPlot: (pv: string) => tabs()?.addToPlot?.(pv),
+        }
+      : {}),
+    ...(features.correlation
+      ? {
+          correlation: {
+            x: () => tabs()?.correlation?.x() ?? null,
+            pickX: (pv: string) => tabs()?.correlation?.pickX(pv),
+            plotY: (pv: string) => tabs()?.correlation?.plotY(pv),
+          },
+        }
+      : {}),
+    ...(features.detailsUrl !== undefined
+      ? {
+          pvDetails: (pv: string) => {
+            const url = pvDetailsUrl(features.detailsUrl!, pv);
+            if (url === null) raise({ message: `No page for ${pv}`, key: router().location.key });
+            else window.open(url, '_blank', 'noopener');
+          },
+        }
+      : {}),
+    ...(pvInfo ? { pvInfo } : {}),
     close: () => {
       const workspace = tabs();
       if (workspace) {
@@ -287,15 +352,19 @@ export interface ViewerActionHost {
   hostFor(tabs: WorkspaceTabs): ActionHost;
 }
 
+const NO_FEATURES: PVMenuFeatures = {};
+
 /**
  * The ActionHost bound to the router and `window`; call inside a Router.
+ * `features` says which of a PV menu's entries this page can serve.
  * `tabs` (the workspace) redirects screen navigation, screen tab/window
  * opens and close into the workspace's tabs; it is read through a ref, so a
  * new object each render keeps the host's identity.
  */
 export function useViewerActionHost(
   screensBaseUrl: string,
-  tabs?: WorkspaceTabs
+  tabs?: WorkspaceTabs,
+  features: PVMenuFeatures = NO_FEATURES
 ): ViewerActionHost {
   const navigate = useNavigate();
   const location = useLocation();
@@ -319,6 +388,12 @@ export function useViewerActionHost(
   }, [tabs]);
 
   const loadManifest = useMemo(() => sharedManifestLoader(screensBaseUrl), [screensBaseUrl]);
+  const pvInfo = useContext(ServicesContext)?.pvInfo;
+  const { plot = false, correlation = false, detailsUrl } = features;
+  const menu = useMemo<PVMenuFeatures>(
+    () => ({ plot, correlation, detailsUrl }),
+    [plot, correlation, detailsUrl]
+  );
   const host = useMemo(
     () =>
       routerActionHost(
@@ -328,9 +403,11 @@ export function useViewerActionHost(
         () => router.current,
         setRaised,
         // eslint-disable-next-line react-hooks/refs -- as above
-        () => tabsRef.current
+        () => tabsRef.current,
+        menu,
+        pvInfo
       ),
-    [loadManifest, basename]
+    [loadManifest, basename, menu, pvInfo]
   );
   const hostFor = useCallback(
     (tabs: WorkspaceTabs) =>
@@ -339,9 +416,11 @@ export function useViewerActionHost(
         basename,
         () => router.current,
         setRaised,
-        () => tabs
+        () => tabs,
+        menu,
+        pvInfo
       ),
-    [loadManifest, basename]
+    [loadManifest, basename, menu, pvInfo]
   );
 
   const clearError = useCallback(() => setRaised(null), []);

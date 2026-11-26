@@ -87,6 +87,7 @@ import type { ReactNode } from 'react';
 import { useHref, useLocation, useNavigate } from 'react-router-dom';
 import type { DockviewApi } from 'dockview-core';
 import { ActionHostContext } from '@slaclab/canopy-screen-runtime';
+import type { CorrelationHost } from '@slaclab/canopy-screen-runtime';
 import type { Manifest, ManifestScreen } from '../api.js';
 import { useViewerActionHost } from '../actionHost.js';
 import type { WorkspaceTabs } from '../actionHost.js';
@@ -120,7 +121,7 @@ import type { Member, MemberKey } from './collections.js';
 import { CollectionsPopover, openCollections } from './CollectionsPopover.js';
 import { deriveConnectionHealth } from './connectionHealth.js';
 import { PlotPVsDialog } from './PlotPVsDialog.js';
-import { MAX_PLOT_PVS, plotQuery } from './plotPVs.js';
+import { MAX_PLOT_PVS, addPVQuery, correlationQuery, plotQuery } from './plotPVs.js';
 import { QuickOpen, openQuickOpen } from './QuickOpen.js';
 import {
   SaveCollectionDialog,
@@ -241,6 +242,7 @@ import {
   toolLabel,
   toolOf,
   toolSpec,
+  toolKey,
 } from './tools.js';
 import './workspace.css';
 import './dock/dock-theme.css';
@@ -649,9 +651,27 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   // PVs a screen hands over to plot (a device's "Open in Trace") take the
   // "Plot in Data Browser" path; the handler is defined further down.
   const plotPVsRef = useRef<(pvs: readonly string[]) => void>(() => {});
+  // A PV's right-click menu: one more PV for the data browser, and the
+  // correlation plot. The X picked there is the workspace's, so a pick on one
+  // screen serves a Y on another; it is not kept across a reload.
+  const addToPlotRef = useRef<(pv: string) => void>(() => {});
+  const plotYRef = useRef<(pv: string) => void>(() => {});
+  const correlationX = useRef<string | null>(null);
+  const correlation = useMemo<CorrelationHost>(
+    () => ({
+      x: () => correlationX.current,
+      pickX: (pv) => {
+        correlationX.current = pv;
+      },
+      plotY: (pv) => plotYRef.current(pv),
+    }),
+    []
+  );
   const tabsFor = useCallback(
     (tile: string | null): WorkspaceTabs => ({
       plotPVs: (pvs: readonly string[]) => plotPVsRef.current(pvs),
+      addToPlot: (pv: string) => addToPlotRef.current(pv),
+      correlation,
       open: (url: string, mode: OpenMode) => {
         const key = keyForUrl(url);
         // A screen action never opens a tool: that would bypass the opening
@@ -683,10 +703,14 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
         return cut === -1 ? url : url.slice(0, cut);
       },
     }),
-    [closeTabs]
+    [closeTabs, correlation]
   );
   const tabs = useMemo(() => tabsFor(null), [tabsFor]);
-  const { host, error, clearError, hostFor } = useViewerActionHost(screensBaseUrl, tabs);
+  const { host, error, clearError, hostFor } = useViewerActionHost(screensBaseUrl, tabs, {
+    plot: trace !== undefined,
+    correlation: tools.includes('correlation'),
+    detailsUrl: config?.pvDetails?.url,
+  });
   const hostForTab = useCallback((key: string) => hostFor(tabsFor(key)), [hostFor, tabsFor]);
 
   const onOpen = useCallback((key: string, mode: OpenMode) => {
@@ -1044,6 +1068,23 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   useLayoutEffect(() => {
     plotPVsRef.current = (pvs) => {
       if (trace) onPlot(plotQuery(pvs.slice(0, MAX_PLOT_PVS), instanceQuery(plotKey)));
+    };
+    addToPlotRef.current = (pv) => {
+      if (!trace) return;
+      const query = addPVQuery(instanceQuery(plotKey), pv);
+      if (query === null) setNotice(`The data browser plots at most ${MAX_PLOT_PVS} PVs`);
+      else onPlot(query);
+    };
+    plotYRef.current = (y) => {
+      const x = correlationX.current;
+      if (x === null || !tools.includes('correlation')) return;
+      const open = mruInstance(state, 'correlation');
+      dispatch({
+        type: 'load',
+        key: open ?? toolKey('correlation'),
+        query: correlationQuery(x, y, open === null ? '' : instanceQuery(open)),
+        view: null,
+      });
     };
   });
   const plotDialog = plotTarget ? (

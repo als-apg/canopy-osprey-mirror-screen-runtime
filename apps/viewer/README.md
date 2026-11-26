@@ -77,6 +77,7 @@ it — the viewer talks to the origin that serves it.
 | `trace`         | absent  | `{ "path", "query" }` of the Trace data browser page; absent disables the Trace tab                      |
 | `correlation`   | absent  | `{ "path", "query" }` of the correlation plot page; absent disables its tabs                             |
 | `waveform`      | absent  | `{ "path", "query" }` of the waveform plot page; absent disables its tabs                                |
+| `pvDetails`     | absent  | `{ "url" }` of the page about one PV, `{pv}` standing for its name; absent leaves it out of a PV's menu  |
 | `views`         | absent  | `{ "path": "views" }` where the server keeps saved data browser views; absent hides them                 |
 | `collections`   | absent  | `{ "path": "collections" }` where the server keeps collections; absent hides them                        |
 | `colorScheme`   | bundled | Flattened color scheme (screen-ir `FlatScheme`); an invalid value falls back to the bundled default      |

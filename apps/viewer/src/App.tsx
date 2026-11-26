@@ -108,7 +108,9 @@ export function App({
   /** The viewer config, passed to the pages; each tool's entry enables its tabs. */
   config?: Readonly<Partial<ViewerConfig>>;
 }) {
-  const { host, error, clearError } = useViewerActionHost(screensBaseUrl);
+  const { host, error, clearError } = useViewerActionHost(screensBaseUrl, undefined, {
+    detailsUrl: config?.pvDetails?.url,
+  });
   // One element for every workspace route: the child routes render no key,
   // so React reconciles it in place when the matched child changes.
   const workspace = <WorkspacePage screensBaseUrl={screensBaseUrl} config={config} />;

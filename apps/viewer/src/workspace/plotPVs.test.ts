@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { ScreenPVGroup, ScreenPVRole } from '@slaclab/canopy-screen-runtime';
 import {
   DEFAULT_PLOT_PVS,
+  MAX_PLOT_PVS,
+  addPVQuery,
+  correlationQuery,
   defaultSelection,
   filterGroups,
   fitsTraceQuery,
@@ -137,5 +140,45 @@ describe('fitsTraceQuery', () => {
   it("holds Trace's 4 KB limit", () => {
     expect(fitsTraceQuery(`pv=${'A'.repeat(4093)}`)).toBe(true);
     expect(fitsTraceQuery(`pv=${'A'.repeat(4094)}`)).toBe(false);
+  });
+});
+
+describe('addPVQuery', () => {
+  it('adds a PV and keeps the range and the display settings', () => {
+    expect(addPVQuery('pv=A:1&range=-8h&plot=%7B%7D', 'B:2')).toBe(
+      'pv=A:1&range=-8h&plot=%7B%7D&pv=B:2'
+    );
+  });
+
+  it('starts a plot over the last hour on an empty data browser', () => {
+    expect(addPVQuery('', 'A:1')).toBe('pv=A:1&range=-1h');
+  });
+
+  it('leaves a query that plots the PV already', () => {
+    expect(addPVQuery('pv=A:1&range=-1h', 'A:1')).toBe('pv=A:1&range=-1h');
+  });
+
+  it('refuses one PV more than the data browser plots', () => {
+    const full = Array.from({ length: MAX_PLOT_PVS }, (_, i) => `pv=P:${i}`).join('&');
+    expect(addPVQuery(full, 'ONE:MORE')).toBeNull();
+  });
+});
+
+describe('correlationQuery', () => {
+  it('plots the pair where nothing is plotted against that X', () => {
+    expect(correlationQuery('A:X', 'B:Y')).toBe('x=A:X&y=B:Y');
+    expect(correlationQuery('A:X', 'B:Y', 'x=OTHER&y=C&view=density')).toBe('x=A:X&y=B:Y');
+  });
+
+  it('adds a Y to the plot of the same X, its settings kept', () => {
+    expect(correlationQuery('A:X', 'C:Y', 'x=A:X&y=B:Y&view=density')).toBe(
+      'x=A:X&y=B:Y&view=density&y=C:Y'
+    );
+    expect(correlationQuery('A:X', 'B:Y', 'x=A:X&y=B:Y')).toBe('x=A:X&y=B:Y');
+  });
+
+  it('starts over when the plot of that X is full', () => {
+    const full = `x=A:X&${Array.from({ length: 8 }, (_, i) => `y=Y:${i}`).join('&')}`;
+    expect(correlationQuery('A:X', 'NINTH', full)).toBe('x=A:X&y=NINTH');
   });
 });
