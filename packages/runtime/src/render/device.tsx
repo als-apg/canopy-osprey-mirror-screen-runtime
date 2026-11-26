@@ -169,7 +169,13 @@ export function useRegisterDeviceChannels(
 export function useDeviceHover(
   device: string | null,
   shown: boolean
-): { enter: () => void; leave: () => void; openMenu: (x: number, y: number) => boolean } | null {
+): {
+  enter: () => void;
+  leave: () => void;
+  openMenu: (x: number, y: number) => boolean;
+  /** The device's channels in plot order. */
+  channels: () => string[];
+} | null {
   const store = useContext(DeviceStoreContext);
   const inside = useRef(false);
   useEffect(() => {
@@ -199,6 +205,7 @@ export function useDeviceHover(
               store.leave();
             },
             openMenu: (x: number, y: number) => store.openMenu(device, x, y),
+            channels: () => store.channelsOf(device),
           },
     [store, device]
   );
@@ -211,7 +218,7 @@ export function linkedOutline(
   return { outline: `2px solid ${resolveRole(ACCENT, flat)}`, outlineOffset: 3, borderRadius: 4 };
 }
 
-/** The open right-click menu of a device: plot its channels in Trace. */
+/** The open right-click menu of a device: plot its channels in the data browser. */
 export function DeviceMenu({ plotPVs }: { plotPVs: (pvs: readonly string[]) => void }) {
   const store = useContext(DeviceStoreContext);
   const menu = useSyncExternalStore(
@@ -224,7 +231,7 @@ export function DeviceMenu({ plotPVs }: { plotPVs: (pvs: readonly string[]) => v
     <PopupMenu
       anchor={menu}
       close={store.closeMenu}
-      items={[{ label: 'Open in Trace', run: () => plotPVs(store.channelsOf(menu.device)) }]}
+      items={[{ label: 'Plot history', run: () => plotPVs(store.channelsOf(menu.device)) }]}
     />
   );
 }

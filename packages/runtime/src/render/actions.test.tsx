@@ -676,21 +676,39 @@ describe('device right-click menu', () => {
   ];
   const wrapper = () => document.querySelector('[data-node-id="w-rb"]') as HTMLElement;
 
-  it("plots the device's channels in Trace, values before setpoints", () => {
+  it("offers the device's channels beside the node's own, values before setpoints", () => {
     const host = { ...makeHost(), plotPVs: vi.fn<NonNullable<ActionHost['plotPVs']>>() };
     render(wrap(<ScreenRenderer screen={doc('top', tile)} />, host));
 
     expect(fireEvent.contextMenu(wrapper())).toBe(false); // the browser menu is replaced
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Trace' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Plot history of the device' }));
 
     expect(host.plotPVs).toHaveBeenCalledWith(['SYS:QF1:Z_RB', 'SYS:QF1:A_SP']);
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('leaves the browser menu where the host cannot plot', () => {
+  it('opens the device menu on a node of the device with no channel of its own', () => {
+    const host = { ...makeHost(), plotPVs: vi.fn<NonNullable<ActionHost['plotPVs']>>() };
+    const frame: WidgetNode = {
+      id: 'w-frame',
+      type: 'rectangle',
+      props: { device: 'SYS:QF1' },
+      geometry: { x: 0, y: 0, width: 200, height: 60 },
+    };
+    render(wrap(<ScreenRenderer screen={doc('top', [frame, ...tile])} />, host));
+
+    const drawn = document.querySelector('[data-node-id="w-frame"]') as HTMLElement;
+    expect(fireEvent.contextMenu(drawn)).toBe(false);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Plot history' }));
+
+    expect(host.plotPVs).toHaveBeenCalledWith(['SYS:QF1:Z_RB', 'SYS:QF1:A_SP']);
+  });
+
+  it('offers no plot where the host cannot plot', () => {
     render(wrap(<ScreenRenderer screen={doc('top', tile)} />, makeHost()));
 
-    expect(fireEvent.contextMenu(wrapper())).toBe(true);
-    expect(screen.queryByRole('menu')).toBeNull();
+    expect(fireEvent.contextMenu(wrapper())).toBe(false);
+    expect(screen.getByRole('menuitem', { name: 'Copy PV name' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Plot history/ })).toBeNull();
   });
 });

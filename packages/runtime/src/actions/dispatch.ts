@@ -55,6 +55,22 @@ import type { RuntimeAction } from './staged.js';
 
 type MaybePromise<T> = T | Promise<T>;
 
+/** The correlation plot as a screen reaches it. */
+export interface CorrelationHost {
+  /** The PV picked as X, or null. */
+  x(): string | null;
+  pickX(pv: string): void;
+  /** Plot `pv` against the picked X; nothing happens without one. */
+  plotY(pv: string): void;
+}
+
+/** What a PV's source states about it beside the value. */
+export interface PVInfo {
+  readonly description?: string;
+  readonly alarmLow?: number;
+  readonly alarmHigh?: number;
+}
+
 export interface ActionContext {
   /** Effective macros of the screen hosting the widget. */
   readonly macros: MacroValues;
@@ -77,6 +93,20 @@ export interface ActionContext {
    * instance's time range. Absent where there is no workspace.
    */
   plotPVs?(pvs: readonly string[]): void;
+  /**
+   * Add one PV to what the data browser already plots. Absent where
+   * `plotPVs` is.
+   */
+  addToPlot?(pv: string): void;
+  /**
+   * The correlation plot: the X picked so far (kept until another is picked)
+   * and plotting a Y against it. Absent where there is no correlation tool.
+   */
+  readonly correlation?: CorrelationHost;
+  /** Open the facility's page about one PV. Absent where none is configured. */
+  pvDetails?(pv: string): void;
+  /** What the source states about a PV beside its value, or null when unknown. */
+  pvInfo?(pv: string): PVInfo | null;
   /** Close the screen hosting the widget. */
   close(): void;
   /** Surface a user-visible error. */
