@@ -10,7 +10,7 @@ import {
   MockPVService,
   RoutedPVService,
 } from '@slaclab/canopy-client';
-import type { FixtureSnapshot, FormulaSubscriber } from '@slaclab/canopy-screen-runtime';
+import type { FixtureSnapshot, FormulaSubscriber, PVInfo } from '@slaclab/canopy-screen-runtime';
 import {
   createFixtureFormulaSubscriber,
   createFormulaEngineSubscriber,
@@ -49,6 +49,11 @@ export interface ViewerServices {
    * and fixture mode, so no gate is provided and widgets write straight through.
    */
   writes?: WriteBackend;
+  /**
+   * What the source states about a PV beside its value (description, alarm
+   * limits), or null before its first frame. In hare mode only.
+   */
+  pvInfo?(pv: string): PVInfo | null;
 }
 
 /** One screen's PV and formula services, sharing the page's connections. */
@@ -248,6 +253,15 @@ export function createServices(
       screenScope: scopeOver(hare, (l) => createLocalAwareFormulaSubscriber(l, live)),
       backend,
       writes,
+      pvInfo: (name) => {
+        const meta = hare.getMeta(name);
+        if (meta === undefined) return null;
+        return {
+          ...(meta.description ? { description: meta.description } : {}),
+          ...(meta.alarmLow != null ? { alarmLow: meta.alarmLow } : {}),
+          ...(meta.alarmHigh != null ? { alarmHigh: meta.alarmHigh } : {}),
+        };
+      },
     };
   }
 

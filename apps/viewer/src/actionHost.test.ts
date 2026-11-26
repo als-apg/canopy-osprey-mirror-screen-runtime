@@ -26,6 +26,7 @@ import {
   routeOf,
   screenPathForLocation,
   screenUrl,
+  pvDetailsUrl,
   useViewerActionHost,
 } from './actionHost.js';
 import type { ActionHostDeps, WorkspaceTabs } from './actionHost.js';
@@ -835,5 +836,68 @@ describe('WorkspacePage: one action host per tile', () => {
       return el!;
     });
     expect(banner.textContent).toContain('Failed on CBXFEL/Landing');
+  });
+});
+
+describe('pvDetailsUrl', () => {
+  it('fills the PV name into the page URL, encoded', () => {
+    expect(pvDetailsUrl('https://h/cf/#/channel/{pv}', 'SYS:A 1/B')).toBe(
+      'https://h/cf/#/channel/SYS%3AA%201%2FB'
+    );
+  });
+
+  it('resolves a relative page against the viewer', () => {
+    expect(pvDetailsUrl('/cf/?pv={pv}', 'A:B')).toBe(
+      new URL('/cf/?pv=A%3AB', document.baseURI).href
+    );
+  });
+
+  it('refuses a page that is not http(s)', () => {
+    expect(pvDetailsUrl('javascript:alert("{pv}")', 'A')).toBeNull();
+  });
+});
+
+describe('useViewerActionHost: what a PV menu reaches', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function hostWith(features?: Parameters<typeof useViewerActionHost>[2], tabs?: WorkspaceTabs) {
+    return renderHook(() => useViewerActionHost('https://host/screens', tabs, features), {
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(MemoryRouter, null, children),
+    }).result.current.host;
+  }
+
+  it('offers no plot, correlation or page where none is served', () => {
+    const host = hostWith();
+    expect(host.plotPVs).toBeUndefined();
+    expect(host.addToPlot).toBeUndefined();
+    expect(host.correlation).toBeUndefined();
+    expect(host.pvDetails).toBeUndefined();
+  });
+
+  it('hands plots and the correlation pick to the workspace', () => {
+    let x: string | null = null;
+    const tabs: WorkspaceTabs = {
+      open: vi.fn(),
+      close: vi.fn(),
+      plotPVs: vi.fn(),
+      addToPlot: vi.fn(),
+      correlation: { x: () => x, pickX: (pv) => void (x = pv), plotY: vi.fn() },
+    };
+    const host = hostWith({ plot: true, correlation: true }, tabs);
+
+    host.addToPlot?.('A:1');
+    expect(tabs.addToPlot).toHaveBeenCalledWith('A:1');
+    host.correlation?.pickX('A:X');
+    expect(host.correlation?.x()).toBe('A:X');
+    host.correlation?.plotY('B:Y');
+    expect(tabs.correlation?.plotY).toHaveBeenCalledWith('B:Y');
+  });
+
+  it('opens the configured page about a PV in a tab of its own', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    hostWith({ detailsUrl: 'https://h/cf/#/channel/{pv}' }).pvDetails?.('A:B');
+    expect(open).toHaveBeenCalledWith('https://h/cf/#/channel/A%3AB', '_blank', 'noopener');
   });
 });

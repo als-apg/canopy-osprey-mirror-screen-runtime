@@ -192,20 +192,52 @@ function mountsChildren(type: string): boolean {
   return type !== EMBED_TYPE && !isUnmapped(type);
 }
 
-function channelsOf(value: PropertyValue, key: string | undefined, out: string[]): void {
+/** A channel a node's props name: the prop key it sits under and the object holding it. */
+export interface ChannelSource {
+  readonly name: string;
+  readonly key: string;
+  /** The object the key belongs to (a plot curve, say); null for a top-level prop. */
+  readonly owner: Readonly<Record<string, PropertyValue>> | null;
+}
+
+function channelsOf(
+  value: PropertyValue,
+  key: string | undefined,
+  out: ChannelSource[],
+  owner: ChannelSource['owner'] = null
+): void {
   if (typeof value === 'string') {
-    if (key !== undefined && CHANNEL_KEY.test(key)) out.push(value);
+    if (key !== undefined && CHANNEL_KEY.test(key)) out.push({ name: value, key, owner });
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) channelsOf(item as PropertyValue, key, out);
+    for (const item of value) channelsOf(item as PropertyValue, key, out, owner);
     return;
   }
   if (value !== null && typeof value === 'object') {
-    for (const [k, v] of Object.entries(value)) {
-      if (!SKIPPED_PROPS.has(k)) channelsOf(v as PropertyValue, k, out);
+    const record = value as Readonly<Record<string, PropertyValue>>;
+    for (const [k, v] of Object.entries(record)) {
+      if (!SKIPPED_PROPS.has(k)) channelsOf(v, k, out, record);
     }
   }
+}
+
+/**
+ * `nodeChannels` with where each name was found, in the same order: trimmed,
+ * blanks dropped, nothing else filtered.
+ */
+export function nodeChannelSources(
+  nodeType: string,
+  substitutedProps: Readonly<Record<string, PropertyValue>>
+): ChannelSource[] {
+  if (nodeType === EMBED_TYPE || isUnmapped(nodeType)) return [];
+  const found: ChannelSource[] = [];
+  for (const [key, value] of Object.entries(substitutedProps)) {
+    if (!SKIPPED_PROPS.has(key)) channelsOf(value, key, found);
+  }
+  return found
+    .map((source) => ({ ...source, name: source.name.trim() }))
+    .filter((source) => source.name !== '');
 }
 
 /**
@@ -218,12 +250,7 @@ export function nodeChannels(
   nodeType: string,
   substitutedProps: Readonly<Record<string, PropertyValue>>
 ): string[] {
-  if (nodeType === EMBED_TYPE || isUnmapped(nodeType)) return [];
-  const names: string[] = [];
-  for (const [key, value] of Object.entries(substitutedProps)) {
-    if (!SKIPPED_PROPS.has(key)) channelsOf(value, key, names);
-  }
-  return names.map((name) => name.trim()).filter((name) => name !== '');
+  return nodeChannelSources(nodeType, substitutedProps).map((source) => source.name);
 }
 
 /**

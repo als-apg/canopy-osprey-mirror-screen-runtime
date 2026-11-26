@@ -24,6 +24,10 @@
 //                (canopy_mcp: 'trace/waveform.html', present iff that page is
 //                installed), parsed exactly like `correlation`. Absent -> the
 //                @waveform tabs are disabled.
+//   pvDetails    optional { url } of the page about one PV, opened from a PV's
+//                right-click menu: an http(s) or viewer-relative URL in which
+//                `{pv}` stands for the PV name. Kept only when `url` is a
+//                string holding `{pv}`; absent -> the menu has no such entry.
 //   views        optional { path } where the server keeps saved data browser
 //                views (canopy_mcp: 'views'), relative to the app. Kept only
 //                when `path` is a non-empty string; absent -> no saved views.
@@ -97,6 +101,13 @@ export interface ViewerConfig {
   confirmWrites: boolean;
   workspace?: WorkspaceConfig;
   home?: HomeConfig;
+  pvDetails?: PVDetailsConfig;
+}
+
+/** The page about one PV, opened from a PV's right-click menu. */
+export interface PVDetailsConfig {
+  /** An http(s) or viewer-relative URL; `{pv}` stands for the PV's name. */
+  url: string;
 }
 
 /** The first-open home of a workspace embedded in a host page: a library screen id. */
@@ -183,6 +194,11 @@ function parseTool(raw: unknown): ToolConfig | undefined {
   if (!isRecord(raw)) return undefined;
   if (typeof raw.path !== 'string' || raw.path === '') return undefined;
   return { path: raw.path, query: isTraceQuery(raw.query) ? raw.query : '' };
+}
+
+function parsePVDetails(raw: unknown): PVDetailsConfig | undefined {
+  if (!isRecord(raw) || typeof raw.url !== 'string' || !raw.url.includes('{pv}')) return undefined;
+  return { url: raw.url };
 }
 
 function parseViews(raw: unknown): ViewsConfig | undefined {
@@ -307,6 +323,8 @@ export async function loadConfig(baseURI: string = document.baseURI): Promise<Vi
   if ('binding' in raw) config.binding = stringOrNull(raw.binding);
   const workspace = parseWorkspace(raw.workspace);
   if (workspace) config.workspace = workspace;
+  const pvDetails = parsePVDetails(raw.pvDetails);
+  if (pvDetails) config.pvDetails = pvDetails;
   const home = parseHome(raw.home);
   if (home) config.home = home;
   return config;

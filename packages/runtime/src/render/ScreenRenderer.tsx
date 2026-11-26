@@ -115,6 +115,8 @@ import {
 import { actionName, offersMenu } from './actionMenu.js';
 import { PopupMenu } from './popupMenu.js';
 import type { MenuAnchor } from './popupMenu.js';
+import { PvMenu, pvMenuChannels } from './pvMenu.js';
+import type { PvMenuChannel } from './pvMenu.js';
 import {
   embedFile,
   embedInstanceKey,
@@ -525,6 +527,9 @@ function MountedNodeView({
   // The open menu of a click whose actions are alternatives (actionMenu.tsx).
   const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null);
   const closeMenu = useCallback(() => setMenuAt(null), []);
+  // The open right-click menu of the node's channels (pvMenu.tsx).
+  const [pvMenu, setPvMenu] = useState<{ at: MenuAnchor; channels: PvMenuChannel[] } | null>(null);
+  const closePvMenu = useCallback(() => setPvMenu(null), []);
   // Device link: an authored `device` makes the node a link target; the
   // node's channels register under it, or under the device of the embedded
   // tile it sits in.
@@ -582,6 +587,7 @@ function MountedNodeView({
   if (!effective.visible) {
     // A menu left open would come back with the node.
     if (menuAt !== null) setMenuAt(null);
+    if (pvMenu !== null) setPvMenu(null);
     return null;
   }
 
@@ -684,11 +690,22 @@ function MountedNodeView({
       },
     };
   }
-  // A right click on a device opens its Trace menu where the host can plot;
-  // a text field keeps the browser's own menu (copy, paste).
-  if (pointerHandlers !== undefined && deviceHover !== null && host.plotPVs !== undefined) {
+  // A right click on a node with machine channels opens their menu; on any
+  // other node of a device, the device's, where the host can plot. With
+  // Shift the browser's own menu opens (a text field's copy and paste).
+  if (linkChannels.propChannels.length > 0) {
+    pointerHandlers ??= { onMouseEnter: () => {}, onMouseLeave: () => {} };
     pointerHandlers.onContextMenu = (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.shiftKey) return;
+      const channels = pvMenuChannels(node.type, baseProps);
+      if (channels.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPvMenu({ at: { x: e.clientX, y: e.clientY }, channels });
+    };
+  } else if (pointerHandlers !== undefined && deviceHover !== null && host.plotPVs !== undefined) {
+    pointerHandlers.onContextMenu = (e) => {
+      if (e.shiftKey) return;
       if (!deviceHover.openMenu(e.clientX, e.clientY)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -762,6 +779,15 @@ function MountedNodeView({
         <span data-testid="canopy-staged-count" style={STAGED_COUNT_STYLE}>
           {stagedCount}
         </span>
+      )}
+      {pvMenu !== null && (
+        <PvMenu
+          anchor={pvMenu.at}
+          channels={pvMenu.channels}
+          host={host}
+          deviceChannels={deviceHover?.channels}
+          close={closePvMenu}
+        />
       )}
       {menuAt !== null && asMenu && (
         <PopupMenu

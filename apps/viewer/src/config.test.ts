@@ -335,6 +335,32 @@ describe('loadConfig views', () => {
   );
 });
 
+describe('loadConfig pvDetails', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function serve(body: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }))
+    );
+  }
+
+  it('keeps a URL that names the PV', async () => {
+    serve({ pvMode: 'hare', pvDetails: { url: '../channels/#/channel/{pv}' } });
+    expect((await loadConfig('http://h/')).pvDetails).toEqual({
+      url: '../channels/#/channel/{pv}',
+    });
+  });
+
+  it.each([undefined, {}, { url: '' }, { url: 'https://h/channels' }, { url: 3 }, 'x{pv}'])(
+    'omits pvDetails for %j',
+    async (pvDetails) => {
+      serve({ pvMode: 'hare', pvDetails });
+      expect('pvDetails' in (await loadConfig('http://h/'))).toBe(false);
+    }
+  );
+});
+
 describe('loadConfig collections', () => {
   afterEach(() => vi.unstubAllGlobals());
 

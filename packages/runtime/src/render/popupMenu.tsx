@@ -9,12 +9,14 @@ import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 // Host tokens (the OSPREY host contract) with Carbon and literal fallbacks.
-const HOST = {
+export const HOST = {
   bg: 'var(--canopy-host-bg-elevated, var(--cds-layer-01, #ffffff))',
   fg: 'var(--canopy-host-text-primary, var(--cds-text-primary, #161616))',
+  dim: 'var(--canopy-host-text-secondary, var(--cds-text-secondary, #525252))',
   border: 'var(--canopy-host-border, var(--cds-border-subtle-01, #c6c6c6))',
   hover: 'var(--canopy-host-hover-tint, rgba(141, 141, 141, 0.16))',
   ui: 'var(--canopy-host-font-ui, system-ui, sans-serif)',
+  mono: 'var(--canopy-host-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
   radius: 'var(--canopy-host-radius-md, 8px)',
   radiusSm: 'var(--canopy-host-radius-sm, 6px)',
   shadow: 'var(--canopy-host-shadow-dropdown, 0 4px 16px rgba(0, 0, 0, 0.18))',
@@ -130,7 +132,7 @@ function MenuBody({
  * (`[data-canopy-host-root]`), else into the page body. Nothing renders until
  * that root is found, after the first commit.
  */
-function HostPortal({ children }: { children: ReactNode }) {
+export function HostPortal({ children }: { children: ReactNode }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [host, setHost] = useState<Element | null>(null);
   useEffect(() => {

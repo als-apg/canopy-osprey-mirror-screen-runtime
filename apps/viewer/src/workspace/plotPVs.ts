@@ -90,3 +90,37 @@ export function plotQuery(pvs: readonly string[], current: string = ''): string 
 export function fitsTraceQuery(query: string): boolean {
   return new TextEncoder().encode(query).length <= TRACE_QUERY_MAX_BYTES;
 }
+
+/**
+ * `current` (the data browser's query) with `pv` added to what it plots, its
+ * time range and display settings kept; `current` itself when it plots `pv`
+ * already. Null at the PV cap, or when the result exceeds Trace's limit.
+ */
+export function addPVQuery(current: string, pv: string): string | null {
+  const plotted = new URLSearchParams(current).getAll('pv');
+  if (plotted.includes(pv)) return current;
+  if (plotted.length >= MAX_PLOT_PVS) return null;
+  const query = plotted.length === 0 ? plotQuery([pv], current) : `${current}&pv=${component(pv)}`;
+  return fitsTraceQuery(query) ? query : null;
+}
+
+/** As many Y PVs as the correlation plot draws against one X. */
+export const MAX_CORRELATION_YS = 8;
+
+/**
+ * The correlation query that plots `y` against `x`: `current` (the
+ * correlation plot's query) with `y` added when it already plots against
+ * `x` and has room, else a new plot of the pair.
+ */
+export function correlationQuery(x: string, y: string, current: string = ''): string {
+  const params = new URLSearchParams(current);
+  if (params.get('x') === x) {
+    const ys = params.getAll('y');
+    if (ys.includes(y)) return current;
+    if (ys.length < MAX_CORRELATION_YS) {
+      const query = `${current}&y=${component(y)}`;
+      if (fitsTraceQuery(query)) return query;
+    }
+  }
+  return `x=${component(x)}&y=${component(y)}`;
+}
