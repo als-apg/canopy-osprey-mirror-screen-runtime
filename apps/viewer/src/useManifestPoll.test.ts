@@ -262,6 +262,30 @@ describe('useManifestPoll', () => {
   });
 });
 
+describe('useManifestPoll in a frame its host hides', () => {
+  /** A display: none frame: the document still reads visible, the window is 0 x 0. */
+  function setWindowSize(width: number, height: number): void {
+    vi.stubGlobal('innerWidth', width);
+    vi.stubGlobal('innerHeight', height);
+  }
+
+  it('does not poll in a 0 x 0 window, and polls at once when the window has a size again', async () => {
+    setWindowSize(0, 0);
+    renderPoll(OPEN, 'r1');
+    await tick(9000);
+    expect(document.visibilityState).toBe('visible');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    setWindowSize(1024, 768);
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('useManifestPoll with a shared manifest', () => {
   function renderShared(shared: SharedManifest, openRev = 'r1') {
     let value = shared;

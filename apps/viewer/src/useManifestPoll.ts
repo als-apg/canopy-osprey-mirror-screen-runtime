@@ -10,14 +10,16 @@
 // for its tree, every open screen reads that manifest through
 // SharedManifestContext instead of fetching its own. Only a page without the
 // context (the /s/ deep link) polls for itself: every MANIFEST_POLL_MS while
-// the document is visible and at once when it becomes visible, conditionally
-// on the manifest's ETag, so an unchanged manifest costs a bodiless 304.
+// the page is on screen (panelVisibility.ts: a frame its host hides does not
+// poll) and at once when it comes back, conditionally on the manifest's ETag,
+// so an unchanged manifest costs a bodiless 304.
 
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Manifest, ManifestScreen } from './api.js';
 import { directoryOf, pollManifest } from './api.js';
+import { isPanelShown, onPanelShown } from './panelVisibility.js';
 
-/** Manifest refresh period, for this hook and the workspace's poll, while the document is visible. */
+/** Manifest refresh period, for this hook and the workspace's poll, while the page is on screen. */
 export const MANIFEST_POLL_MS = 3000;
 
 /** A manifest someone else keeps fresh, for the screens base it came from. */
@@ -87,8 +89,8 @@ export function useManifestPoll(
     observe.current(sharedManifest);
   }, [enabled, sharedManifest]);
 
-  // Standalone: poll for ourselves, every MANIFEST_POLL_MS while the document
-  // is visible and at once when it becomes visible again. A new document
+  // Standalone: poll for ourselves, every MANIFEST_POLL_MS while the page is
+  // on screen and at once when it comes back. A new document
   // restarts the loop, whose first fetch is then unconditional, so the
   // first-observation rule above sees a full manifest.
   useConditionalManifestPoll(screensBaseUrl, (manifest) => observe.current(manifest), {
@@ -110,7 +112,7 @@ export interface ConditionalManifestPollOptions {
 
 /**
  * The one manifest poll loop: `pollManifest` every MANIFEST_POLL_MS while the
- * document is visible and at once when it becomes visible, conditionally on
+ * page is on screen (isPanelShown) and at once when it comes back, conditionally on
  * the ETag it last saw, so an unchanged manifest is a bodiless 304 and
  * `onManifest` runs only for a changed one. A failed poll keeps the last
  * manifest and tries again on the next tick; one poll runs at a time. The
@@ -147,21 +149,19 @@ export function useConditionalManifestPoll(
       }
     };
     const onFocus = () => void poll();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void poll();
-    };
     if (eager) {
       void poll();
       window.addEventListener('focus', onFocus);
     }
-    document.addEventListener('visibilitychange', onVisible);
+    // Back on screen (the tab, or the frame the host had hidden): poll at once.
+    const offShown = onPanelShown(() => void poll());
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void poll();
+      if (isPanelShown()) void poll();
     }, MANIFEST_POLL_MS);
     return () => {
       cancelled = true;
       if (eager) window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisible);
+      offShown();
       clearInterval(timer);
     };
   }, [screensBaseUrl, enabled, eager, scope]);

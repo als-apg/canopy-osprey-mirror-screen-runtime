@@ -22,9 +22,10 @@
 //              write or POST answer, a delete) and when path/base change.
 //              The poll runs every COLLECTIONS_POLL_MS while the workspace
 //              root intersects the viewport (an IntersectionObserver on
-//              `root`, not document.visibilityState; without a root or an
-//              observer it always runs), once more when the root comes back
-//              into view, never while a previous poll's GETs are unanswered,
+//              `root`; without a root or an observer that part always
+//              holds) and the page is on screen (panelVisibility.ts: the
+//              document visible, the window not 0 x 0), once more when
+//              either comes back, never while a previous poll's GETs are unanswered,
 //              and not at all while any write or state POST is in flight.
 //   hold       holdCollection(ref) (an active rename field or member drag)
 //              keeps that collection as shown while list answers arrive: the
@@ -46,6 +47,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { isPanelShown, onPanelShown } from '../panelVisibility.js';
 import type { Member } from './collections.js';
 import {
   COLLECTIONS_POLL_MS,
@@ -280,17 +282,23 @@ export function useCollectionsStore(
         const was = inView;
         inView = last.isIntersecting;
         // Back in view: poll at once (the first report follows the mount GET).
-        if (inView && !was && reported) poll();
+        if (inView && !was && reported && isPanelShown()) poll();
         reported = true;
       });
       observer.observe(root);
     }
-    const timer = setInterval(() => {
+    // A frame its host hides gets no observer report: the page's own size and
+    // visibility are read at every tick, and its return polls at once.
+    const offShown = onPanelShown(() => {
       if (inView) poll();
+    });
+    const timer = setInterval(() => {
+      if (inView && isPanelShown()) poll();
     }, COLLECTIONS_POLL_MS);
     return () => {
       window.removeEventListener('focus', onFocus);
       observer?.disconnect();
+      offShown();
       clearInterval(timer);
     };
   }, [path, refresh, poll]);

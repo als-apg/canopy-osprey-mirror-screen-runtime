@@ -1860,6 +1860,35 @@ describe('useCollections poll', () => {
     expect(calls('GET', STATE_URL)).toHaveLength(2);
   });
 
+  it('sends no request in a 0 x 0 window (a frame its host hides), and polls when it has a size again', async () => {
+    route = etagRoute({ list: '"l1"', state: '"s1"' });
+    mount({ root: rootRef() });
+    await flush();
+    act(() => report(true));
+    vi.stubGlobal('innerWidth', 0);
+    vi.stubGlobal('innerHeight', 0);
+    try {
+      // The observer never reports a hidden frame gone: the root still reads in view.
+      await tick(COLLECTIONS_POLL_MS * 3);
+      expect(calls('GET', LIST_URL)).toHaveLength(1);
+      expect(calls('GET', STATE_URL)).toHaveLength(1);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      await flush();
+      expect(calls('GET', LIST_URL)).toHaveLength(1);
+    } finally {
+      vi.stubGlobal('innerWidth', 1024);
+      vi.stubGlobal('innerHeight', 768);
+    }
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    await flush();
+    expect(calls('GET', LIST_URL)).toHaveLength(2);
+    expect(calls('GET', STATE_URL)).toHaveLength(2);
+  });
+
   it('skips the poll while a write is in flight and drops the list ETag after its answer', async () => {
     const h = mount({ root: rootRef() });
     route = etagRoute({ list: '"l1"', state: '"s1"' });
