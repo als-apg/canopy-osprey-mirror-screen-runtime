@@ -107,7 +107,7 @@
 // One browser key persists the collapsed branches and folders (dock
 // scheme, per user); All screens' own state is never stored.
 
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   Add,
@@ -1011,73 +1011,101 @@ export function ScreenTree({
 
   // --- All screens ---
 
-  // A screen's row, in the folder tree or (with `place`) in the library's navigation.
-  const leafNode = (leaf: Leaf, place?: { id: string; label: string }): NavNode => {
-    const group = place ? GROUP_NAVIGATION : GROUP_SCREENS;
-    const member: Member = { screen: leaf.screen };
-    const key = memberKey(member);
-    const id = place?.id ?? memberNodeId(GROUP_SCREENS, key);
-    if (!leaf.disabled) meta.set(id, { group, member });
-    const pinned = pinnedKeys.has(key);
-    return {
-      id,
-      label: place?.label ?? leaf.title,
-      icon: <Document size={16} />,
-      disabled: leaf.disabled,
-      title: leaf.disabled ? 'code screen — not yet viewable' : leaf.title,
-      className:
-        'screen-tree__leaf' +
-        (leaf.disabled ? ' screen-tree__leaf--disabled' : '') +
-        (pinned ? ' screen-tree__member--pinned' : ''),
-      data: leaf.disabled
+  // The folder tree and the library's navigation are built once per manifest
+  // (and per filter, fold state and pin set), not per render: a library has
+  // thousands of rows, each with its own icon and handlers, and sorting them
+  // is the tree's largest cost. The handlers read the latest render's
+  // callbacks through `rows`, so they never go stale while the nodes stay the
+  // same objects; what a row shows is all in the memo's dependencies.
+  const rows = useRef({ openRow, openMenu, setExpanded, live, onDragStart, onIntent });
+  useLayoutEffect(() => {
+    rows.current = { openRow, openMenu, setExpanded, live, onDragStart, onIntent };
+  });
+  const hasLive = live !== undefined;
+  const canDrag = onDragStart !== undefined;
+  const hasIntent = onIntent !== undefined;
+  const {
+    screenNodes,
+    navigationNodes,
+    meta: screenMeta,
+    byTabKey: screenByTabKey,
+    keysId: screenKeysId,
+  } = useMemo(() => {
+    const meta = new Map<string, NodeMeta>();
+    /** The rows that show a screen, by the tab key it opens under, in build order. */
+    const byTabKey = new Map<string, string[]>();
+    const keys = new Set<MemberKey>();
+    // A screen's row, in the folder tree or (with `place`) in the library's navigation.
+    const leafNode = (leaf: Leaf, place?: { id: string; label: string }): NavNode => {
+      const group = place ? GROUP_NAVIGATION : GROUP_SCREENS;
+      const member: Member = { screen: leaf.screen };
+      const key = memberKey(member);
+      const id = place?.id ?? memberNodeId(GROUP_SCREENS, key);
+      if (!leaf.disabled) {
+        meta.set(id, { group, member });
+        keys.add(key);
+        const opens = screenMemberTabKey(member);
+        if (opens !== null) byTabKey.set(opens, [...(byTabKey.get(opens) ?? []), id]);
+      }
+      const pinned = pinnedKeys.has(key);
+      const pinItem = (): MenuItemSpec[] =>
+        hasLive
+          ? [
+              pinned
+                ? { label: 'Unpin', run: () => void rows.current.live?.unpin(member) }
+                : { label: 'Pin', run: () => void rows.current.live?.pin(member) },
+            ]
+          : [];
+      const star: NavNode['hoverAction'] = !hasLive
         ? undefined
-        : { 'data-screen-key': leaf.key, 'data-member-key': key, 'data-group': group },
-      onIntent: leaf.disabled || !onIntent ? undefined : () => onIntent(leaf.key),
-      onActivate: leaf.disabled
-        ? undefined
-        : ({ newTab }: NavActivation) => openRow(group, member, newTab),
-      onMenu: leaf.disabled
-        ? undefined
-        : (x, y) =>
-            openMenu(x, y, [
-              { label: 'Open in new tab', run: () => openRow(group, member, true) },
-              ...pinItems(member, pinned),
-            ]),
-      hoverAction: leaf.disabled ? undefined : starOf(member, pinned),
-      onDragStart:
-        leaf.disabled || !onDragStart ? undefined : (transfer) => onDragStart(member, transfer),
+        : pinned
+          ? {
+              label: 'Unpin',
+              icon: <StarFilled size={16} />,
+              persistent: true,
+              onClick: () => void rows.current.live?.unpin(member),
+            }
+          : {
+              label: 'Pin',
+              icon: <Star size={16} />,
+              onClick: () => void rows.current.live?.pin(member),
+            };
+      return {
+        id,
+        label: place?.label ?? leaf.title,
+        icon: <Document size={16} />,
+        disabled: leaf.disabled,
+        title: leaf.disabled ? 'code screen — not yet viewable' : leaf.title,
+        className:
+          'screen-tree__leaf' +
+          (leaf.disabled ? ' screen-tree__leaf--disabled' : '') +
+          (pinned ? ' screen-tree__member--pinned' : ''),
+        data: leaf.disabled
+          ? undefined
+          : { 'data-screen-key': leaf.key, 'data-member-key': key, 'data-group': group },
+        onIntent: leaf.disabled || !hasIntent ? undefined : () => rows.current.onIntent?.(leaf.key),
+        onActivate: leaf.disabled
+          ? undefined
+          : ({ newTab }: NavActivation) => rows.current.openRow(group, member, newTab),
+        onMenu: leaf.disabled
+          ? undefined
+          : (x, y) =>
+              rows.current.openMenu(x, y, [
+                { label: 'Open in new tab', run: () => rows.current.openRow(group, member, true) },
+                ...pinItem(),
+              ]),
+        hoverAction: leaf.disabled ? undefined : star,
+        onDragStart:
+          leaf.disabled || !canDrag
+            ? undefined
+            : (transfer) => rows.current.onDragStart?.(member, transfer),
+      };
     };
-  };
 
-  const screenNodes = ((): NavNode[] => {
-    const children = (folder: Folder, path: string): NavNode[] => [
-      ...[...folder.folders.values()]
-        .sort((a, b) => byName(a.name, b.name))
-        .map((child): NavNode => {
-          const here = `${path}/${child.name}`;
-          const open = q !== '' || !collapsed.has(FOLDER_PREFIX + here);
-          return {
-            id: FOLDER_PREFIX + here,
-            label: child.name,
-            icon: open ? <FolderOpen size={16} /> : <FolderIcon size={16} />,
-            className: 'screen-tree__folder',
-            children: children(child, here),
-          };
-        }),
-      ...[...folder.leaves].sort((a, b) => byName(a.title, b.title)).map((leaf) => leafNode(leaf)),
-    ];
-    // Compact (compactSidebar): single-child folder chains fold into breadcrumb
-    // rows; `root` is already filtered by Show sub-screens and the query.
-    const top = children(root, '');
-    return compact ? compactChains(top) : top;
-  })();
-
-  // --- the library's navigation ---
-
-  // In the library's order, never sorted. While searching, a leaf shows when
-  // its label, title or id matches, and a group when anything in it does.
-  const navigationNodes = ((): NavNode[] => {
-    if (!navigated) return [];
+    // The library's navigation: in the library's order, never sorted. While
+    // searching, a leaf shows when its label, title or id matches, and a group
+    // when anything in it does. Built before the folders, so a screen listed
+    // in both has its navigation row first.
     const walk = (entries: readonly ResolvedEntry[], top: boolean): NavNode[] =>
       entries.flatMap((entry): NavNode[] => {
         const { screen } = entry;
@@ -1099,7 +1127,8 @@ export function ScreenTree({
         if (entry.children === undefined) return own && matches ? [own] : [];
         const kids = walk(entry.children, false);
         if (kids.length === 0 && (q !== '' ? !(own && matches) : own === undefined)) return [];
-        const open = kids.length > 0 && (q !== '' || navigationOpen(id, top));
+        const stored = top ? !collapsed.has(id) : collapsed.has(id + NAV_OPENED_SUFFIX);
+        const open = kids.length > 0 && (q !== '' || stored);
         // A group that names a screen: its row opens the screen and the group.
         const activate = own?.onActivate;
         return [
@@ -1108,7 +1137,7 @@ export function ScreenTree({
             onActivate: activate
               ? (modifiers: NavActivation) => {
                   activate(modifiers);
-                  setExpanded(id, true);
+                  rows.current.setExpanded(id, true);
                 }
               : undefined,
             id,
@@ -1119,8 +1148,37 @@ export function ScreenTree({
           },
         ];
       });
-    return walk(resolved.entries, true);
-  })();
+    // `rows` is read only by the handlers the rows carry, when one runs.
+    // eslint-disable-next-line react-hooks/refs -- never read during render
+    const navigationNodes = resolved !== null ? walk(resolved.entries, true) : [];
+
+    const children = (folder: Folder, path: string): NavNode[] => [
+      ...[...folder.folders.values()]
+        .sort((a, b) => byName(a.name, b.name))
+        .map((child): NavNode => {
+          const here = `${path}/${child.name}`;
+          const open = q !== '' || !collapsed.has(FOLDER_PREFIX + here);
+          return {
+            id: FOLDER_PREFIX + here,
+            label: child.name,
+            icon: open ? <FolderOpen size={16} /> : <FolderIcon size={16} />,
+            className: 'screen-tree__folder',
+            children: children(child, here),
+          };
+        }),
+      ...[...folder.leaves].sort((a, b) => byName(a.title, b.title)).map((leaf) => leafNode(leaf)),
+    ];
+    // Compact (compactSidebar): single-child folder chains fold into breadcrumb
+    // rows; `root` is already filtered by Show sub-screens and the query.
+    const top = children(root, '');
+    return {
+      screenNodes: compact ? compactChains(top) : top,
+      navigationNodes,
+      meta,
+      byTabKey,
+      keysId: [...keys].sort().join('\n'),
+    };
+  }, [root, resolved, compact, collapsed, q, pinnedKeys, hasLive, canDrag, hasIntent]);
 
   // --- Tools ---
 
@@ -1436,6 +1494,10 @@ export function ScreenTree({
         candidates.add(id);
       }
     }
+    // The navigation and All screens rows are looked up, not walked: there are thousands.
+    if (activeTool === undefined) {
+      for (const id of screenByTabKey.get(activeKey) ?? []) candidates.add(id);
+    }
     if (activeTool !== undefined && activeViewId !== null) {
       const viewId = VIEW_PREFIX + activeViewId;
       const owner = toolNodes.find((n) => n.id === memberNodeId(GROUP_TOOLS, `tool:${activeTool}`));
@@ -1446,14 +1508,27 @@ export function ScreenTree({
   }
   const selectedId =
     viewSelected ??
-    browseSelection(nodes, expandedIds, candidates, (id) => meta.get(id)?.group, lastGroup);
+    browseSelection(
+      nodes,
+      expandedIds,
+      candidates,
+      (id) => (meta.get(id) ?? screenMeta.get(id))?.group,
+      lastGroup
+    );
 
   // --- rendered member keys (drop trust) ---
 
+  // `meta` holds every row but the navigation's and All screens', whose keys
+  // the memo above sorted once.
   const renderedId = [...renderedKeysOf(meta)].sort().join('\n');
   const renderedKeys = useMemo(
-    () => new Set(renderedId === '' ? [] : (renderedId.split('\n') as MemberKey[])),
-    [renderedId]
+    () =>
+      new Set(
+        [renderedId, screenKeysId].flatMap((id) =>
+          id === '' ? [] : (id.split('\n') as MemberKey[])
+        )
+      ),
+    [renderedId, screenKeysId]
   );
   // Reported when the set's content changes, not on every render.
   useEffect(() => onRenderedKeys?.(renderedKeys), [renderedKeys, onRenderedKeys]);
