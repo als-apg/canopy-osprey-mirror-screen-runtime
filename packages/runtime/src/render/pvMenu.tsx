@@ -26,6 +26,8 @@ export interface PvMenuChannel {
   readonly name: string;
   /** What the channel is to the widget: "Readback", "Setpoint", a curve's name. */
   readonly label: string;
+  /** The expression the node shows this channel through, when it shows it converted. */
+  readonly shownAs?: string;
 }
 
 // What a prop key says about its channel, where the key says more than the
@@ -80,10 +82,10 @@ export type PvMenuHost = Pick<
 // Channels shown as chips; one more than fit puts the last chip's place to an
 // overflow list.
 const CHIPS = 3;
-const WIDTH = 300;
-const EDGE = 8;
+export const WIDTH = 300;
+export const EDGE = 8;
 
-const SEVERITY: ReadonlyArray<readonly [string, ColorRole]> = [
+export const SEVERITY: ReadonlyArray<readonly [string, ColorRole]> = [
   ['OK', { $role: 'OK', fallback: '#24a148' }],
   ['MINOR', { $role: 'MINOR', fallback: '#f1c21b' }],
   ['MAJOR', { $role: 'MAJOR', fallback: '#da1e28' }],
@@ -91,7 +93,7 @@ const SEVERITY: ReadonlyArray<readonly [string, ColorRole]> = [
   ['Disconnected', { $role: 'DISCONNECTED', fallback: '#8d8d8d' }],
 ];
 
-const MENU: CSSProperties = {
+export const MENU: CSSProperties = {
   position: 'fixed',
   zIndex: HOST.z,
   width: WIDTH,
@@ -119,7 +121,7 @@ const CHIP: CSSProperties = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 };
-const HEAD: CSSProperties = {
+export const HEAD: CSSProperties = {
   display: 'block',
   width: '100%',
   textAlign: 'left',
@@ -131,12 +133,12 @@ const HEAD: CSSProperties = {
   font: 'inherit',
   cursor: 'copy',
 };
-const NAME: CSSProperties = {
+export const NAME: CSSProperties = {
   fontFamily: HOST.mono,
   fontWeight: 600,
   overflowWrap: 'anywhere',
 };
-const SUB: CSSProperties = {
+export const SUB: CSSProperties = {
   marginTop: 2,
   color: HOST.dim,
   fontSize: 12,
@@ -144,8 +146,8 @@ const SUB: CSSProperties = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 };
-const RULE: CSSProperties = { height: 1, margin: '4px 0', background: HOST.border };
-const ITEM: CSSProperties = {
+export const RULE: CSSProperties = { height: 1, margin: '4px 0', background: HOST.border };
+export const ITEM: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'baseline',
@@ -161,8 +163,8 @@ const ITEM: CSSProperties = {
   cursor: 'pointer',
 };
 // A hint that is a PV name is set as one.
-const NAME_HINT: CSSProperties = { fontFamily: HOST.mono };
-const HINT: CSSProperties = {
+export const NAME_HINT: CSSProperties = { fontFamily: HOST.mono };
+export const HINT: CSSProperties = {
   minWidth: 0,
   color: HOST.dim,
   fontSize: 11,
@@ -180,7 +182,7 @@ interface Entry {
   readonly keep?: boolean;
 }
 
-function copyText(text: string): void {
+export function copyText(text: string): void {
   const fallback = () => {
     const area = document.createElement('textarea');
     area.value = text;
@@ -199,7 +201,14 @@ function copyText(text: string): void {
   else fallback();
 }
 
-function numberText(value: number): string {
+/** A channel's value with its unit, the unit once (a display value may end in it). */
+export function valueText(pv: { displayValue: string; units?: string | undefined }): string {
+  const text = String(pv.displayValue);
+  const units = pv.units ?? '';
+  return units === '' || text.endsWith(units) ? text : `${text} ${units}`;
+}
+
+export function numberText(value: number): string {
   return String(Number(value.toPrecision(6)));
 }
 
@@ -285,12 +294,8 @@ function MenuBody({ anchor, channels, host, deviceChannels, close }: Parameters<
   }, [at, listOpen, count]);
 
   const waveform = Array.isArray(pv.value);
-  const shown = waveform
-    ? `${(pv.value as unknown[]).length} points`
-    : `${pv.displayValue}${pv.units ? ` ${pv.units}` : ''}`;
-  const copied = waveform
-    ? (pv.value as unknown[]).join(' ')
-    : `${pv.displayValue}${pv.units ? ` ${pv.units}` : ''}`;
+  const shown = waveform ? `${(pv.value as unknown[]).length} points` : valueText(pv);
+  const copied = waveform ? (pv.value as unknown[]).join(' ') : valueText(pv);
   const info = host.pvInfo?.(channel.name) ?? null;
   const correlation = host.correlation;
   const isX = x === channel.name;
@@ -456,6 +461,11 @@ function MenuBody({ anchor, channels, host, deviceChannels, close }: Parameters<
             <div style={SUB}>
               {pv.connected ? [shown, time].filter(Boolean).join(' · ') : 'no value'}
             </div>
+            {channel.shownAs !== undefined && (
+              <div style={SUB} title={channel.shownAs}>
+                shown converted on this screen
+              </div>
+            )}
             <div style={SUB}>
               <span
                 style={{
