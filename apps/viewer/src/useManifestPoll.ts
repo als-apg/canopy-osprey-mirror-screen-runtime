@@ -117,12 +117,13 @@ export interface ConditionalManifestPollOptions {
  * `onManifest` runs only for a changed one. A failed poll keeps the last
  * manifest and tries again on the next tick; one poll runs at a time. The
  * validator lives in the loop: a new base, `scope` or `enabled` starts over
- * with an unconditional fetch. `onManifest` is read when a poll lands, so a
+ * with an unconditional fetch. `onManifest` gets the manifest with its ETag
+ * (null from a server that sends none) and is read when a poll lands, so a
  * new callback never restarts the loop.
  */
 export function useConditionalManifestPoll(
   screensBaseUrl: string,
-  onManifest: (manifest: Manifest) => void,
+  onManifest: (manifest: Manifest, etag: string | null) => void,
   { enabled = true, eager = false, scope }: ConditionalManifestPollOptions = {}
 ): void {
   const deliver = useRef(onManifest);
@@ -141,7 +142,7 @@ export function useConditionalManifestPoll(
         const result = await pollManifest(screensBaseUrl, etag);
         if (cancelled || !result.changed) return;
         etag = result.etag;
-        deliver.current(result.manifest);
+        deliver.current(result.manifest, result.etag);
       } catch {
         // Missing manifest or network error: keep the last one, retry later.
       } finally {
