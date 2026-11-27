@@ -60,17 +60,19 @@ const MANIFEST: Manifest = {
 };
 
 let requests: string[];
+let served: Manifest;
 
 beforeEach(() => {
   resetScreenDocuments();
   requests = [];
+  served = MANIFEST;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       requests.push(url);
-      return new Response(JSON.stringify(url.endsWith('manifest.json') ? MANIFEST : {}), {
+      return new Response(JSON.stringify(url.endsWith('manifest.json') ? served : {}), {
         status: 200,
         headers: { ETag: '"m1"' },
       });
@@ -99,19 +101,23 @@ function row(title: string): HTMLElement {
   return label.closest('.nav-tree__row') as HTMLElement;
 }
 
+function renderWorkspace() {
+  return render(
+    <MemoryRouter initialEntries={['/embed/bts/knob']}>
+      <ZoomProvider>
+        <EmbedThemeContext.Provider
+          value={{ mode: 'dark', id: 'dark', anchorRef: { current: null } }}
+        >
+          <WorkspacePage screensBaseUrl={BASE} config={{}} />
+        </EmbedThemeContext.Provider>
+      </ZoomProvider>
+    </MemoryRouter>
+  );
+}
+
 describe('WorkspacePage: a pressed tree row', () => {
   it('asks for the document of the pressed screen, once, and not for one already open', async () => {
-    render(
-      <MemoryRouter initialEntries={['/embed/bts/knob']}>
-        <ZoomProvider>
-          <EmbedThemeContext.Provider
-            value={{ mode: 'dark', id: 'dark', anchorRef: { current: null } }}
-          >
-            <WorkspacePage screensBaseUrl={BASE} config={{}} />
-          </EmbedThemeContext.Provider>
-        </ZoomProvider>
-      </MemoryRouter>
-    );
+    renderWorkspace();
     await act(async () => {});
     await screen.findAllByText('Magnet');
     const documents = () => requests.filter((url) => url.endsWith('.screen.json'));
@@ -125,5 +131,15 @@ describe('WorkspacePage: a pressed tree row', () => {
     // bts/knob is the open tab: its row focuses it, nothing to fetch.
     fireEvent.mouseDown(row('Knob'), { button: 0 });
     expect(documents()).toHaveLength(1);
+  });
+
+  it("asks for the document from a row of the library's own navigation", async () => {
+    served = { ...MANIFEST, navigation: [{ screen: 'bts/magnet', label: 'The magnet' }] };
+    renderWorkspace();
+    await act(async () => {});
+    await screen.findAllByText('The magnet');
+    const documents = () => requests.filter((url) => url.endsWith('.screen.json'));
+    fireEvent.mouseDown(row('The magnet'), { button: 0 });
+    expect(documents()).toEqual([`${BASE}/screens/bts/magnet.screen.json`]);
   });
 });
