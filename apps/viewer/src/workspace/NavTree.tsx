@@ -94,6 +94,11 @@ export interface NavNode {
    * Absent on a leaf: the leaf does nothing (a disabled one, say).
    */
   onActivate?: (modifiers: NavActivation) => void;
+  /**
+   * The row was pressed (primary or middle button), before the click that
+   * activates it: the earliest sign of what is about to open.
+   */
+  onIntent?: () => void;
   /** Right-click or the keyboard menu key, at a viewport position. */
   onMenu?: (x: number, y: number) => void;
   /** A trailing button in the row. */
@@ -455,6 +460,8 @@ export function NavTree({
             onMouseDown={(event) => {
               // A middle press would start the browser's autoscroll.
               if (event.button === 1) event.preventDefault();
+              if (node.disabled || editing) return;
+              if (event.button === 0 || event.button === 1) node.onIntent?.();
             }}
             onAuxClick={(event) => {
               if (event.button !== 1) return;

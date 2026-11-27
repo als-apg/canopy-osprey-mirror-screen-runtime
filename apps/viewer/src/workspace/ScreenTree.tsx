@@ -225,6 +225,8 @@ export interface ScreenTreeProps {
   onRevertView?: (view: SavedView) => void;
   /** Delete a saved view (the tree asks for confirmation first). */
   onDeleteView?: (view: SavedView) => void;
+  /** A screen row was pressed: the screen `key` is likely to open next. */
+  onIntent?: (key: string) => void;
   /** A row's `dragstart`: write the transfer for `drag` (the dock takes the drop). */
   onDragStart?: (drag: BrowserDrag, dataTransfer: DataTransfer | null) => void;
   /** The collections hook; absent or not enabled: no Pinned, Recent, collections or Pin. */
@@ -633,6 +635,7 @@ export function ScreenTree({
   revertable = NO_REVERTS,
   onRevertView,
   onDeleteView,
+  onIntent,
   onDragStart,
   collections,
   onRenderedKeys,
@@ -906,6 +909,7 @@ export function ScreenTree({
     const label = labelOf(member, status);
     const isTool = 'tool' in member;
     const editing = edit ? editNode(edit.collection, edit.index, label) : undefined;
+    const intentKey = disabled || isTool ? null : screenMemberTabKey(member);
     const dockDrag =
       disabled || !onDragStart
         ? undefined
@@ -922,6 +926,7 @@ export function ScreenTree({
         (disabled ? ' screen-tree__leaf--disabled' : '') +
         (pinned ? ' screen-tree__member--pinned' : ''),
       data: { 'data-member-key': key, 'data-group': group },
+      onIntent: intentKey === null || !onIntent ? undefined : () => onIntent(intentKey),
       onActivate: disabled ? undefined : ({ newTab }) => openRow(group, member, newTab),
       onMenu: (x, y) =>
         openMenu(x, y, [
@@ -1027,6 +1032,7 @@ export function ScreenTree({
       data: leaf.disabled
         ? undefined
         : { 'data-screen-key': leaf.key, 'data-member-key': key, 'data-group': group },
+      onIntent: leaf.disabled || !onIntent ? undefined : () => onIntent(leaf.key),
       onActivate: leaf.disabled
         ? undefined
         : ({ newTab }: NavActivation) => openRow(group, member, newTab),

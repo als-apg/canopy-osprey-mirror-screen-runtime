@@ -195,7 +195,7 @@ describe('ScreenPage with the workspace manifest', () => {
     expect(requests).toEqual([PATH, PATH]);
   });
 
-  it('takes the document a pointer-down already started instead of fetching again', async () => {
+  it('takes the document a press on its tree row already started instead of fetching again', async () => {
     prefetchScreenDocument(BASE, PATH, 'r1');
     render(page({ base: BASE, manifest: manifest('r1') }));
     expect(await screen.findByText('first')).toBeTruthy();

@@ -106,6 +106,7 @@ import { ScreenVerbRegistry, useScreenVerbs } from '../screenActions/useScreenAc
 import { getShowSubScreens, setShowSubScreens, useShowSubScreens } from '../screenList.js';
 import { useBackendBadge } from '../services.js';
 import { createPushChannel } from '../pushChannel.js';
+import { prefetchScreenDocument } from '../screenDocuments.js';
 import { SharedManifestContext } from '../useManifestPoll.js';
 import type { SharedManifest } from '../useManifestPoll.js';
 import { ZoomStore, useKeyedZoom, useZoom } from '../ZoomContext.js';
@@ -608,6 +609,21 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
   const manifestPush = useMemo(() => push.source('manifest'), [push]);
   const collectionsPush = useMemo(() => push.source('collections'), [push]);
   const { manifest, refetch: refetchManifest } = useWorkspaceManifest(screensBaseUrl, manifestPush);
+  // A tree row was pressed: its screen's document is asked for now, and the
+  // ScreenPage the click mounts takes that request (screenDocuments.ts). A
+  // screen already open is not fetched again for it.
+  const intent = useRef({ manifest, keys: state.keys });
+  useLayoutEffect(() => {
+    intent.current = { manifest, keys: state.keys };
+  });
+  const onScreenIntent = useCallback(
+    (key: string) => {
+      if (intent.current.keys.includes(key)) return;
+      const entry = findEntry(intent.current.manifest, key);
+      if (entry?.kind === 'ir') prefetchScreenDocument(screensBaseUrl, entry.path, entry.rev);
+    },
+    [screensBaseUrl]
+  );
   const sharedManifest = useMemo<SharedManifest>(
     () => ({ base: screensBaseUrl, manifest }),
     [screensBaseUrl, manifest]
@@ -2089,6 +2105,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
                         revertable={revertable}
                         onRevertView={viewsEnabled ? onRevertView : undefined}
                         onDeleteView={viewsEnabled ? onDeleteView : undefined}
+                        onIntent={onScreenIntent}
                         onDragStart={dockApi ? onBrowserDragStart : undefined}
                         tabs={state}
                         collections={collections}

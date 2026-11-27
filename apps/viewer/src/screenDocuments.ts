@@ -5,7 +5,7 @@
 //              manifest) await one request and one parse instead of one each.
 //              Nothing is kept once it lands.
 //   early      `prefetchScreenDocument` starts a screen's fetch before the page
-//              that shows it exists (pointer-down on a tree row); the page's
+//              that shows it exists (the press on a tree row); the page's
 //              `loadScreenDocument` for the same base, path and rev then takes
 //              that request instead of sending its own. A started fetch is
 //              taken once, kept at most PREFETCH_TTL_MS, and only the last
