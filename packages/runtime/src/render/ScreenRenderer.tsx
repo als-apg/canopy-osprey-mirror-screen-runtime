@@ -116,6 +116,8 @@ import { actionName, offersMenu } from './actionMenu.js';
 import { PopupMenu } from './popupMenu.js';
 import type { MenuAnchor } from './popupMenu.js';
 import { PvMenu, pvMenuChannels } from './pvMenu.js';
+import { ComputedMenu, InputsPanel, computedValueOf } from './computedMenu.js';
+import type { ComputedValue } from './computedMenu.js';
 import type { PvMenuChannel } from './pvMenu.js';
 import {
   embedFile,
@@ -530,6 +532,14 @@ function MountedNodeView({
   // The open right-click menu of the node's channels (pvMenu.tsx).
   const [pvMenu, setPvMenu] = useState<{ at: MenuAnchor; channels: PvMenuChannel[] } | null>(null);
   const closePvMenu = useCallback(() => setPvMenu(null), []);
+  // The same for a value the screen computes (computedMenu.tsx), and the
+  // window that lists its inputs, which stays after the menu has closed.
+  const [computedMenu, setComputedMenu] = useState<{ at: MenuAnchor; value: ComputedValue } | null>(
+    null
+  );
+  const closeComputedMenu = useCallback(() => setComputedMenu(null), []);
+  const [inputsOf, setInputsOf] = useState<ComputedValue | null>(null);
+  const closeInputs = useCallback(() => setInputsOf(null), []);
   // Device link: an authored `device` makes the node a link target; the
   // node's channels register under it, or under the device of the embedded
   // tile it sits in.
@@ -693,15 +703,29 @@ function MountedNodeView({
   // A right click on a node with machine channels opens their menu; on any
   // other node of a device, the device's, where the host can plot. With
   // Shift the browser's own menu opens (a text field's copy and paste).
-  if (linkChannels.propChannels.length > 0) {
+  if (linkChannels.channels.length > 0) {
     pointerHandlers ??= { onMouseEnter: () => {}, onMouseLeave: () => {} };
     pointerHandlers.onContextMenu = (e) => {
       if (e.shiftKey) return;
+      const at = { x: e.clientX, y: e.clientY };
       const channels = pvMenuChannels(node.type, baseProps);
-      if (channels.length === 0) return;
+      if (channels.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPvMenu({ at, channels });
+        return;
+      }
+      // No machine channel of its own: a value the screen computes from some.
+      const value = computedValueOf(node.type, baseProps, formulas, macros);
+      if (value === null) return;
       e.preventDefault();
       e.stopPropagation();
-      setPvMenu({ at: { x: e.clientX, y: e.clientY }, channels });
+      if (value.inputs.length === 1) {
+        setPvMenu({
+          at,
+          channels: [{ name: value.inputs[0]!, label: 'Value', shownAs: value.expression }],
+        });
+      } else setComputedMenu({ at, value });
     };
   } else if (pointerHandlers !== undefined && deviceHover !== null && host.plotPVs !== undefined) {
     pointerHandlers.onContextMenu = (e) => {
@@ -789,6 +813,16 @@ function MountedNodeView({
           close={closePvMenu}
         />
       )}
+      {computedMenu !== null && (
+        <ComputedMenu
+          anchor={computedMenu.at}
+          value={computedMenu.value}
+          host={host}
+          openInputs={() => setInputsOf(computedMenu.value)}
+          close={closeComputedMenu}
+        />
+      )}
+      {inputsOf !== null && <InputsPanel value={inputsOf} host={host} close={closeInputs} />}
       {menuAt !== null && asMenu && (
         <PopupMenu
           anchor={menuAt}
