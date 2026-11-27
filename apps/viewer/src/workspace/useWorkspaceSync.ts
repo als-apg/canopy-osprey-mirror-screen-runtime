@@ -11,6 +11,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { WorkspaceConfig } from '../config.js';
+import type { PushChannel } from '../pushChannel.js';
 import type { WorkspaceState } from './workspaceState.js';
 import { createWorkspaceSync } from './workspaceSync.js';
 import type { BatchEvent, WorkspaceSync } from './workspaceSync.js';
@@ -24,6 +25,8 @@ export interface UseWorkspaceSyncOptions {
   getState: () => WorkspaceState;
   /** Each batch delivered to this window. */
   onBatch?: (batch: BatchEvent) => void;
+  /** Told what the hub's stream pushes (pushChannel.ts), so the page's polls can stand down. */
+  push?: PushChannel;
 }
 
 /** The running sync, or null when this page does not participate. */
@@ -32,6 +35,7 @@ export function useWorkspaceSync({
   workspace,
   getState,
   onBatch,
+  push,
 }: UseWorkspaceSyncOptions): MutableRefObject<WorkspaceSync | null> {
   const sync = useRef<WorkspaceSync | null>(null);
   const stateSource = useRef(getState);
@@ -50,6 +54,9 @@ export function useWorkspaceSync({
       workspace: { path, protocol },
       getState: () => stateSource.current(),
       onBatch: (batch) => batchSink.current?.(batch),
+      onHello: (capabilities) => push?.opened(capabilities),
+      onPush: (type, data) => push?.event(type, data),
+      onStreamClosed: () => push?.closed(),
     });
     sync.current = running;
     running.start();
@@ -57,7 +64,7 @@ export function useWorkspaceSync({
       running.stop();
       if (sync.current === running) sync.current = null;
     };
-  }, [enabled, path, protocol]);
+  }, [enabled, path, protocol, push]);
 
   return sync;
 }

@@ -2,7 +2,7 @@
 // (a frame its host hides with display: none), read fresh on every call.
 
 import { describe, expect, it, vi } from 'vitest';
-import { isPanelShown, onPanelShown } from './panelVisibility.js';
+import { isPanelShown, watchPanel } from './panelVisibility.js';
 import type { PanelDocument, PanelWindow } from './panelVisibility.js';
 
 function fakePage(width = 800, height = 600, visibility: DocumentVisibilityState = 'visible') {
@@ -28,6 +28,7 @@ function fakePage(width = 800, height = 600, visibility: DocumentVisibilityState
   return {
     win,
     doc,
+    state,
     listeners,
     resize(w: number, h: number) {
       state.width = w;
@@ -58,11 +59,11 @@ describe('isPanelShown', () => {
   });
 });
 
-describe('onPanelShown', () => {
+describe('watchPanel', () => {
   it('fires when the window gets a size again, once per return', () => {
     const page = fakePage(0, 0);
     const shown = vi.fn();
-    onPanelShown(shown, page.win, page.doc);
+    watchPanel(shown, page.win, page.doc);
     page.resize(800, 600);
     expect(shown).toHaveBeenCalledTimes(1);
     page.resize(900, 600);
@@ -75,7 +76,7 @@ describe('onPanelShown', () => {
   it('fires when the document becomes visible, but not into a 0 x 0 window', () => {
     const page = fakePage(0, 0, 'hidden');
     const shown = vi.fn();
-    onPanelShown(shown, page.win, page.doc);
+    watchPanel(shown, page.win, page.doc);
     page.setVisibility('visible');
     expect(shown).not.toHaveBeenCalled();
     page.resize(800, 600);
@@ -85,11 +86,28 @@ describe('onPanelShown', () => {
   it('stops listening after the unsubscribe', () => {
     const page = fakePage(0, 0);
     const shown = vi.fn();
-    const off = onPanelShown(shown, page.win, page.doc);
-    off();
+    const watch = watchPanel(shown, page.win, page.doc);
+    watch.stop();
     expect(page.listeners.resize.size).toBe(0);
     expect(page.listeners.visibilitychange.size).toBe(0);
     page.resize(800, 600);
     expect(shown).not.toHaveBeenCalled();
+  });
+
+  it('notices on a reading a hide and a return the browser sent no event for', () => {
+    const page = fakePage();
+    const shown = vi.fn();
+    const watch = watchPanel(shown, page.win, page.doc);
+    expect(watch.check()).toBe(true);
+    page.state.width = 0;
+    page.state.height = 0;
+    expect(watch.check()).toBe(false);
+    expect(shown).not.toHaveBeenCalled();
+    page.state.width = 800;
+    page.state.height = 600;
+    expect(watch.check()).toBe(true);
+    expect(shown).toHaveBeenCalledTimes(1);
+    expect(watch.check()).toBe(true);
+    expect(shown).toHaveBeenCalledTimes(1);
   });
 });

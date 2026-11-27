@@ -27,6 +27,12 @@
 //              document visible, the window not 0 x 0), once more when
 //              either comes back, never while a previous poll's GETs are unanswered,
 //              and not at all while any write or state POST is in flight.
+//   push         with `push` active (the server announced collections events
+//              on the workspace stream) the interval and the focus refresh
+//              stand down: an event polls at once, or at the next tick that
+//              may (on screen, nothing in flight), and a tick polls anyway
+//              PUSH_SAFETY_POLL_MS after the last request. Without it, or once
+//              the stream is gone, the interval above runs as before.
 //   hold       holdCollection(ref) (an active rename field or member drag)
 //              keeps that collection as shown while list answers arrive: the
 //              newest listed version of it (or its absence) is buffered and
@@ -47,7 +53,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { isPanelShown, onPanelShown } from '../panelVisibility.js';
+import { watchPanel } from '../panelVisibility.js';
+import { PUSH_SAFETY_POLL_MS } from '../pushChannel.js';
+import type { PushSource } from '../pushChannel.js';
 import type { Member } from './collections.js';
 import {
   COLLECTIONS_POLL_MS,
@@ -89,6 +97,8 @@ function releaseHeld(
 export interface StoreOptions {
   notify: (text: string) => void;
   root?: RefObject<HTMLElement | null>;
+  /** The server's collections events; read when the store's loop starts. */
+  push?: PushSource;
 }
 
 export interface CollectionsStore {
@@ -253,12 +263,14 @@ export function useCollectionsStore(
 
   // The poll: one at a time, none while a write or a state POST is in flight.
   const polling = useRef(false);
-  const poll = useCallback(() => {
-    if (polling.current || writes.current > 0 || statePosts.current > 0) return;
+  // True when it asked.
+  const poll = useCallback((): boolean => {
+    if (polling.current || writes.current > 0 || statePosts.current > 0) return false;
     polling.current = true;
     void Promise.all([refreshList(), refreshState()]).finally(() => {
       polling.current = false;
     });
+    return true;
   }, [refreshList, refreshState]);
 
   useEffect(() => {
@@ -267,10 +279,34 @@ export function useCollectionsStore(
     listEtag.current = null;
     stateEtag.current = null;
     refresh();
-    const onFocus = () => refresh();
+    // While the server pushes collection changes (pushChannel.ts) the interval
+    // and the focus refresh stand down: an event polls, and so does a tick
+    // PUSH_SAFETY_POLL_MS after the last request.
+    const push = latest.current.push;
+    const pushed = () => push?.active() ?? false;
+    let askedAt = Date.now();
+    const safetyDue = () => Date.now() - askedAt >= PUSH_SAFETY_POLL_MS;
+    /** A pushed change that could not be polled for yet (off screen, or a request in flight). */
+    let owed = false;
+    const pollNow = () => {
+      if (!poll()) return;
+      owed = false;
+      askedAt = Date.now();
+    };
+    const onFocus = () => {
+      if (pushed() && !safetyDue() && !owed) return;
+      owed = false;
+      askedAt = Date.now();
+      refresh();
+    };
     window.addEventListener('focus', onFocus);
     // In view unless an observer on the workspace root says otherwise.
     let inView = true;
+    // A frame its host hides gets no observer report: the page's own size and
+    // visibility are read at every tick, and its return polls at once.
+    const panel = watchPanel(() => {
+      if (inView) pollNow();
+    });
     let observer: IntersectionObserver | null = null;
     const root = latest.current.root?.current ?? null;
     if (root !== null && typeof IntersectionObserver !== 'undefined') {
@@ -282,23 +318,24 @@ export function useCollectionsStore(
         const was = inView;
         inView = last.isIntersecting;
         // Back in view: poll at once (the first report follows the mount GET).
-        if (inView && !was && reported && isPanelShown()) poll();
+        if (inView && !was && reported && panel.check()) pollNow();
         reported = true;
       });
       observer.observe(root);
     }
-    // A frame its host hides gets no observer report: the page's own size and
-    // visibility are read at every tick, and its return polls at once.
-    const offShown = onPanelShown(() => {
-      if (inView) poll();
-    });
     const timer = setInterval(() => {
-      if (inView && isPanelShown()) poll();
+      if (!panel.check() || !inView) return;
+      if (!pushed() || safetyDue() || owed) pollNow();
     }, COLLECTIONS_POLL_MS);
+    const offPush = push?.subscribe(() => {
+      owed = true;
+      if (panel.check() && inView) pollNow();
+    });
     return () => {
       window.removeEventListener('focus', onFocus);
       observer?.disconnect();
-      offShown();
+      panel.stop();
+      offPush?.();
       clearInterval(timer);
     };
   }, [path, refresh, poll]);

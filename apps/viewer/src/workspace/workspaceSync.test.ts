@@ -69,6 +69,8 @@ const EMPTY = {} as WorkspaceState;
 function harness() {
   const calls: Call[] = [];
   const streams: FakeStream[] = [];
+  /** What the sync handed on from its stream: hello capabilities, pushed events, closes. */
+  const pushed: unknown[][] = [];
   /** Whether canopy_mcp answers: false makes every workspace request a network failure. */
   const front = { up: true };
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -104,11 +106,14 @@ function harness() {
     doc,
     reread: async () => ({ status: 'advertised', workspace: { path: 'api/workspace' } }) as never,
     randomId: () => 'w1',
+    onHello: (capabilities) => pushed.push(['hello', capabilities]),
+    onPush: (type, data) => pushed.push([type, data]),
+    onStreamClosed: () => pushed.push(['closed']),
   });
   const stream = () => streams[streams.length - 1];
   const keydown = () => docTarget.dispatchEvent(new Event('keydown'));
   const since = (n: number) => calls.slice(n);
-  return { sync, calls, streams, stream, front, keydown, since };
+  return { sync, calls, streams, stream, front, keydown, since, pushed };
 }
 
 async function settle(ms = 0): Promise<void> {
@@ -238,3 +243,75 @@ describe('backoff precedence through the window sync', () => {
 });
 
 const REPORT_SLACK = 300;
+
+describe('pushed events', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function activeWindow() {
+    const h = harness();
+    h.sync.start();
+    await settle();
+    expect(h.streams).toHaveLength(1);
+    return h;
+  }
+
+  it("hands on the hello's capabilities, and none from a hub that lists none", async () => {
+    const h = await activeWindow();
+    h.stream().emit('hello', { epoch: 1, activeWindow: 'w1', seq: 1 });
+    expect(h.pushed).toEqual([['hello', []]]);
+    h.stream().emit('hello', {
+      activeWindow: 'w1',
+      capabilities: ['manifest-events', 'collections-events'],
+    });
+    expect(h.pushed[1]).toEqual(['hello', ['manifest-events', 'collections-events']]);
+    h.sync.stop();
+  });
+
+  it('hands on a manifest or collections event framed as a named event', async () => {
+    const h = await activeWindow();
+    h.stream().emit('manifest', { type: 'manifest', etag: '"m2"' });
+    h.stream().emit('collections', { type: 'collections' });
+    expect(h.pushed).toEqual([
+      ['manifest', { type: 'manifest', etag: '"m2"' }],
+      ['collections', { type: 'collections' }],
+    ]);
+    h.sync.stop();
+  });
+
+  it('hands on the same events framed as a default message with a type, and no other message', async () => {
+    const h = await activeWindow();
+    h.stream().emit('message', { type: 'manifest', etag: '"m2"' });
+    h.stream().emit('message', { type: 'collections' });
+    h.stream().emit('message', { type: 'batch', window: 'w1', commands: [] });
+    h.stream().emit('message', {});
+    expect(h.pushed).toEqual([
+      ['manifest', { type: 'manifest', etag: '"m2"' }],
+      ['collections', { type: 'collections' }],
+    ]);
+    h.sync.stop();
+  });
+
+  it('says when the stream is closed: on inactive, on an error, on stop', async () => {
+    const h = await activeWindow();
+    h.stream().emit('inactive');
+    expect(h.pushed).toEqual([['closed']]);
+    // A stream that is gone delivers nothing more.
+    h.streams[0]!.emit('manifest', { etag: '"m3"' });
+    expect(h.pushed).toHaveLength(1);
+
+    h.keydown();
+    await settle();
+    expect(h.streams).toHaveLength(2);
+    h.stream().error();
+    expect(h.pushed).toEqual([['closed'], ['closed']]);
+    await settle();
+    expect(h.streams).toHaveLength(3);
+    h.sync.stop();
+    expect(h.pushed).toEqual([['closed'], ['closed'], ['closed']]);
+  });
+});

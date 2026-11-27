@@ -36,6 +36,7 @@
 
 import type { Dispatch, RefObject } from 'react';
 import type { ManifestScreen } from '../api.js';
+import type { PushSource } from '../pushChannel.js';
 import { checkCollection, memberKey, parseMember } from './collections.js';
 import type { CollectionRaw, Member, MemberKey, OpenManyPlan } from './collections.js';
 import { mapCollection } from './dock/collectionLayout.js';
@@ -213,6 +214,8 @@ export interface UseCollectionsOptions {
   writeUrl?: (target: string) => void;
   /** The workspace root: the poll runs only while it intersects the viewport. */
   root?: RefObject<HTMLElement | null>;
+  /** The server's collections events (pushChannel.ts); while active they replace the poll. */
+  push?: PushSource;
   /** The tab key the document's URL named at mount (latched); null: none. */
   urlKey?: string | null;
   /** The tab keys session restore brought back at mount (latched). */

@@ -8,7 +8,12 @@ import type { ManifestScreen } from './api.js';
 import type { ReactNode } from 'react';
 import { createElement } from 'react';
 import type { SharedManifest } from './useManifestPoll.js';
-import { SharedManifestContext, useManifestPoll } from './useManifestPoll.js';
+import { createPushChannel, PUSH_SAFETY_POLL_MS } from './pushChannel.js';
+import {
+  SharedManifestContext,
+  useConditionalManifestPoll,
+  useManifestPoll,
+} from './useManifestPoll.js';
 
 const BASE = 'http://h/drafts/';
 const OPEN = 'screens/drafts/panel.screen.json';
@@ -323,5 +328,152 @@ describe('useManifestPoll with a shared manifest', () => {
     renderShared({ base: 'http://elsewhere/', manifest: null });
     await tick();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useConditionalManifestPoll with pushed manifest events', () => {
+  function renderPushed() {
+    const channel = createPushChannel();
+    const onManifest = vi.fn();
+    const push = channel.source('manifest');
+    renderHook(() => useConditionalManifestPoll(BASE, onManifest, { eager: true, push }));
+    return { channel, onManifest };
+  }
+
+  /** Lets what is in flight land without moving the clock. */
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+
+  it('polls every three seconds while the server announces no manifest events', async () => {
+    setEtag('"m1"');
+    const { channel } = renderPushed();
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => channel.opened([]));
+    await tick(9000);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('polls once when a pushing stream opens, then not on the interval', async () => {
+    setEtag('"m1"');
+    const { channel } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await tick(30_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetches when an event names another ETag, once per ETag, and not for the one held', async () => {
+    setEtag('"m1"');
+    const { channel, onManifest } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    expect(onManifest).toHaveBeenCalledTimes(1);
+    const before = fetchMock.mock.calls.length;
+
+    // The ETag held, bare as an event may carry it: nothing to fetch.
+    await act(async () => channel.event('manifest', { etag: 'm1' }));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+
+    setRev(OPEN, 'r2');
+    setEtag('"m2"');
+    await act(async () => channel.event('manifest', { etag: '"m2"' }));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+    expect(fetchMock.mock.calls.at(-1)![1]).toEqual({
+      cache: 'no-store',
+      headers: { 'If-None-Match': '"m1"' },
+    });
+    expect(onManifest).toHaveBeenCalledTimes(2);
+    expect(onManifest.mock.calls[1]![1]).toBe('"m2"');
+
+    await act(async () => channel.event('manifest', { etag: '"m2"' }));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it('fetches for an event without an ETag', async () => {
+    setEtag('"m1"');
+    const { channel } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    const before = fetchMock.mock.calls.length;
+    await act(async () => channel.event('manifest', {}));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it('polls once more after a poll during which an event arrived', async () => {
+    setEtag('"m1"');
+    const { channel, onManifest } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    // The poll for the open is still in flight when the manifest changes again.
+    setRev(OPEN, 'r3');
+    setEtag('"m3"');
+    await act(async () => channel.event('manifest', { etag: '"m3"' }));
+    await settle();
+    expect(onManifest.mock.calls.at(-1)![1]).toBe('"m3"');
+  });
+
+  it('keeps a safety poll while events flow, and does not fetch on focus in between', async () => {
+    setEtag('"m1"');
+    const { channel } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    const before = fetchMock.mock.calls.length;
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await tick(PUSH_SAFETY_POLL_MS - 3000);
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+    await tick(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it('goes back to the interval when the stream closes', async () => {
+    setEtag('"m1"');
+    const { channel } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    const before = fetchMock.mock.calls.length;
+    await act(async () => channel.closed());
+    await tick(6000);
+    expect(fetchMock).toHaveBeenCalledTimes(before + 2);
+  });
+
+  it('does not fetch for an event while the window is 0 x 0, and catches up on return', async () => {
+    setEtag('"m1"');
+    const { channel, onManifest } = renderPushed();
+    await settle();
+    await act(async () => channel.opened(['manifest-events']));
+    await settle();
+    const before = fetchMock.mock.calls.length;
+    vi.stubGlobal('innerWidth', 0);
+    vi.stubGlobal('innerHeight', 0);
+    setRev(OPEN, 'r2');
+    setEtag('"m2"');
+    await act(async () => channel.event('manifest', { etag: '"m2"' }));
+    await tick(PUSH_SAFETY_POLL_MS * 2);
+    expect(fetchMock).toHaveBeenCalledTimes(before);
+
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+    expect(onManifest.mock.calls.at(-1)![1]).toBe('"m2"');
   });
 });

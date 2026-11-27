@@ -37,6 +37,9 @@
 //                URL-named key only, for this page view, and is never stored. Chrome off
 //                keeps the app-level zoom: fit page unless ?_canopyZoom asks
 //                otherwise, whatever display mode is remembered.
+//   push         pushChannel.ts: what the workspace stream announces and
+//                pushes; while it does, the manifest and collections polls
+//                below stand down.
 //   manifest     useWorkspaceManifest.ts: one conditional poll for the page;
 //                every mounted screen reads it through SharedManifestContext.
 //   URL          workspaceUrl.ts: the active tab, written with `replace`
@@ -102,6 +105,7 @@ import type { ScreenAction, ScreenActionContext, ScreenTarget } from '../screenA
 import { ScreenVerbRegistry, useScreenVerbs } from '../screenActions/useScreenActions.js';
 import { getShowSubScreens, setShowSubScreens, useShowSubScreens } from '../screenList.js';
 import { useBackendBadge } from '../services.js';
+import { createPushChannel } from '../pushChannel.js';
 import { SharedManifestContext } from '../useManifestPoll.js';
 import type { SharedManifest } from '../useManifestPoll.js';
 import { ZoomStore, useKeyedZoom, useZoom } from '../ZoomContext.js';
@@ -598,7 +602,12 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  const { manifest, refetch: refetchManifest } = useWorkspaceManifest(screensBaseUrl);
+  // What the workspace stream pushes (pushChannel.ts): told by the sync below,
+  // read by the manifest and collections loops, which then stop polling.
+  const push = useMemo(() => createPushChannel(), []);
+  const manifestPush = useMemo(() => push.source('manifest'), [push]);
+  const collectionsPush = useMemo(() => push.source('collections'), [push]);
+  const { manifest, refetch: refetchManifest } = useWorkspaceManifest(screensBaseUrl, manifestPush);
   const sharedManifest = useMemo<SharedManifest>(
     () => ({ base: screensBaseUrl, manifest }),
     [screensBaseUrl, manifest]
@@ -1174,6 +1183,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     workspace: config?.workspace,
     getState: () => syncState.current(),
     onBatch,
+    push,
   });
   // Every layout change (sizes included) is a holder change.
   useEffect(() => {
@@ -1296,6 +1306,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     here,
     writeUrl,
     root: workspaceRef,
+    push: collectionsPush,
     urlKey: mountUrlKey,
     restoredKeys,
   });

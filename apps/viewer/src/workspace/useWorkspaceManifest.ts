@@ -10,10 +10,15 @@
 // ETag, kept beside the parsed value: the same ETag keeps the held object, so
 // nothing re-renders and nothing is serialised. Only a server that sends no
 // ETag (every poll then answers 200) falls back to comparing the content.
+//
+// `push`: the server's manifest events, when its stream announces them. While
+// they flow the interval stands down and the manifest is fetched when an
+// event says it changed (useConditionalManifestPoll).
 
 import { useCallback, useState } from 'react';
 import type { Manifest } from '../api.js';
 import { pollManifest } from '../api.js';
+import type { PushSource } from '../pushChannel.js';
 import { useConditionalManifestPoll } from '../useManifestPoll.js';
 
 interface Held {
@@ -34,9 +39,12 @@ function unchanged(prev: Held, base: string, value: Manifest, etag: string | nul
  * The latest manifest for `screensBaseUrl` (null before the first one) and a
  * one-shot `refetch` past the HTTP cache (null when it fails). A failed fetch
  * keeps the last manifest; an unchanged one keeps its identity, so nothing
- * re-renders.
+ * re-renders. `push` is the manifest topic of the page's push channel.
  */
-export function useWorkspaceManifest(screensBaseUrl: string): {
+export function useWorkspaceManifest(
+  screensBaseUrl: string,
+  push?: PushSource
+): {
   manifest: Manifest | null;
   refetch: () => Promise<Manifest | null>;
 } {
@@ -64,7 +72,7 @@ export function useWorkspaceManifest(screensBaseUrl: string): {
     }
   }, [screensBaseUrl, adopt]);
 
-  useConditionalManifestPoll(screensBaseUrl, adopt, { eager: true });
+  useConditionalManifestPoll(screensBaseUrl, adopt, { eager: true, push });
 
   return {
     manifest: manifest && manifest.base === screensBaseUrl ? manifest.value : null,

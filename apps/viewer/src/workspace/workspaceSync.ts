@@ -20,7 +20,9 @@
 //
 // Stream. Open while active, one per window. Every stream error closes it; the
 // recovery above decides what comes next, so the browser's own reconnect never
-// runs behind the hub's back.
+// runs behind the hub's back. Beside hello, batch and inactive, a hub may push
+// the PUSH_EVENTS it announced in its hello's `capabilities`; they are handed
+// on as they come (onHello, onPush, onStreamClosed) and change nothing here.
 //
 // Report. Only the active window reports. Changes are throttled (trailing
 // edge, 100 ms quiet, flushed within 250 ms of the first change); a `shown`
@@ -40,6 +42,7 @@
 
 import { readWorkspaceAdvertisement } from '../config.js';
 import type { WorkspaceAdvertisement, WorkspaceConfig } from '../config.js';
+import { helloCapabilities } from '../pushChannel.js';
 import { reduceOversize, type WorkspaceState } from './workspaceState.js';
 
 /** Throttle: report after this much quiet ... */
@@ -105,7 +108,20 @@ export interface WorkspaceSyncOptions {
   onBatch?: (batch: BatchEvent) => void;
   /** Called whenever the window's belief about holding the slot changes. */
   onActiveChange?: (active: boolean) => void;
+  /** Called with the `capabilities` of each stream's hello ([] from a hub that lists none). */
+  onHello?: (capabilities: string[]) => void;
+  /** Called with each pushed event (PUSH_EVENTS): its type and its data. */
+  onPush?: (type: string, data: unknown) => void;
+  /** Called when the window's stream is closed, for whatever reason. */
+  onStreamClosed?: () => void;
 }
+
+/**
+ * The events a hub may push beside hello, batch and inactive. Each is read
+ * both ways a hub can frame it: as a named event (`event: manifest`), or as a
+ * default `message` whose data carries the name in `type`.
+ */
+export const PUSH_EVENTS = ['manifest', 'collections'] as const;
 
 /** What a result POST carries beside the state. */
 export interface BatchResult {
@@ -347,7 +363,9 @@ export function createWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSyn
   function closeStream(): void {
     const current = stream;
     stream = null;
-    current?.close();
+    if (current === null) return;
+    current.close();
+    options.onStreamClosed?.();
   }
 
   function connect(): void {
@@ -368,6 +386,18 @@ export function createWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSyn
         held = true;
         setActive(true);
       }
+      options.onHello?.(helloCapabilities(hello));
+    });
+    for (const type of PUSH_EVENTS) {
+      es.addEventListener(type, (event) => {
+        if (stream === es) options.onPush?.(type, data(event));
+      });
+    }
+    es.addEventListener('message', (event) => {
+      if (stream !== es) return;
+      const message = data(event) as { type?: unknown } | null;
+      const type = PUSH_EVENTS.find((known) => known === message?.type);
+      if (type !== undefined) options.onPush?.(type, message);
     });
     es.addEventListener('batch', (event) => {
       if (stream !== es || !active) return;
