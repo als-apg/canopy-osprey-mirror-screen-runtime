@@ -10,14 +10,18 @@
 // for its tree, every open screen reads that manifest through
 // SharedManifestContext instead of fetching its own. Only a page without the
 // context (the /s/ deep link) polls for itself: every MANIFEST_POLL_MS while
-// the document is visible and at once when it becomes visible, conditionally
-// on the manifest's ETag, so an unchanged manifest costs a bodiless 304.
+// the page is on screen (panelVisibility.ts: a frame its host hides does not
+// poll) and at once when it comes back, conditionally on the manifest's ETag,
+// so an unchanged manifest costs a bodiless 304.
 
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Manifest, ManifestScreen } from './api.js';
 import { directoryOf, pollManifest } from './api.js';
+import { watchPanel } from './panelVisibility.js';
+import { PUSH_SAFETY_POLL_MS, sameEtag } from './pushChannel.js';
+import type { PushSource } from './pushChannel.js';
 
-/** Manifest refresh period, for this hook and the workspace's poll, while the document is visible. */
+/** Manifest refresh period, for this hook and the workspace's poll, while the page is on screen. */
 export const MANIFEST_POLL_MS = 3000;
 
 /** A manifest someone else keeps fresh, for the screens base it came from. */
@@ -87,8 +91,8 @@ export function useManifestPoll(
     observe.current(sharedManifest);
   }, [enabled, sharedManifest]);
 
-  // Standalone: poll for ourselves, every MANIFEST_POLL_MS while the document
-  // is visible and at once when it becomes visible again. A new document
+  // Standalone: poll for ourselves, every MANIFEST_POLL_MS while the page is
+  // on screen and at once when it comes back. A new document
   // restarts the loop, whose first fetch is then unconditional, so the
   // first-observation rule above sees a full manifest.
   useConditionalManifestPoll(screensBaseUrl, (manifest) => observe.current(manifest), {
@@ -106,22 +110,33 @@ export interface ConditionalManifestPollOptions {
   eager?: boolean;
   /** A change restarts the loop, forgetting the validator (default: none). */
   scope?: unknown;
+  /** The server's manifest events (pushChannel.ts); while active they replace the interval. */
+  push?: PushSource;
 }
 
 /**
  * The one manifest poll loop: `pollManifest` every MANIFEST_POLL_MS while the
- * document is visible and at once when it becomes visible, conditionally on
+ * page is on screen (panelVisibility.ts) and at once when it comes back, conditionally on
  * the ETag it last saw, so an unchanged manifest is a bodiless 304 and
  * `onManifest` runs only for a changed one. A failed poll keeps the last
  * manifest and tries again on the next tick; one poll runs at a time. The
  * validator lives in the loop: a new base, `scope` or `enabled` starts over
- * with an unconditional fetch. `onManifest` is read when a poll lands, so a
+ * with an unconditional fetch. `onManifest` gets the manifest with its ETag
+ * (null from a server that sends none) and is read when a poll lands, so a
  * new callback never restarts the loop.
+ *
+ * While `push` is active the server says when the manifest changed, so the
+ * interval and the focus fetch stand down: the loop polls when an event names
+ * an ETag other than the one held (and the one the last event named), once
+ * when a pushing stream opens, and every PUSH_SAFETY_POLL_MS as a safety net.
+ * An event that arrives during a poll is followed by one more poll; one that
+ * arrives off screen waits for the page's return, which polls anyway. When
+ * pushing ends (the stream closed) the interval resumes on its next tick.
  */
 export function useConditionalManifestPoll(
   screensBaseUrl: string,
-  onManifest: (manifest: Manifest) => void,
-  { enabled = true, eager = false, scope }: ConditionalManifestPollOptions = {}
+  onManifest: (manifest: Manifest, etag: string | null) => void,
+  { enabled = true, eager = false, scope, push }: ConditionalManifestPollOptions = {}
 ): void {
   const deliver = useRef(onManifest);
   useLayoutEffect(() => {
@@ -131,38 +146,60 @@ export function useConditionalManifestPoll(
     if (!enabled) return;
     let cancelled = false;
     let inFlight = false;
+    /** A pushed change arrived during a poll: poll once more when it lands. */
+    let again = false;
     let etag: string | null = null;
+    /** The ETag the last handled event named. */
+    let announced: string | null = null;
+    let polledAt = -Infinity;
     const poll = async (): Promise<void> => {
       if (inFlight) return;
       inFlight = true;
+      polledAt = Date.now();
       try {
         const result = await pollManifest(screensBaseUrl, etag);
         if (cancelled || !result.changed) return;
         etag = result.etag;
-        deliver.current(result.manifest);
+        deliver.current(result.manifest, result.etag);
       } catch {
         // Missing manifest or network error: keep the last one, retry later.
       } finally {
         inFlight = false;
+        if (again && !cancelled) {
+          again = false;
+          void poll();
+        }
       }
     };
-    const onFocus = () => void poll();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void poll();
+    const pushed = () => push?.active() ?? false;
+    const safetyDue = () => Date.now() - polledAt >= PUSH_SAFETY_POLL_MS;
+    const onFocus = () => {
+      if (!pushed() || safetyDue()) void poll();
     };
     if (eager) {
       void poll();
       window.addEventListener('focus', onFocus);
     }
-    document.addEventListener('visibilitychange', onVisible);
+    // Back on screen (the tab, or the frame the host had hidden): poll at once.
+    const panel = watchPanel(() => void poll());
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void poll();
+      if (panel.check() && (!pushed() || safetyDue())) void poll();
     }, MANIFEST_POLL_MS);
+    const offPush = push?.subscribe((next) => {
+      if (next !== null) {
+        if (sameEtag(next, etag) || next === announced) return;
+        announced = next;
+      }
+      if (!panel.check()) return;
+      if (inFlight) again = true;
+      else void poll();
+    });
     return () => {
       cancelled = true;
       if (eager) window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisible);
+      panel.stop();
+      offPush?.();
       clearInterval(timer);
     };
-  }, [screensBaseUrl, enabled, eager, scope]);
+  }, [screensBaseUrl, enabled, eager, scope, push]);
 }

@@ -23,6 +23,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { useReducer, useRef } from 'react';
+import { PUSH_SAFETY_POLL_MS, createPushChannel } from '../pushChannel.js';
 import type { ManifestScreen } from '../api.js';
 import { memberKey, renamed, withoutMember } from './collections.js';
 import type { Member } from './collections.js';
@@ -207,6 +208,7 @@ type Props = Partial<
     | 'here'
     | 'tools'
     | 'root'
+    | 'push'
     | 'urlKey'
     | 'restoredKeys'
   >
@@ -243,6 +245,7 @@ function mount(props: Props = {}, initial: TabsState = EMPTY_TABS): Harness {
       here: p.here ?? '/',
       writeUrl,
       ...(p.root ? { root: p.root } : {}),
+      ...(p.push ? { push: p.push } : {}),
       ...(p.urlKey !== undefined ? { urlKey: p.urlKey } : {}),
       ...(p.restoredKeys ? { restoredKeys: p.restoredKeys } : {}),
     });
@@ -1858,6 +1861,122 @@ describe('useCollections poll', () => {
     await flush();
     expect(calls('GET', LIST_URL)).toHaveLength(2);
     expect(calls('GET', STATE_URL)).toHaveLength(2);
+  });
+
+  it('sends no request in a 0 x 0 window (a frame its host hides), and polls when it has a size again', async () => {
+    route = etagRoute({ list: '"l1"', state: '"s1"' });
+    mount({ root: rootRef() });
+    await flush();
+    act(() => report(true));
+    vi.stubGlobal('innerWidth', 0);
+    vi.stubGlobal('innerHeight', 0);
+    try {
+      // The observer never reports a hidden frame gone: the root still reads in view.
+      await tick(COLLECTIONS_POLL_MS * 3);
+      expect(calls('GET', LIST_URL)).toHaveLength(1);
+      expect(calls('GET', STATE_URL)).toHaveLength(1);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      await flush();
+      expect(calls('GET', LIST_URL)).toHaveLength(1);
+    } finally {
+      vi.stubGlobal('innerWidth', 1024);
+      vi.stubGlobal('innerHeight', 768);
+    }
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    await flush();
+    expect(calls('GET', LIST_URL)).toHaveLength(2);
+    expect(calls('GET', STATE_URL)).toHaveLength(2);
+  });
+
+  describe('with pushed collections events', () => {
+    let now: number;
+    beforeEach(() => {
+      now = 1_000_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+    });
+    afterEach(() => {
+      vi.mocked(Date.now).mockRestore();
+    });
+
+    /** One poll interval on the clock the store reads. */
+    async function pass(ms = COLLECTIONS_POLL_MS) {
+      now += ms;
+      await tick(ms);
+    }
+
+    async function mountPushed(capabilities: string[]) {
+      const channel = createPushChannel();
+      route = etagRoute({ list: '"l1"', state: '"s1"' });
+      const h = mount({ root: rootRef(), push: channel.source('collections') });
+      await flush();
+      act(() => report(true));
+      act(() => channel.opened(capabilities));
+      await flush();
+      return { channel, h };
+    }
+
+    it('keeps the interval when the server announces no collections events', async () => {
+      await mountPushed(['manifest-events']);
+      expect(calls('GET', LIST_URL)).toHaveLength(1);
+      await pass();
+      await pass();
+      expect(calls('GET', LIST_URL)).toHaveLength(3);
+    });
+
+    it('polls once when a pushing stream opens, then only for an event', async () => {
+      const { channel } = await mountPushed(['collections-events']);
+      expect(calls('GET', LIST_URL)).toHaveLength(2);
+      await pass();
+      await pass();
+      expect(calls('GET', LIST_URL)).toHaveLength(2);
+      expect(calls('GET', STATE_URL)).toHaveLength(2);
+
+      act(() => channel.event('collections', { type: 'collections' }));
+      await flush();
+      expect(calls('GET', LIST_URL)).toHaveLength(3);
+      expect(calls('GET', STATE_URL)).toHaveLength(3);
+      expect(validator(LIST_URL, 2)).toBe('"l1"');
+    });
+
+    it('does not refresh on focus while events flow', async () => {
+      await mountPushed(['collections-events']);
+      act(() => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await flush();
+      expect(calls('GET', LIST_URL)).toHaveLength(2);
+    });
+
+    it('polls as a safety net PUSH_SAFETY_POLL_MS after the last request', async () => {
+      await mountPushed(['collections-events']);
+      await pass(PUSH_SAFETY_POLL_MS - COLLECTIONS_POLL_MS);
+      expect(calls('GET', LIST_URL)).toHaveLength(2);
+      await pass();
+      expect(calls('GET', LIST_URL)).toHaveLength(3);
+    });
+
+    it('holds an event that arrives out of view and polls for it on return', async () => {
+      const { channel } = await mountPushed(['collections-events']);
+      act(() => report(false));
+      act(() => channel.event('collections', {}));
+      await pass();
+      expect(calls('GET', LIST_URL)).toHaveLength(2);
+      await act(async () => report(true));
+      await flush();
+      expect(calls('GET', LIST_URL)).toHaveLength(3);
+    });
+
+    it('goes back to the interval when the stream closes', async () => {
+      const { channel } = await mountPushed(['collections-events']);
+      act(() => channel.closed());
+      await pass();
+      await pass();
+      expect(calls('GET', LIST_URL)).toHaveLength(4);
+    });
   });
 
   it('skips the poll while a write is in flight and drops the list ETag after its answer', async () => {

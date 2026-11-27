@@ -37,6 +37,9 @@
 //                URL-named key only, for this page view, and is never stored. Chrome off
 //                keeps the app-level zoom: fit page unless ?_canopyZoom asks
 //                otherwise, whatever display mode is remembered.
+//   push         pushChannel.ts: what the workspace stream announces and
+//                pushes; while it does, the manifest and collections polls
+//                below stand down.
 //   manifest     useWorkspaceManifest.ts: one conditional poll for the page;
 //                every mounted screen reads it through SharedManifestContext.
 //   URL          workspaceUrl.ts: the active tab, written with `replace`
@@ -102,6 +105,8 @@ import type { ScreenAction, ScreenActionContext, ScreenTarget } from '../screenA
 import { ScreenVerbRegistry, useScreenVerbs } from '../screenActions/useScreenActions.js';
 import { getShowSubScreens, setShowSubScreens, useShowSubScreens } from '../screenList.js';
 import { useBackendBadge } from '../services.js';
+import { createPushChannel } from '../pushChannel.js';
+import { prefetchScreenDocument } from '../screenDocuments.js';
 import { SharedManifestContext } from '../useManifestPoll.js';
 import type { SharedManifest } from '../useManifestPoll.js';
 import { ZoomStore, useKeyedZoom, useZoom } from '../ZoomContext.js';
@@ -598,7 +603,27 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  const { manifest, refetch: refetchManifest } = useWorkspaceManifest(screensBaseUrl);
+  // What the workspace stream pushes (pushChannel.ts): told by the sync below,
+  // read by the manifest and collections loops, which then stop polling.
+  const push = useMemo(() => createPushChannel(), []);
+  const manifestPush = useMemo(() => push.source('manifest'), [push]);
+  const collectionsPush = useMemo(() => push.source('collections'), [push]);
+  const { manifest, refetch: refetchManifest } = useWorkspaceManifest(screensBaseUrl, manifestPush);
+  // A tree row was pressed: its screen's document is asked for now, and the
+  // ScreenPage the click mounts takes that request (screenDocuments.ts). A
+  // screen already open is not fetched again for it.
+  const intent = useRef({ manifest, keys: state.keys });
+  useLayoutEffect(() => {
+    intent.current = { manifest, keys: state.keys };
+  });
+  const onScreenIntent = useCallback(
+    (key: string) => {
+      if (intent.current.keys.includes(key)) return;
+      const entry = findEntry(intent.current.manifest, key);
+      if (entry?.kind === 'ir') prefetchScreenDocument(screensBaseUrl, entry.path, entry.rev);
+    },
+    [screensBaseUrl]
+  );
   const sharedManifest = useMemo<SharedManifest>(
     () => ({ base: screensBaseUrl, manifest }),
     [screensBaseUrl, manifest]
@@ -1174,6 +1199,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     workspace: config?.workspace,
     getState: () => syncState.current(),
     onBatch,
+    push,
   });
   // Every layout change (sizes included) is a holder change.
   useEffect(() => {
@@ -1296,6 +1322,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
     here,
     writeUrl,
     root: workspaceRef,
+    push: collectionsPush,
     urlKey: mountUrlKey,
     restoredKeys,
   });
@@ -2078,6 +2105,7 @@ export function WorkspacePage({ screensBaseUrl, config }: WorkspacePageProps) {
                         revertable={revertable}
                         onRevertView={viewsEnabled ? onRevertView : undefined}
                         onDeleteView={viewsEnabled ? onDeleteView : undefined}
+                        onIntent={onScreenIntent}
                         onDragStart={dockApi ? onBrowserDragStart : undefined}
                         tabs={state}
                         collections={collections}

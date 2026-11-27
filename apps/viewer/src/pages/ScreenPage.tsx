@@ -17,6 +17,11 @@
 // asked for has resolved or failed, with EMBED_QUIET_MS of quiet so the
 // embeds an embed brings are waited for too.
 //
+// Loading: inside the workspace the document's path comes from the manifest
+// the workspace already keeps (SharedManifestContext), so the document is
+// requested at once; a page of its own reads the manifest first. Either way
+// the document may already be on its way (screenDocuments.ts).
+//
 // With the chrome the page is a page of its own: it shows the target badge
 // in its header and mounts the page's one Notices column (writeGate/
 // toastHost.tsx) with its MachineToasts; its write gate's toasts go into
@@ -24,7 +29,15 @@
 // chrome (a workspace tab) it mounts neither and puts its write gate in the
 // page's MachineGatesContext.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useHref, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PVServiceProvider } from '@slaclab/canopy-react';
 import {
@@ -39,14 +52,8 @@ import {
   collectScreenPVs,
   parseRenderMode,
 } from '@slaclab/canopy-screen-runtime';
-import type { ManifestScreen } from '../api.js';
-import {
-  fetchManifest,
-  fetchScreenDocument,
-  makeResolveAsset,
-  makeResolveScreen,
-  screenDocumentUrl,
-} from '../api.js';
+import type { Manifest, ManifestScreen } from '../api.js';
+import { makeResolveAsset, makeResolveScreen, screenDocumentUrl } from '../api.js';
 import { useColorScheme } from '../colorSchemeContext.js';
 import type { ViewerConfig } from '../config.js';
 import { ErrorPanel, ScreenErrorBoundary } from '../ErrorPanel.js';
@@ -56,7 +63,8 @@ import { ScreenHeader } from '../ScreenHeader.js';
 import { usePrintFit } from '../screenActions/print.js';
 import type { ScreenActionContext, ScreenTarget } from '../screenActions/types.js';
 import { useServices } from '../services.js';
-import { useManifestPoll } from '../useManifestPoll.js';
+import { fetchManifestShared, loadScreenDocument } from '../screenDocuments.js';
+import { SharedManifestContext, useManifestPoll } from '../useManifestPoll.js';
 import { useScreenWriteGate, ScreenWriteGateProvider } from '../writeGate/WriteGateView.js';
 import { createGateRegistry } from '../writeGate/machineToasts.js';
 import {
@@ -148,14 +156,30 @@ function useScreenDocument(
   const openEntry = current.status === 'ready' ? current.entry : undefined;
   const generation = useManifestPoll(screensBaseUrl, openEntry?.path, openEntry?.rev);
 
+  // The workspace's manifest, read when a load starts: a new manifest alone
+  // never refetches the document (the generation above decides that).
+  const shared = useContext(SharedManifestContext);
+  const sharedManifest = useRef<Manifest | null>(null);
+  useLayoutEffect(() => {
+    sharedManifest.current =
+      shared !== null && shared.base === screensBaseUrl ? shared.manifest : null;
+  });
+
   useEffect(() => {
     let cancelled = false;
 
     (async (): Promise<LoadState> => {
       // An operator's reload goes past the HTTP cache.
       const fresh = reloads > 0;
-      const manifest = await fetchManifest(screensBaseUrl, { fresh });
-      const entry = manifest.screens.find((s) => s.category === category && s.id === id);
+      const named = (manifest: Manifest) =>
+        manifest.screens.find((s) => s.category === category && s.id === id);
+      // The manifest the workspace keeps fresh names the document at once. A
+      // page without one (the /s/ deep link), or a screen that manifest does
+      // not list yet, reads the manifest itself.
+      const kept = sharedManifest.current;
+      const entry =
+        (kept ? named(kept) : undefined) ??
+        named(await fetchManifestShared(screensBaseUrl, { fresh }));
       if (!entry) {
         return {
           status: 'error',
@@ -169,7 +193,7 @@ function useScreenDocument(
           detail: 'Only IR screens (.screen.json) are viewable in this version.',
         };
       }
-      const screen = await fetchScreenDocument(screensBaseUrl, entry.path, { fresh });
+      const screen = await loadScreenDocument(screensBaseUrl, entry.path, entry.rev, { fresh });
       if (!isSupportedSchemaVersion(screen.schemaVersion)) {
         return {
           status: 'error',

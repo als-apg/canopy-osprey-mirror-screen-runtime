@@ -19,7 +19,7 @@ import {
 import { showSubScreensKey } from '../screenList.js';
 const COLLAPSED_STORAGE_KEY = collapsedStorageKey();
 import type { SavedView } from './savedViews.js';
-import { TRACE_KEY } from './tabs.js';
+import { TRACE_KEY, tabKey } from './tabs.js';
 import type { BrowseCollections, ToolEntry } from './ScreenTree.js';
 import { collectionSummary, collectionSuffix, formatWhen, memberKey } from './collections.js';
 import { CollectionBadge } from './CollectionBadge.js';
@@ -1281,5 +1281,18 @@ describe('ScreenTree collection headings and badges', () => {
     expect(row('personal:rv-dup-2').querySelector('.nav-tree__label')!.textContent).toBe('rv-dup');
     expect(suffix('facility:injector')).toBe(`\u00b7 ${collectionSuffix(other)}`);
     expect(heading('facility:injector').getAttribute('title')).toBe(collectionSummary(other));
+  });
+});
+
+describe('ScreenTree intent', () => {
+  it("reports the screen key when a screen row is pressed, and nothing for a code screen's row", () => {
+    const onIntent = vi.fn();
+    render(<ScreenTree screens={SCREENS} onOpen={() => {}} onIntent={onIntent} />);
+    const row = (text: string) => treeItem(text).querySelector('.nav-tree__row') as HTMLElement;
+    fireEvent.mouseDown(row('Vacuum System'), { button: 0 });
+    expect(onIntent.mock.calls).toEqual([[tabKey('examples', 'vacuum')]]);
+    fireEvent.mouseDown(row('Legacy Code Screen'), { button: 0 });
+    fireEvent.mouseDown(row('examples'), { button: 0 });
+    expect(onIntent).toHaveBeenCalledTimes(1);
   });
 });

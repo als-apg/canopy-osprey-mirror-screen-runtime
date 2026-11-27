@@ -170,3 +170,30 @@ describe('NavTree activation (Mac)', () => {
     expect(onActivate).not.toHaveBeenCalled();
   });
 });
+
+describe('NavTree intent', () => {
+  it('reports a press of the row with the primary or the middle button, before any click', () => {
+    const onIntent = vi.fn();
+    const { node, onActivate } = leaf({ onIntent });
+    const { row } = renderTree(NavTree, [node]);
+    fireEvent.mouseDown(row, { button: 0 });
+    expect(onIntent).toHaveBeenCalledTimes(1);
+    expect(onActivate).not.toHaveBeenCalled();
+    fireEvent.mouseDown(row, { button: 1 });
+    expect(onIntent).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report the context-menu button, or a disabled row', () => {
+    const onIntent = vi.fn();
+    const { node } = leaf({ onIntent });
+    const { row } = renderTree(NavTree, [node]);
+    fireEvent.mouseDown(row, { button: 2 });
+    expect(onIntent).not.toHaveBeenCalled();
+    cleanup();
+
+    const disabled = leaf({ onIntent, disabled: true });
+    const second = renderTree(NavTree, [disabled.node]);
+    fireEvent.mouseDown(second.row, { button: 0 });
+    expect(onIntent).not.toHaveBeenCalled();
+  });
+});
